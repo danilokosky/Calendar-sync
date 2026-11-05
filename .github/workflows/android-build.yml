@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -26,7 +26,7 @@ jobs:
           gradle-version: '8.7'
 
       - name: Assemble Mobile, Wear OS and Watch Face APKs
-        run: gradle :mobile:assembleDebug :wear:assembleDebug :watchface:assembleDebug --stacktrace
+        run: gradle :mobile:assembleDebug :wear:assembleDebug :watchface:assembleDebug --stacktrace --info
 
       - name: Upload Smartphone APK (:mobile)
         uses: actions/upload-artifact@v4

@@ -29,9 +29,10 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
         }
 
         val countdownText = TimeDifferenceComplicationText.Builder(
-            style = TimeDifferenceStyle.SHORT_DUAL_UNIT,
-            countUpTimeReference = Instant.ofEpochMilli(primaryEvent.startEpochMs)
-        ).build()
+            TimeDifferenceStyle.SHORT_DUAL_UNIT
+        )
+            .setCountDownTimeReference(Instant.ofEpochMilli(primaryEvent.startEpochMs))
+            .build()
 
         val threeEventsSummary = upcomingThree.mapIndexed { idx, ev ->
             "${idx + 1}. ${ev.formatStartHHMM()} ${ev.title}"
