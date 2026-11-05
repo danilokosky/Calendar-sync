@@ -9,14 +9,14 @@ import {
   formatDayRelative,
 } from '../utils/calendarSyncEngine';
 import {
-  RefreshCw,
-  Plus,
-  Trash2,
+  Bluetooth,
   Calendar,
-  Sliders,
+  Settings,
+  Home,
+  Info,
+  Watch,
   Check,
-  ShieldCheck,
-  LayoutDashboard,
+  X,
 } from 'lucide-react';
 
 interface SmartphoneCompanionSimulatorProps {
@@ -44,44 +44,19 @@ export const SmartphoneCompanionSimulator: React.FC<SmartphoneCompanionSimulator
   isBluetoothConnected,
   onToggleCalendar,
   onUpdateConfig,
-  onAddEvent,
-  onDeleteEvent,
   onTriggerManualSync,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'painel' | 'calendarios' | 'configuracoes'>('configuracoes');
-  const [permCalendarGranted, setPermCalendarGranted] = useState(true);
-  const [permNotificationGranted, setPermNotificationGranted] = useState(true);
-  const [permBatteryUnrestricted, setPermBatteryUnrestricted] = useState(true);
+  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'settings' | 'about'>('settings');
+  const [showSyncedCalendarsModal, setShowSyncedCalendarsModal] = useState(false);
+
+  // Toggles idênticos ao Amoled Watchfaces
   const [backgroundServiceEnabled, setBackgroundServiceEnabled] = useState(true);
-  const [debounceSeconds, setDebounceSeconds] = useState<2 | 5 | 15 | 30>(5);
+  const [notificationsSyncEnabled, setNotificationsSyncEnabled] = useState(true);
+  const [mediaPlaybackSyncEnabled, setMediaPlaybackSyncEnabled] = useState(false);
+  const [calendarEventsSyncEnabled, setCalendarEventsSyncEnabled] = useState(true);
+  const [crashReportsEnabled, setCrashReportsEnabled] = useState(false);
 
-  const [newTitle, setNewTitle] = useState('');
-  const [newLocation, setNewLocation] = useState('');
-  const [newCalId, setNewCalId] = useState(calendars[0]?.id || 'cal-work');
-  const [offsetMinutes, setOffsetMinutes] = useState<number>(35);
-  const [durationMinutes, setDurationMinutes] = useState<number>(45);
-  const [formError, setFormError] = useState('');
-
-  const handleCreateEvent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) {
-      setFormError('Informe o título do evento ou tarefa.');
-      return;
-    }
-    setFormError('');
-    const startEpochMs = referenceTimeMs + offsetMinutes * 60 * 1000;
-    const endEpochMs = startEpochMs + durationMinutes * 60 * 1000;
-
-    onAddEvent({
-      calendarId: newCalId,
-      title: newTitle.trim(),
-      location: newLocation.trim() || 'Remoto / Google Meet',
-      startEpochMs,
-      endEpochMs,
-    });
-    setNewTitle('');
-    setNewLocation('');
-  };
+  const selectedCalendarsCount = calendars.filter((c) => c.enabled).length;
 
   const horizonOptions: { value: SyncHorizonDays; label: string }[] = [
     { value: 2, label: '2 dias' },
@@ -91,292 +66,317 @@ export const SmartphoneCompanionSimulator: React.FC<SmartphoneCompanionSimulator
   ];
 
   const progressWindowOptions: { value: ProgressWindowMinutes; label: string }[] = [
-    { value: 30, label: '30 min' },
+    { value: 30, label: '30m' },
     { value: 60, label: '1 hora' },
     { value: 120, label: '2 horas' },
     { value: 180, label: '3 horas' },
   ];
 
-  return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col h-full justify-between">
-      {/* Header of Smartphone APK */}
-      <div>
-        <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-800">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-amber-400 tracking-wide">
-                MÓDULO :mobile · APK SMARTPHONE
-              </span>
-              <span
-                className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                  backgroundServiceEnabled && permCalendarGranted
-                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-                    : 'bg-amber-500/10 border-amber-500/40 text-amber-300'
-                }`}
-              >
-                {backgroundServiceEnabled && permCalendarGranted ? '2º PLANO ATIVO' : '2º PLANO INATIVO'}
-              </span>
-            </div>
-            <h2 className="text-lg font-bold text-slate-100 mt-0.5">
-              ChronoWear Studio (Android)
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Última leitura: <span className="font-mono tabular-nums text-slate-200">{formatTimeHHMM(lastSyncTimeMs)}</span> · {syncedEventsCount} compromissos ({config.autoSyncOnCalendarChange ? `Periódica ${config.syncIntervalMinutes}m + Ao alterar` : `Periódica ${config.syncIntervalMinutes}m`})
-            </p>
-          </div>
+  // Switch no estilo Material 3 / Amoled Watchfaces (Trilho claro azulado quando ligado + círculo roxo/escuro)
+  const renderAmoledSwitch = (checked: boolean, onChange: () => void, label: string) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onChange}
+      className={`w-13 h-7 rounded-full transition-colors flex items-center px-1 shrink-0 cursor-pointer border ${
+        checked
+          ? 'bg-[#BAE6FD] border-[#BAE6FD] justify-end'
+          : 'bg-[#2A2D32] border-[#525866] justify-start'
+      }`}
+    >
+      <span
+        className={`w-5 h-5 rounded-full transition-transform ${
+          checked ? 'bg-[#311B61]' : 'bg-[#8E95A5]'
+        }`}
+      />
+    </button>
+  );
 
+  return (
+    <div
+      className="rounded-[32px] border border-[#2C352E] p-5 sm:p-6 flex flex-col h-full justify-between relative overflow-hidden shadow-2xl"
+      style={{
+        background: 'linear-gradient(180deg, #3D351B 0%, #16231B 28%, #0B0E0C 100%)',
+      }}
+    >
+      {/* TOP BAR ESTILO SAMSUNG HEALTH */}
+      <div>
+        <div className="flex items-center justify-between gap-3 px-1 pb-3">
+          <h2 className="text-xl font-bold text-white tracking-tight">
+            {activeBottomTab === 'settings'
+              ? 'Settings'
+              : activeBottomTab === 'about'
+              ? 'About ChronoWear'
+              : 'ChronoWear Sync'}
+          </h2>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-[#232D26] border border-[#38473C] text-[#A7F3D0]">
+              APK :mobile
+            </span>
+          </div>
+        </div>
+
+        {/* Barra de Pílulas de Categoria estilo Samsung Health */}
+        <div className="grid grid-cols-4 gap-1 p-1.5 rounded-full bg-[#252C25]/90 border border-[#384238] mb-4">
           <button
             type="button"
-            onClick={onTriggerManualSync}
-            disabled={!isBluetoothConnected || !permCalendarGranted}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
-              isBluetoothConnected && permCalendarGranted
-                ? 'bg-amber-500 text-slate-950 hover:bg-amber-400 cursor-pointer'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+            onClick={() => setActiveBottomTab('home')}
+            className={`py-2 px-3 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+              activeBottomTab === 'home'
+                ? 'bg-[#525B52] text-white font-semibold shadow-xs'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Ler Agenda Agora</span>
+            ⊞ Início
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('settings')}
+            className={`py-2 px-3 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+              activeBottomTab === 'settings'
+                ? 'bg-[#525B52] text-white font-semibold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            ⚙ Settings
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSyncedCalendarsModal(true)}
+            className="py-2 px-3 rounded-full text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer truncate"
+          >
+            📅 Agendas ({selectedCalendarsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('about')}
+            className={`py-2 px-3 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+              activeBottomTab === 'about'
+                ? 'bg-[#525B52] text-white font-semibold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            ⓘ Leitura
           </button>
         </div>
 
-        {/* 3-Tab Bottom-Style Navigation (Painel, Calendários, Configurações) */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-950 rounded-xl my-4 border border-slate-800/80">
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('painel')}
-            className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-              activeSubTab === 'painel'
-                ? 'bg-amber-500 text-slate-950 font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>1. Painel ({events.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('calendarios')}
-            className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-              activeSubTab === 'calendarios'
-                ? 'bg-amber-500 text-slate-950 font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>2. Calendários ({calendars.filter((c) => c.enabled).length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('configuracoes')}
-            className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-              activeSubTab === 'configuracoes'
-                ? 'bg-amber-500 text-slate-950 font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>3. Configurações</span>
-          </button>
+        {/* Status Bluetooth idêntico ao print do Amoled Watchfaces */}
+        <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-slate-200 py-1.5 mb-3">
+          <Bluetooth className="w-4 h-4 text-[#BAE6FD]" />
+          <span>
+            {isBluetoothConnected
+              ? 'Connected • Galaxy Watch Ultra (ZNDA)'
+              : `Autonomous Cache (${config.horizonDays}d) • Galaxy Watch Ultra`}
+          </span>
         </div>
       </div>
 
-      {/* TAB 3: CONFIGURAÇÕES (PERMISSÕES PELO USUÁRIO, SERVIÇO 2º PLANO, MODO DE LEITURA E FREQUÊNCIA) */}
-      {activeSubTab === 'configuracoes' && (
-        <div className="space-y-4 flex-1 overflow-y-auto pr-1">
-          {/* Card 1: Permissões Controladas pelo Usuário */}
-          <div className="p-3.5 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono text-amber-400 font-semibold">
-                1. PERMISSÕES (CONCEDIDAS APENAS PELO USUÁRIO)
-              </span>
-              <ShieldCheck className="w-4 h-4 text-amber-400" />
-            </div>
-
-            <div className="divide-y divide-slate-800/80 text-xs">
-              <div className="py-2 flex items-center justify-between gap-2">
-                <div>
-                  <div className="font-semibold text-slate-200">
-                    Permissão para Ler o Calendário (READ_CALENDAR)
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Autoriza ler os calendários e compromissos via CalendarContract.Instances
-                  </div>
+      {/* =====================================================================
+          TELA 1: INÍCIO (Estilo Samsung Health + Amoled Watchfaces Home)
+         ===================================================================== */}
+      {activeBottomTab === 'home' && (
+        <div className="space-y-4 flex-1 flex flex-col justify-between my-1">
+          {/* Mockup Circular do Relógio no Topo (igual à print 2: Phone Battery Complication) */}
+          <div className="flex flex-col items-center">
+            <div className="w-52 h-52 rounded-full bg-[#111513] border-[8px] border-[#2A322D] shadow-inner flex flex-col items-center justify-center p-4 space-y-2">
+              <div className="w-full rounded-2xl bg-[#27312B] border border-[#3B493F] px-3 py-2">
+                <div className="text-xs font-bold text-white truncate">
+                  Event Timer ({config.progressWindowMinutes}m)
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPermCalendarGranted((v) => !v)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold shrink-0 cursor-pointer transition-colors ${
-                    permCalendarGranted
-                      ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300'
-                      : 'bg-amber-500 text-slate-950'
-                  }`}
-                >
-                  {permCalendarGranted ? 'Concedida' : 'Conceder'}
-                </button>
+                <div className="text-[10px] text-[#A7F3D0] truncate">
+                  Countdown &amp; Progress Complication
+                </div>
               </div>
-
-              <div className="py-2 flex items-center justify-between gap-2">
-                <div>
-                  <div className="font-semibold text-slate-200">
-                    Permissão para Serviço em 2º Plano (Sem Restrição de Bateria)
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    REQUEST_IGNORE_BATTERY_OPTIMIZATIONS + FOREGROUND_SERVICE_DATA_SYNC
-                  </div>
+              <div className="w-full rounded-2xl bg-[#2D3831] border border-[#47554B] px-3 py-2">
+                <div className="text-xs font-bold text-white truncate">
+                  Next 3 Calendar Events
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPermBatteryUnrestricted((v) => !v)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold shrink-0 cursor-pointer transition-colors ${
-                    permBatteryUnrestricted
-                      ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300'
-                      : 'bg-sky-400 text-slate-950'
-                  }`}
-                >
-                  {permBatteryUnrestricted ? 'Sem Restrição' : 'Autorizar 2º Plano'}
-                </button>
-              </div>
-
-              <div className="pt-2 flex items-center justify-between gap-2">
-                <div>
-                  <div className="font-semibold text-slate-200">
-                    Notificação do Serviço Persistente (POST_NOTIFICATIONS)
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Exibe o status da última leitura e botão rápido na barra de notificações
-                  </div>
+                <div className="text-[10px] text-slate-300 truncate">
+                  {syncedEventsCount} compromissos ({config.horizonDays}d cache)
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPermNotificationGranted((v) => !v)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold shrink-0 cursor-pointer transition-colors ${
-                    permNotificationGranted
-                      ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300'
-                      : 'bg-amber-500 text-slate-950'
-                  }`}
-                >
-                  {permNotificationGranted ? 'Concedida' : 'Permitir'}
-                </button>
               </div>
             </div>
           </div>
 
-          {/* Card 2: Switch do Serviço em Segundo Plano & Leitura Automática ao Alterar Compromissos */}
-          <div className="p-3.5 bg-slate-950/90 border border-slate-800 rounded-xl space-y-3">
-            <div className="text-[11px] font-mono text-sky-400 font-semibold">
-              2. SERVIÇO EM 2º PLANO, MODO DE LEITURA E FREQUÊNCIA
+          {/* Card Welcome! / Sua agenda sob controle (Fusão Print 1 + Print 2) */}
+          <div className="rounded-[26px] bg-[#1C241E]/95 border border-[#2F3D33] p-5 space-y-2.5">
+            <h3 className="text-xl font-bold text-white">Welcome!</h3>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Este companion app lê os compromissos dos calendários escolhidos por você e envia os próximos eventos + temporizador de progresso ({config.progressWindowMinutes} min) para o relógio.
+            </p>
+            <div className="pt-1 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs text-slate-400 font-semibold">
+                  App is installed on your wear device(s):
+                </div>
+                <div className="text-sm font-bold text-[#BAE6FD] mt-0.5">
+                  Galaxy Watch Ultra (ZNDA) • Último envio {formatTimeHHMM(lastSyncTimeMs)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card estilo "Pontuação energia" do Samsung Health */}
+          <div className="rounded-[26px] bg-[#141715] border border-[#262B28] p-4 flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xs text-slate-400">Eventos Sincronizados</div>
+              <div className="text-3xl font-bold text-white font-mono tabular-nums mt-0.5">
+                {syncedEventsCount}
+              </div>
+              <div className="text-xs font-semibold text-[#60A5FA] mt-1">
+                Horizonte {config.horizonDays} dias
+              </div>
+            </div>
+            <div className="text-right space-y-1 text-xs text-slate-300">
+              <div>Leitura periódica: <strong>{config.syncIntervalMinutes} min</strong></div>
+              <div>Ao alterar agenda: <strong>{config.autoSyncOnCalendarChange ? 'Ativo' : 'Inativo'}</strong></div>
+              <div>Calendários ativos: <strong>{selectedCalendarsCount}</strong></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          TELA 2: SETTINGS (Idêntica à print 3 do Amoled Watchfaces)
+         ===================================================================== */}
+      {activeBottomTab === 'settings' && (
+        <div className="space-y-3.5 flex-1 overflow-y-auto pr-1">
+          {/* Card Principal de Switches (Estilo Amoled Watchfaces Settings) */}
+          <div className="rounded-[26px] bg-[#1A1C1E] border border-[#2C3034] p-5 space-y-4">
+            {/* 1. Background Service */}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-base font-bold text-white">Background Service</div>
+                <div className="text-xs text-slate-400">
+                  Important - Background &amp; Notifications Access required
+                </div>
+              </div>
+              {renderAmoledSwitch(
+                backgroundServiceEnabled,
+                () => setBackgroundServiceEnabled((v) => !v),
+                'Background Service'
+              )}
             </div>
 
-            {/* Switch Principal do Serviço em Segundo Plano */}
-            <label className="flex items-center justify-between gap-3 cursor-pointer py-1">
+            {/* 2. Notifications Sync */}
+            <div className="flex items-center justify-between gap-4 pt-1 border-t border-slate-800/70">
               <div>
-                <div className="text-xs font-semibold text-slate-100">
-                  Switch de Ativação do Serviço em Segundo Plano
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  Mantém o ForegroundService e o WorkManager ativos em segundo plano
+                <div className="text-base font-bold text-white">Notifications Sync</div>
+                <div className="text-xs text-slate-400">
+                  Only for Phone Notifications &amp; Service Status
                 </div>
               </div>
-              <input
-                type="checkbox"
-                checked={backgroundServiceEnabled}
-                onChange={() => setBackgroundServiceEnabled((v) => !v)}
-                className="sr-only"
-              />
-              <div
-                className={`w-10 h-5 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${
-                  backgroundServiceEnabled ? 'bg-emerald-500 justify-end' : 'bg-slate-800 justify-start'
-                }`}
-              >
-                <div className="w-4 h-4 rounded-full bg-slate-950" />
-              </div>
-            </label>
+              {renderAmoledSwitch(
+                notificationsSyncEnabled,
+                () => setNotificationsSyncEnabled((v) => !v),
+                'Notifications Sync'
+              )}
+            </div>
 
-            {/* Switch: Ler Compromissos quando houver alteração na Agenda */}
-            <label className="flex items-center justify-between gap-3 cursor-pointer py-1 border-t border-slate-800/80 pt-2.5">
+            {/* 3. Media Playback Sync */}
+            <div className="flex items-center justify-between gap-4 pt-1 border-t border-slate-800/70">
               <div>
-                <div className="text-xs font-semibold text-slate-100">
-                  Ler compromissos automaticamente ao alterar a Agenda
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  Escuta ContentObserver (CalendarContract.Events) e ACTION_PROVIDER_CHANGED: criar, editar ou apagar evento dispara nova leitura na hora
-                </div>
+                <div className="text-base font-bold text-white">Media Playback Sync</div>
+                <div className="text-xs text-slate-400">Now Playing Complication support</div>
               </div>
-              <input
-                type="checkbox"
-                checked={config.autoSyncOnCalendarChange}
-                onChange={() =>
-                  onUpdateConfig({ autoSyncOnCalendarChange: !config.autoSyncOnCalendarChange })
-                }
-                className="sr-only"
-              />
-              <div
-                className={`w-10 h-5 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${
-                  config.autoSyncOnCalendarChange ? 'bg-amber-500 justify-end' : 'bg-slate-800 justify-start'
-                }`}
-              >
-                <div className="w-4 h-4 rounded-full bg-slate-950" />
-              </div>
-            </label>
+              {renderAmoledSwitch(
+                mediaPlaybackSyncEnabled,
+                () => setMediaPlaybackSyncEnabled((v) => !v),
+                'Media Playback Sync'
+              )}
+            </div>
 
-            {/* Tempo de Debounce após alteração + Frequência Periódica */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div>
-                <div className="text-[11px] font-semibold text-slate-300 mb-1.5">
-                  Frequência da Leitura Periódica:
+            {/* 4. Calendar Events Sync + Botão Pílula "Synced calendars" */}
+            <div className="space-y-3 pt-1 border-t border-slate-800/70">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-base font-bold text-white">Calendar Events Sync</div>
+                  <div className="text-xs text-slate-400">
+                    Upcoming Event &amp; Event Timer Complication ({selectedCalendarsCount} agendas)
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                {renderAmoledSwitch(
+                  calendarEventsSyncEnabled,
+                  () => setCalendarEventsSyncEnabled((v) => !v),
+                  'Calendar Events Sync'
+                )}
+              </div>
+
+              {/* Botão pílula com borda fina idêntico ao "Synced calendars" da print 3 */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowSyncedCalendarsModal(true)}
+                  className="px-5 py-2.5 rounded-full bg-[#1A1C1E] hover:bg-[#25282C] border border-[#4B5563] text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <Calendar className="w-4 h-4 text-[#BAE6FD]" />
+                  <span>Synced calendars ({selectedCalendarsCount})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 5. Instant Calendar Change Sync (ContentObserver quando há alteração nos compromissos) */}
+            <div className="flex items-center justify-between gap-4 pt-1 border-t border-slate-800/70">
+              <div>
+                <div className="text-base font-bold text-white">Instant Calendar Change Sync</div>
+                <div className="text-xs text-slate-400">
+                  Relê os compromissos automaticamente ao criar, editar ou apagar evento
+                </div>
+              </div>
+              {renderAmoledSwitch(
+                config.autoSyncOnCalendarChange,
+                () =>
+                  onUpdateConfig({
+                    autoSyncOnCalendarChange: !config.autoSyncOnCalendarChange,
+                  }),
+                'Instant Calendar Change Sync'
+              )}
+            </div>
+
+            {/* 6. Crash Reports */}
+            <div className="flex items-center justify-between gap-4 pt-1 border-t border-slate-800/70">
+              <div>
+                <div className="text-base font-bold text-white">Crash Reports</div>
+                <div className="text-xs text-slate-400">Help us identify and fix issues</div>
+              </div>
+              {renderAmoledSwitch(
+                crashReportsEnabled,
+                () => setCrashReportsEnabled((v) => !v),
+                'Crash Reports'
+              )}
+            </div>
+          </div>
+
+          {/* Card Complementar: Frequência da Leitura, Barra de Progresso (1h/2h) e Horizonte Autônomo */}
+          <div className="rounded-[26px] bg-[#1A1C1E] border border-[#2C3034] p-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <div className="text-[11px] font-semibold text-slate-300 mb-1">
+                  Frequência de Leitura:
+                </div>
+                <div className="grid grid-cols-3 gap-1">
                   {([15, 30, 60] as const).map((mins) => (
                     <button
                       key={mins}
                       type="button"
                       onClick={() => onUpdateConfig({ syncIntervalMinutes: mins })}
-                      className={`py-1.5 px-2 rounded-lg text-[11px] font-mono border transition-colors cursor-pointer ${
+                      className={`py-1.5 px-2 rounded-full text-[11px] font-mono transition-colors cursor-pointer ${
                         config.syncIntervalMinutes === mins
-                          ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-semibold'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                          ? 'bg-[#BAE6FD] text-slate-950 font-bold'
+                          : 'bg-[#262B28] text-slate-300'
                       }`}
                     >
-                      {mins} min
+                      {mins}m
                     </button>
                   ))}
                 </div>
               </div>
 
               <div>
-                <div className="text-[11px] font-semibold text-slate-300 mb-1.5">
-                  Espera após Alterar Evento (Debounce):
-                </div>
-                <div className="grid grid-cols-4 gap-1">
-                  {([2, 5, 15, 30] as const).map((sec) => (
-                    <button
-                      key={sec}
-                      type="button"
-                      onClick={() => setDebounceSeconds(sec)}
-                      className={`py-1.5 px-1.5 rounded-lg text-[11px] font-mono border transition-colors cursor-pointer ${
-                        debounceSeconds === sec
-                          ? 'bg-sky-500/20 border-sky-500 text-sky-300 font-semibold'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {sec}s
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Janela da Barra de Progresso & Horizonte Autônomo */}
-          <div className="p-3.5 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2.5">
-            <div className="text-[11px] font-mono text-emerald-400 font-semibold">
-              3. PARÂMETROS DA WATCH FACE &amp; CACHE AUTÔNOMO
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="text-[11px] text-slate-300 font-semibold mb-1.5">
-                  Barra de Progresso (Antes do Evento):
+                <div className="text-[11px] font-semibold text-slate-300 mb-1">
+                  Barra Progresso:
                 </div>
                 <div className="grid grid-cols-4 gap-1">
                   {progressWindowOptions.map((opt) => (
@@ -384,10 +384,10 @@ export const SmartphoneCompanionSimulator: React.FC<SmartphoneCompanionSimulator
                       key={opt.value}
                       type="button"
                       onClick={() => onUpdateConfig({ progressWindowMinutes: opt.value })}
-                      className={`py-1.5 px-1.5 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer ${
+                      className={`py-1.5 px-1 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
                         config.progressWindowMinutes === opt.value
-                          ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-semibold'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                          ? 'bg-[#BAE6FD] text-slate-950 font-bold'
+                          : 'bg-[#262B28] text-slate-300'
                       }`}
                     >
                       {opt.label}
@@ -397,8 +397,8 @@ export const SmartphoneCompanionSimulator: React.FC<SmartphoneCompanionSimulator
               </div>
 
               <div>
-                <div className="text-[11px] text-slate-300 font-semibold mb-1.5">
-                  Horizonte Autônomo Offline:
+                <div className="text-[11px] font-semibold text-slate-300 mb-1">
+                  Cache Autônomo:
                 </div>
                 <div className="grid grid-cols-4 gap-1">
                   {horizonOptions.map((opt) => (
@@ -406,10 +406,10 @@ export const SmartphoneCompanionSimulator: React.FC<SmartphoneCompanionSimulator
                       key={opt.value}
                       type="button"
                       onClick={() => onUpdateConfig({ horizonDays: opt.value })}
-                      className={`py-1.5 px-1.5 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer ${
+                      className={`py-1.5 px-1 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
                         config.horizonDays === opt.value
-                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-semibold'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                          ? 'bg-[#4ADE80] text-slate-950 font-bold'
+                          : 'bg-[#262B28] text-slate-300'
                       }`}
                     >
                       {opt.label}
@@ -422,191 +422,167 @@ export const SmartphoneCompanionSimulator: React.FC<SmartphoneCompanionSimulator
         </div>
       )}
 
-      {/* TAB 2: SELEÇÃO DE CALENDÁRIOS PELO USUÁRIO */}
-      {activeSubTab === 'calendarios' && (
-        <div className="space-y-4 flex-1 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-slate-200">
-                Escolha quais Calendários do Smartphone serão lidos e sincronizados
-              </h3>
-              <span className="text-xs text-amber-400 font-mono">
-                {calendars.filter((c) => c.enabled).length} de {calendars.length} ativos
-              </span>
+      {/* =====================================================================
+          TELA 3: ABOUT / EXPLICAÇÃO DA LEITURA E EVENTOS
+         ===================================================================== */}
+      {activeBottomTab === 'about' && (
+        <div className="rounded-[26px] bg-[#1A1C1E] border border-[#2C3034] p-5 space-y-3 flex-1 text-xs sm:text-sm text-slate-300 leading-relaxed">
+          <h3 className="text-base font-bold text-white">
+            Como funciona a leitura do calendário e detecção de alterações
+          </h3>
+          <p>
+            • <strong>Permissões apenas pelo usuário:</strong> O aplicativo só requisita <code className="text-[#BAE6FD]">READ_CALENDAR</code> ou <code className="text-[#BAE6FD]">POST_NOTIFICATIONS</code> quando você ativa as chaves correspondentes em <strong>Settings</strong>.
+          </p>
+          <p>
+            • <strong>Leitura de compromissos:</strong> A consulta é feita em <code className="text-[#BAE6FD]">CalendarContract.Instances</code> expandindo eventos recorrentes nos próximos <strong>{config.horizonDays} dias</strong> apenas para as agendas marcadas em <strong>Synced calendars</strong>.
+          </p>
+          <p>
+            • <strong>Alteração nos compromissos:</strong> Com <strong>Instant Calendar Change Sync</strong> ativo, um <code className="text-[#BAE6FD]">ContentObserver</code> e o <code className="text-[#BAE6FD]">CalendarChangeReceiver</code> (<code className="text-[#BAE6FD]">ACTION_PROVIDER_CHANGED</code>) detectam qualquer criação, edição ou exclusão na agenda e disparam a leitura imediatamente.
+          </p>
+          <div className="pt-2 border-t border-slate-800 space-y-1">
+            <div className="text-xs font-semibold text-white">Próximos eventos na fila atual:</div>
+            {events.slice(0, 4).map((ev) => (
+              <div key={ev.id} className="text-xs text-slate-400 font-mono">
+                • {formatDayRelative(ev.startEpochMs, referenceTimeMs)} {formatTimeHHMM(ev.startEpochMs)} — {ev.title}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL "SYNCED CALENDARS" (Disparado pelo botão pílula Synced calendars)
+         ===================================================================== */}
+      {showSyncedCalendarsModal && (
+        <div className="absolute inset-0 z-20 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-[28px] bg-[#1A1C1E] border border-[#374151] p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white">Synced calendars</h3>
+                <p className="text-xs text-slate-400">
+                  Selecione quais calendários do smartphone serão sincronizados
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSyncedCalendarsModal(false)}
+                className="p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <div className="divide-y divide-slate-800/70 border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60">
+            <div className="space-y-2 max-h-60 overflow-y-auto">
               {calendars.map((cal) => {
                 const count = events.filter((e) => e.calendarId === cal.id).length;
                 return (
                   <label
                     key={cal.id}
-                    className="flex items-center justify-between px-4 py-3.5 hover:bg-slate-900/60 transition-colors cursor-pointer"
+                    className="flex items-center justify-between p-3 rounded-2xl bg-[#111315] border border-slate-800/90 cursor-pointer hover:border-slate-700"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span
-                        className="w-3 h-3 rounded-full shrink-0"
+                        className="w-3.5 h-3.5 rounded-full shrink-0"
                         style={{ backgroundColor: cal.color }}
                       />
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-slate-100 truncate">
-                          {cal.name}
-                        </div>
-                        <div className="text-xs text-slate-400 truncate">
-                          {cal.account} · <span className="font-mono tabular-nums">{count}</span> compromissos no horizonte
+                        <div className="text-xs font-bold text-white truncate">{cal.name}</div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {cal.account} • {count} eventos
                         </div>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={cal.enabled}
-                        onChange={() => onToggleCalendar(cal.id)}
-                        aria-label={`Sincronizar calendário ${cal.name}`}
-                        className="sr-only"
-                      />
-                      <div
-                        className={`w-9 h-5 rounded-full transition-colors flex items-center px-0.5 ${
-                          cal.enabled ? 'bg-amber-500 justify-end' : 'bg-slate-800 justify-start'
-                        }`}
-                      >
-                        <div className="w-4 h-4 rounded-full bg-slate-950 flex items-center justify-center">
-                          {cal.enabled && <Check className="w-2.5 h-2.5 text-amber-400" />}
-                        </div>
-                      </div>
+                    <input
+                      type="checkbox"
+                      checked={cal.enabled}
+                      onChange={() => onToggleCalendar(cal.id)}
+                      className="sr-only"
+                    />
+                    <div
+                      className={`w-6 h-6 rounded-lg flex items-center justify-center border ${
+                        cal.enabled
+                          ? 'bg-[#BAE6FD] border-[#BAE6FD] text-slate-950'
+                          : 'border-slate-600 text-transparent'
+                      }`}
+                    >
+                      <Check className="w-4 h-4" />
                     </div>
                   </label>
                 );
               })}
             </div>
-          </div>
 
-          <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-400">
-            <strong>Como a leitura é feita:</strong> O app consulta <code className="text-slate-200">CalendarContract.Instances</code> expandindo eventos recorrentes nos próximos <strong>{config.horizonDays} dias</strong> apenas para os calendários ativados acima.
-          </div>
-        </div>
-      )}
-
-      {/* TAB 1: PAINEL & TESTE DE ALTERAÇÃO DE COMPROMISSOS */}
-      {activeSubTab === 'painel' && (
-        <div className="space-y-4 flex-1 flex flex-col">
-          <form onSubmit={handleCreateEvent} className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-200">
-                Simular Novo Compromisso na Agenda (Dispara ContentObserver)
-              </span>
-              <span className="text-[10px] font-mono text-amber-400">
-                {config.autoSyncOnCalendarChange ? `Auto-Sync ON (${debounceSeconds}s)` : 'Auto-Sync OFF'}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label htmlFor="ev-title" className="block text-[11px] text-slate-400 mb-1">
-                  Título do Compromisso
-                </label>
-                <input
-                  id="ev-title"
-                  type="text"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Ex: Reunião de Arquitetura"
-                  className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="ev-cal" className="block text-[11px] text-slate-400 mb-1">
-                  Calendário
-                </label>
-                <select
-                  id="ev-cal"
-                  value={newCalId}
-                  onChange={(e) => setNewCalId(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-amber-500"
-                >
-                  {calendars.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2.5 items-end">
-              <div>
-                <label htmlFor="ev-offset" className="block text-[11px] text-slate-400 mb-1">
-                  Inicia em (min)
-                </label>
-                <input
-                  id="ev-offset"
-                  type="number"
-                  min={5}
-                  max={10080}
-                  value={offsetMinutes}
-                  onChange={(e) => setOffsetMinutes(Number(e.target.value))}
-                  className="w-full px-3 py-1.5 text-xs font-mono bg-slate-900 border border-slate-700 rounded-lg text-slate-100"
-                />
-              </div>
-              <div>
-                <label htmlFor="ev-duration" className="block text-[11px] text-slate-400 mb-1">
-                  Duração (min)
-                </label>
-                <input
-                  id="ev-duration"
-                  type="number"
-                  min={10}
-                  max={480}
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="w-full px-3 py-1.5 text-xs font-mono bg-slate-900 border border-slate-700 rounded-lg text-slate-100"
-                />
-              </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
-                type="submit"
-                className="py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1"
+                type="button"
+                onClick={() => {
+                  setShowSyncedCalendarsModal(false);
+                  onTriggerManualSync();
+                }}
+                className="px-5 py-2 rounded-full bg-[#BAE6FD] text-slate-950 text-xs font-bold cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Criar Evento</span>
+                Salvar e Sincronizar
               </button>
             </div>
-            {formError && <p className="text-xs text-rose-400">{formError}</p>}
-          </form>
-
-          <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-            {events.map((ev) => {
-              const cal = calendars.find((c) => c.id === ev.calendarId);
-              return (
-                <div
-                  key={ev.id}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-950/70 border border-slate-800/80 text-xs"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: cal?.color || '#94a3b8' }}
-                    />
-                    <div className="min-w-0">
-                      <div className="font-medium text-slate-200 truncate">{ev.title}</div>
-                      <div className="text-[11px] text-slate-400 font-mono tabular-nums">
-                        {formatDayRelative(ev.startEpochMs, referenceTimeMs)} · {formatTimeHHMM(ev.startEpochMs)} – {formatTimeHHMM(ev.endEpochMs)} · {cal?.name}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onDeleteEvent(ev.id)}
-                    aria-label={`Remover evento ${ev.title}`}
-                    className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })}
           </div>
         </div>
       )}
+
+      {/* =====================================================================
+          DOCK FLUTUANTE INFERIOR ESTILO SAMSUNG HEALTH + BOTÃO CIRCULAR LATERAL
+         ===================================================================== */}
+      <div className="pt-4 flex items-center gap-3">
+        <div className="flex-1 grid grid-cols-3 gap-1 p-1.5 rounded-full bg-[#232A25]/95 border border-[#37413A] shadow-lg">
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('home')}
+            className={`py-2 px-3 rounded-full flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
+              activeBottomTab === 'home'
+                ? 'bg-[#3F4A41] text-white font-semibold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Home className="w-4 h-4" />
+            <span className="text-[11px]">Home</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('settings')}
+            className={`py-2 px-3 rounded-full flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
+              activeBottomTab === 'settings'
+                ? 'bg-[#3F4A41] text-white font-semibold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span className="text-[11px]">Settings</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('about')}
+            className={`py-2 px-3 rounded-full flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
+              activeBottomTab === 'about'
+                ? 'bg-[#3F4A41] text-white font-semibold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Info className="w-4 h-4" />
+            <span className="text-[11px]">About</span>
+          </button>
+        </div>
+
+        {/* Botão Circular de Sincronização Rápida com Ícone de Relógio (como nas prints 1 e 2) */}
+        <button
+          type="button"
+          onClick={onTriggerManualSync}
+          title="Sincronizar Agora com o Smartwatch"
+          className="w-13 h-13 rounded-2xl bg-[#BAE6FD] hover:bg-[#7DD3FC] text-slate-950 flex items-center justify-center shadow-lg transition-colors cursor-pointer shrink-0"
+        >
+          <Watch className="w-6 h-6" />
+        </button>
+      </div>
     </div>
   );
 };
