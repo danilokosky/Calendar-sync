@@ -395,10 +395,9 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 
         // TimeDifferenceComplicationText permite que o próprio Wear OS atualize o contador regressivo na Watch Face a cada minuto/segundo sem gastar bateria!
         val countdownText = TimeDifferenceComplicationText.Builder(
-            TimeDifferenceStyle.SHORT_DUAL_UNIT
-        )
-            .setCountDownTimeReference(Instant.ofEpochMilli(primaryEvent.startEpochMs))
-            .build()
+            TimeDifferenceStyle.SHORT_DUAL_UNIT,
+            CountDownTimeReference(Instant.ofEpochMilli(primaryEvent.startEpochMs))
+        ).build()
 
         // Agrega os próximos 3 eventos em formato compacto para janelas grandes (LONG_TEXT / RANGED_VALUE)
         val threeEventsSummary = upcomingThree.mapIndexed { idx, ev ->

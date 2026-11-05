@@ -2,6 +2,7 @@ package com.chronowear.wear.complication
 
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
+import androidx.wear.watchface.complications.data.CountDownTimeReference
 import androidx.wear.watchface.complications.data.LongTextComplicationData
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.RangedValueComplicationData
@@ -29,10 +30,9 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
         }
 
         val countdownText = TimeDifferenceComplicationText.Builder(
-            TimeDifferenceStyle.SHORT_DUAL_UNIT
-        )
-            .setCountDownTimeReference(Instant.ofEpochMilli(primaryEvent.startEpochMs))
-            .build()
+            TimeDifferenceStyle.SHORT_DUAL_UNIT,
+            CountDownTimeReference(Instant.ofEpochMilli(primaryEvent.startEpochMs))
+        ).build()
 
         val threeEventsSummary = upcomingThree.mapIndexed { idx, ev ->
             "${idx + 1}. ${ev.formatStartHHMM()} ${ev.title}"
