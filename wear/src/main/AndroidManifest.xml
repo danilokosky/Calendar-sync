@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:name="android.hardware.type.watch" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <application
+        android:allowBackup="true"
+        android:label="ChronoWear Watch"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault">
+
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="false" />
+
+        <activity
+            android:name=".ui.WearMainActivity"
+            android:exported="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Data Layer Listener do Smartphone -->
+        <service
+            android:name=".data.PhoneDataListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/chronowear/calendar_horizon_payload" />
+            </intent-filter>
+        </service>
+
+        <!-- Complication Service Oficial (RANGED_VALUE + LONG_TEXT) -->
+        <service
+            android:name=".complication.NextEventComplicationService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_my_calendar"
+            android:label="ChronoWear Próximos 3 Eventos &amp; Barra"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="RANGED_VALUE,LONG_TEXT,SHORT_TEXT" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="60" />
+        </service>
+
+        <!-- Wear OS Tile Nativo para os Próximos 3 Eventos -->
+        <service
+            android:name=".tile.UpNextThreeEventsTileService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_today"
+            android:label="Próximos 3 Eventos (ChronoWear)"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+        </service>
+
+        <!-- Receiver para atualizar Complications e Tile quando cada evento começa ou termina (Modo Autônomo Offline) -->
+        <receiver
+            android:name=".data.AutonomousTransitionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

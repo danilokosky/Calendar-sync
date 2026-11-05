@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WatchFace width="450" height="450">
+    <Metadata key="CLOCK_TYPE" value="DIGITAL" />
+    <Metadata key="STEP_GOAL" value="10000" />
+
+    <Scene backgroundColor="#FF090D16">
+
+        <!-- Relógio Digital Superior -->
+        <DigitalClock x="45" y="34" width="360" height="58">
+            <TimeText
+                x="0" y="0" width="360" height="58"
+                format="HH:mm"
+                hourFormat="SYNC_TO_DEVICE"
+                align="CENTER">
+                <Font family="SYNC_TO_DEVICE" size="48" weight="BOLD" color="#FFF8FAFC" />
+            </TimeText>
+        </DigitalClock>
+
+        <!--
+            SLOT 101 (TOPO): Contagem Regressiva + Barra de Progresso Automática (1h ou 2h antes)
+            Vinculado por padrão ao nosso NextEventComplicationService (RANGED_VALUE)
+        -->
+        <ComplicationSlot
+            x="40" y="102" width="370" height="72"
+            slotId="101"
+            name="Countdown &amp; Progress Window"
+            supportedTypes="RANGED_VALUE SHORT_TEXT"
+            defaultDataSource="com.chronowear.sync/com.chronowear.wear.complication.NextEventComplicationService"
+            defaultDataSourceType="RANGED_VALUE">
+
+            <BoundingBox x="0" y="0" width="370" height="72" cornerRadius="16" />
+
+            <Complication type="RANGED_VALUE">
+                <PartText x="16" y="8" width="338" height="28">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" color="#FFF59E0B">
+                            <Template>%s</Template>
+                            <Parameter expression="[COMPLICATION.TITLE]" />
+                        </Font>
+                    </Text>
+                </PartText>
+
+                <PartDraw x="24" y="44" width="322" height="10">
+                    <RoundRect x="0" y="0" width="322" height="10" cornerRadius="5">
+                        <Fill color="#FF1E293B" />
+                    </RoundRect>
+                    <RoundRect
+                        x="0" y="0"
+                        width="322 * ([COMPLICATION.VALUE] - [COMPLICATION.MIN]) / ([COMPLICATION.MAX] - [COMPLICATION.MIN])"
+                        height="10"
+                        cornerRadius="5">
+                        <Fill color="#FFF59E0B" />
+                    </RoundRect>
+                </PartDraw>
+            </Complication>
+        </ComplicationSlot>
+
+        <!--
+            SLOT 102 (JANELA GRANDE CENTRAL): Exibe sempre os Próximos 3 Eventos
+        -->
+        <ComplicationSlot
+            x="30" y="184" width="390" height="196"
+            slotId="102"
+            name="Next 3 Calendar Events Window"
+            supportedTypes="LONG_TEXT RANGED_VALUE"
+            defaultDataSource="com.chronowear.sync/com.chronowear.wear.complication.NextEventComplicationService"
+            defaultDataSourceType="LONG_TEXT">
+
+            <BoundingBox x="0" y="0" width="390" height="196" cornerRadius="24" />
+
+            <Complication type="LONG_TEXT">
+                <PartDraw x="0" y="0" width="390" height="196">
+                    <RoundRect x="0" y="0" width="390" height="196" cornerRadius="24">
+                        <Fill color="#FF111827" />
+                    </RoundRect>
+                </PartDraw>
+
+                <PartText x="20" y="18" width="350" height="160">
+                    <Text align="START" maxLines="4" ellipsis="TRUE">
+                        <Font family="SYNC_TO_DEVICE" size="19" weight="MEDIUM" color="#FFE2E8F0">
+                            <Template>%s</Template>
+                            <Parameter expression="[COMPLICATION.TEXT]" />
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+        </ComplicationSlot>
+
+    </Scene>
+</WatchFace>
