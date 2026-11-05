@@ -1,0 +1,6 @@
+{
+  "name": "ChronoWear — Android & Wear OS Calendar Sync Studio",
+  "description": "Projeto Android (APK) + Wear OS completo com sincronização em segundo plano, Complications RangedValue, Tile dos próximos 3 eventos, Watch Face Format (WFF) e cache autônomo offline.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
