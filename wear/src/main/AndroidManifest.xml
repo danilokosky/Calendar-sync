@@ -8,6 +8,7 @@
 
     <application
         android:allowBackup="true"
+        android:icon="@android:drawable/ic_menu_my_calendar"
         android:label="ChronoWear Watch"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
@@ -26,7 +27,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Data Layer Listener do Smartphone -->
+        <!-- Data Layer & Message Listener do Smartphone -->
         <service
             android:name=".data.PhoneDataListenerService"
             android:exported="true">
@@ -36,6 +37,13 @@
                     android:scheme="wear"
                     android:host="*"
                     android:pathPrefix="/chronowear/calendar_horizon_payload" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/chronowear/force_sync_payload" />
             </intent-filter>
         </service>
 

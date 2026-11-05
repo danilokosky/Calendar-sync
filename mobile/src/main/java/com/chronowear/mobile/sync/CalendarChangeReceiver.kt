@@ -9,5 +9,11 @@ class CalendarChangeReceiver : BroadcastReceiver() {
         val prefs = SyncPreferences(context)
         CalendarSyncWorker.schedulePeriodicSync(context, prefs.getSyncIntervalMinutes())
         CalendarSyncWorker.enqueueImmediateSync(context)
+        if (prefs.isForegroundMonitorEnabled() && CalendarSyncEngine.hasCalendarPermission(context)) {
+            try {
+                CalendarSyncForegroundService.startOrUpdate(context)
+            } catch (_: Exception) {
+            }
+        }
     }
 }
