@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.database.ContentObserver
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -17,8 +18,10 @@ import android.provider.CalendarContract
 import com.chronowear.mobile.ui.MobileSyncConfigActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -28,44 +31,72 @@ class CalendarSyncForegroundService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var calendarObserver: ContentObserver? = null
+    private var debounceJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForegroundWithNotification("Iniciando monitoramento de agenda e tarefas...")
-        registerCalendarObserver()
+        startForegroundWithNotification("Serviço em 2º plano iniciado pelo usuário")
+        refreshCalendarObserverRegistration()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP_SERVICE) {
+        val prefs = SyncPreferences(this)
+        if (intent?.action == ACTION_STOP_SERVICE || !prefs.isBackgroundServiceEnabled()) {
+            unregisterCalendarObserver()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
 
-        triggerImmediateSync()
+        refreshCalendarObserverRegistration()
+
+        val triggerReason = intent?.getStringExtra(EXTRA_TRIGGER_REASON) ?: "Serviço em 2º Plano"
+        triggerSync(triggerReason)
         return START_STICKY
     }
 
-    private fun triggerImmediateSync() {
+    private fun triggerSync(reason: String) {
         serviceScope.launch {
-            val count = CalendarSyncEngine.performFullSyncToWatch(applicationContext)
             val prefs = SyncPreferences(applicationContext)
+            val count = CalendarSyncEngine.performFullSyncToWatch(applicationContext, reason)
             val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            val autoChangeLabel = if (prefs.isAutoSyncOnCalendarChangeEnabled()) {
+                "Escuta ao vivo ativa"
+            } else {
+                "Apenas periódico (${prefs.getSyncIntervalMinutes()}m)"
+            }
             updateNotification(
-                "Ativo (${prefs.getHorizonDays()}d) • $count eventos enviados às $timeStr"
+                "$autoChangeLabel • $count eventos enviados às $timeStr"
             )
         }
     }
 
-    private fun registerCalendarObserver() {
-        if (!CalendarSyncEngine.hasCalendarPermission(this)) return
+    /**
+     * Registra ou remove o ContentObserver na tabela `CalendarContract.Events.CONTENT_URI`
+     * de acordo com a configuração "Ler compromissos automaticamente ao alterar agenda".
+     */
+    private fun refreshCalendarObserverRegistration() {
+        val prefs = SyncPreferences(this)
+        if (!CalendarSyncEngine.hasCalendarPermission(this) || !prefs.isAutoSyncOnCalendarChangeEnabled()) {
+            unregisterCalendarObserver()
+            return
+        }
+
         if (calendarObserver != null) return
 
         calendarObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 super.onChange(selfChange)
-                triggerImmediateSync()
+                val currentPrefs = SyncPreferences(this@CalendarSyncForegroundService)
+                if (!currentPrefs.isAutoSyncOnCalendarChangeEnabled()) return
+
+                val debounceSec = currentPrefs.getChangeDebounceSeconds().coerceAtLeast(1)
+                debounceJob?.cancel()
+                debounceJob = serviceScope.launch {
+                    delay(debounceSec * 1000L)
+                    triggerSync("Alteração nos Compromissos (ContentObserver)")
+                }
             }
         }
 
@@ -77,6 +108,16 @@ class CalendarSyncForegroundService : Service() {
             )
         } catch (_: SecurityException) {
         }
+    }
+
+    private fun unregisterCalendarObserver() {
+        calendarObserver?.let {
+            try {
+                contentResolver.unregisterContentObserver(it)
+            } catch (_: Exception) {
+            }
+        }
+        calendarObserver = null
     }
 
     private fun startForegroundWithNotification(contentText: String) {
@@ -108,6 +149,7 @@ class CalendarSyncForegroundService : Service() {
 
         val syncNowIntent = Intent(this, CalendarSyncForegroundService::class.java).apply {
             action = ACTION_SYNC_NOW
+            putExtra(EXTRA_TRIGGER_REASON, "Ação da Notificação")
         }
         val pendingSyncNow = PendingIntent.getService(
             this,
@@ -116,19 +158,20 @@ class CalendarSyncForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val actionIcon = Icon.createWithResource(this, android.R.drawable.ic_popup_sync)
+        val syncAction = Notification.Action.Builder(
+            actionIcon,
+            "Ler Agenda Agora",
+            pendingSyncNow
+        ).build()
+
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("ChronoWear • Sincronização Wear OS")
+            .setContentTitle("ChronoWear • Sincronização em 2º Plano")
             .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_menu_my_calendar)
             .setContentIntent(pendingOpen)
             .setOngoing(true)
-            .addAction(
-                Notification.Action.Builder(
-                    android.R.drawable.ic_popup_sync,
-                    "Sincronizar Agora",
-                    pendingSyncNow
-                ).build()
-            )
+            .addAction(syncAction)
             .build()
     }
 
@@ -136,21 +179,17 @@ class CalendarSyncForegroundService : Service() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Sincronização de Calendário Wear OS",
+            "Serviço em Segundo Plano ChronoWear",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Mantém a agenda e contagem regressiva sincronizadas com o relógio"
+            description = "Monitora alterações na agenda e sincroniza eventos com o relógio Wear OS"
         }
         nm.createNotificationChannel(channel)
     }
 
     override fun onDestroy() {
-        calendarObserver?.let {
-            try {
-                contentResolver.unregisterContentObserver(it)
-            } catch (_: Exception) {
-            }
-        }
+        unregisterCalendarObserver()
+        debounceJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -162,10 +201,12 @@ class CalendarSyncForegroundService : Service() {
         private const val NOTIFICATION_ID = 4101
         const val ACTION_SYNC_NOW = "com.chronowear.mobile.ACTION_SYNC_NOW"
         const val ACTION_STOP_SERVICE = "com.chronowear.mobile.ACTION_STOP_SERVICE"
+        const val EXTRA_TRIGGER_REASON = "extra_trigger_reason"
 
-        fun startOrUpdate(context: Context) {
+        fun startOrUpdate(context: Context, reason: String = "Ativado pelo Usuário") {
             val intent = Intent(context, CalendarSyncForegroundService::class.java).apply {
                 action = ACTION_SYNC_NOW
+                putExtra(EXTRA_TRIGGER_REASON, reason)
             }
             context.startForegroundService(intent)
         }

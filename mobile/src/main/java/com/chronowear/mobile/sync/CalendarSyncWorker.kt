@@ -7,6 +7,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 
 class CalendarSyncWorker(
@@ -15,10 +16,17 @@ class CalendarSyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        val prefs = SyncPreferences(applicationContext)
+        if (!prefs.isBackgroundServiceEnabled() && inputData.getString("source") != "manual") {
+            return Result.success()
+        }
+
         return try {
-            CalendarSyncEngine.performFullSyncToWatch(applicationContext)
+            val source = inputData.getString("source")
+                ?: "Leitura Periódica (${prefs.getSyncIntervalMinutes()} min)"
+            CalendarSyncEngine.performFullSyncToWatch(applicationContext, source)
             Result.success()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             Result.retry()
         }
     }
@@ -26,11 +34,19 @@ class CalendarSyncWorker(
     companion object {
         private const val UNIQUE_WORK_NAME = "ChronoWearPeriodicCalendarSync"
 
-        fun schedulePeriodicSync(context: Context, intervalMinutes: Long = 15L) {
+        fun schedulePeriodicSync(context: Context, intervalMinutes: Long) {
+            val prefs = SyncPreferences(context)
+            if (!prefs.isBackgroundServiceEnabled()) {
+                cancelPeriodicSync(context)
+                return
+            }
+
             val request = PeriodicWorkRequestBuilder<CalendarSyncWorker>(
                 intervalMinutes.coerceAtLeast(15L),
                 TimeUnit.MINUTES
-            ).build()
+            )
+                .setInputData(workDataOf("source" to "Leitura Periódica (${intervalMinutes}m)"))
+                .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_WORK_NAME,
@@ -39,8 +55,14 @@ class CalendarSyncWorker(
             )
         }
 
-        fun enqueueImmediateSync(context: Context) {
-            val request = OneTimeWorkRequestBuilder<CalendarSyncWorker>().build()
+        fun cancelPeriodicSync(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK_NAME)
+        }
+
+        fun enqueueImmediateSync(context: Context, reason: String = "Alteração na Agenda") {
+            val request = OneTimeWorkRequestBuilder<CalendarSyncWorker>()
+                .setInputData(workDataOf("source" to reason))
+                .build()
             WorkManager.getInstance(context).enqueue(request)
         }
     }

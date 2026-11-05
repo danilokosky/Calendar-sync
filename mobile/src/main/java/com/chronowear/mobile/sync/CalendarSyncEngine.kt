@@ -5,6 +5,8 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
+import android.os.PowerManager
 import android.provider.CalendarContract
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
@@ -17,6 +19,7 @@ data class LocalCalendarItem(
     val id: String,
     val displayName: String,
     val accountName: String,
+    val ownerAccount: String,
     val colorInt: Int,
     val upcomingEventsCount: Int
 )
@@ -29,6 +32,7 @@ data class LocalCalendarEvent(
     val location: String,
     val startEpochMs: Long,
     val endEpochMs: Long,
+    val allDay: Boolean,
     val colorInt: Int
 )
 
@@ -42,9 +46,23 @@ object CalendarSyncEngine {
             PackageManager.PERMISSION_GRANTED
     }
 
+    fun hasNotificationPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
     /**
-     * Lista todos os calendários do aparelho e inicializa todos como selecionados no primeiro uso
-     * para que o usuário já veja seus eventos reais imediatamente.
+     * Lê a tabela `CalendarContract.Calendars` para listar todos os calendários do dispositivo.
+     * Não marca nenhum calendário sem ação explícita do usuário.
      */
     fun loadDeviceCalendars(context: Context): List<LocalCalendarItem> {
         if (!hasCalendarPermission(context)) return emptyList()
@@ -58,31 +76,26 @@ object CalendarSyncEngine {
             CalendarContract.Calendars._ID,
             CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
             CalendarContract.Calendars.ACCOUNT_NAME,
+            CalendarContract.Calendars.OWNER_ACCOUNT,
             CalendarContract.Calendars.CALENDAR_COLOR
         )
 
         context.contentResolver.query(
             CalendarContract.Calendars.CONTENT_URI,
             projection,
+            "${CalendarContract.Calendars.VISIBLE} = 1",
             null,
-            null,
-            "${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} ASC"
+            "${CalendarContract.Calendars.ACCOUNT_NAME} ASC, ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} ASC"
         )?.use { cursor ->
             while (cursor.moveToNext()) {
                 val calId = cursor.getLong(0).toString()
-                val name = cursor.getString(1) ?: "Calendário Principal"
+                val name = cursor.getString(1) ?: "Calendário"
                 val account = cursor.getString(2) ?: "Conta Local"
-                val color = if (!cursor.isNull(3)) cursor.getInt(3) else 0xFFF59E0B.toInt()
+                val owner = cursor.getString(3) ?: account
+                val color = if (!cursor.isNull(4)) cursor.getInt(4) else 0xFFF59E0B.toInt()
                 val count = countEventsForCalendar(context, calId, nowMs, endMs)
-                result.add(LocalCalendarItem(calId, name, account, color, count))
+                result.add(LocalCalendarItem(calId, name, account, owner, color, count))
             }
-        }
-
-        // Se for a primeira vez que o usuário abriu o app após conceder permissão,
-        // seleciona automaticamente todos os calendários encontrados.
-        if (!prefs.hasInitializedCalendars() && result.isNotEmpty()) {
-            prefs.setSelectedCalendarIds(result.map { it.id }.toSet())
-            prefs.markCalendarsInitialized()
         }
 
         return result
@@ -101,14 +114,15 @@ object CalendarSyncEngine {
 
         val projection = arrayOf(
             CalendarContract.Instances.CALENDAR_ID,
-            CalendarContract.Instances.END
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.STATUS
         )
 
         context.contentResolver.query(
             builder.build(),
             projection,
-            "${CalendarContract.Instances.CALENDAR_ID} = ?",
-            arrayOf(calendarId),
+            "${CalendarContract.Instances.CALENDAR_ID} = ? AND ${CalendarContract.Instances.STATUS} != ?",
+            arrayOf(calendarId, CalendarContract.Instances.STATUS_CANCELED.toString()),
             null
         )?.use { cursor ->
             while (cursor.moveToNext()) {
@@ -120,17 +134,20 @@ object CalendarSyncEngine {
     }
 
     /**
-     * Consulta todos os eventos futuros dentro do horizonte configurado (2, 3, 5 ou 7 dias)
-     * pertencentes aos calendários selecionados.
+     * Como é feita a leitura do calendário:
+     * Utiliza `CalendarContract.Instances.CONTENT_URI` com o intervalo exato `[nowMs, nowMs + horizonDays]`.
+     * Isso expande automaticamente eventos recorrentes (diários, semanais, mensais), filtra compromissos
+     * cancelados (`STATUS_CANCELED`) e retorna apenas os calendários escolhidos pelo usuário, ordenados por `BEGIN ASC`.
      */
     fun queryHorizonEvents(context: Context): List<LocalCalendarEvent> {
         if (!hasCalendarPermission(context)) return emptyList()
 
         val prefs = SyncPreferences(context)
-        val calendars = loadDeviceCalendars(context)
-        val calMap = calendars.associateBy { it.id }
         val selectedIds = prefs.getSelectedCalendarIds()
         if (selectedIds.isEmpty()) return emptyList()
+
+        val calendars = loadDeviceCalendars(context)
+        val calMap = calendars.associateBy { it.id }
 
         val nowMs = System.currentTimeMillis()
         val endMs = nowMs + TimeUnit.DAYS.toMillis(prefs.getHorizonDays().toLong())
@@ -145,7 +162,9 @@ object CalendarSyncEngine {
             CalendarContract.Instances.TITLE,
             CalendarContract.Instances.EVENT_LOCATION,
             CalendarContract.Instances.BEGIN,
-            CalendarContract.Instances.END
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.STATUS
         )
 
         val events = mutableListOf<LocalCalendarEvent>()
@@ -153,8 +172,8 @@ object CalendarSyncEngine {
         context.contentResolver.query(
             builder.build(),
             projection,
-            null,
-            null,
+            "${CalendarContract.Instances.STATUS} != ?",
+            arrayOf(CalendarContract.Instances.STATUS_CANCELED.toString()),
             "${CalendarContract.Instances.BEGIN} ASC"
         )?.use { cursor ->
             while (cursor.moveToNext()) {
@@ -165,16 +184,18 @@ object CalendarSyncEngine {
                 val endEventMs = cursor.getLong(5)
                 if (endEventMs <= nowMs) continue
 
+                val allDay = cursor.getInt(6) == 1
                 val calMeta = calMap[calId]
                 events.add(
                     LocalCalendarEvent(
                         id = cursor.getLong(0).toString(),
                         calendarId = calId,
-                        calendarName = calMeta?.displayName ?: "Agenda",
+                        calendarName = calMeta?.displayName ?: "Calendário",
                         title = cursor.getString(2)?.takeIf { it.isNotBlank() } ?: "Compromisso sem título",
                         location = cursor.getString(3) ?: "",
                         startEpochMs = beginMs,
                         endEpochMs = endEventMs,
+                        allDay = allDay,
                         colorInt = calMeta?.colorInt ?: 0xFFF59E0B.toInt()
                     )
                 )
@@ -185,23 +206,44 @@ object CalendarSyncEngine {
     }
 
     /**
-     * Executa a sincronização completa: lê os eventos do horizonte no smartphone,
-     * envia via DataClient e também via MessageClient para todos os nós Wear OS conectados,
-     * grava o log de sincronização e notifica a UI do smartphone.
+     * Lê os compromissos dos calendários selecionados e transmite ao relógio via DataClient + MessageClient.
      */
-    suspend fun performFullSyncToWatch(context: Context): Int {
+    suspend fun performFullSyncToWatch(
+        context: Context,
+        triggerSource: String = "Sincronização Manual"
+    ): Int {
         val prefs = SyncPreferences(context)
         val nowMs = System.currentTimeMillis()
 
         if (!hasCalendarPermission(context)) {
-            prefs.recordLastSync(nowMs, 0, 0, "Permissão READ_CALENDAR pendente")
+            prefs.recordLastSync(
+                nowMs,
+                0,
+                0,
+                triggerSource,
+                "Aguardando permissão de leitura do calendário pelo usuário"
+            )
+            return 0
+        }
+
+        val selectedCalendarsCount = prefs.getSelectedCalendarIds().size
+        if (selectedCalendarsCount == 0) {
+            prefs.recordLastSync(
+                nowMs,
+                0,
+                0,
+                triggerSource,
+                "Nenhum calendário selecionado na aba Calendários"
+            )
+            context.sendBroadcast(
+                Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(context.packageName)
+            )
             return 0
         }
 
         val events = queryHorizonEvents(context)
         val horizonDays = prefs.getHorizonDays()
         val progressWindowMinutes = prefs.getProgressWindowMinutes()
-        val selectedCalendarsCount = prefs.getSelectedCalendarIds().size
 
         val jsonArray = JSONArray()
         events.forEach { ev ->
@@ -225,10 +267,8 @@ object CalendarSyncEngine {
             put("progress_window_minutes", progressWindowMinutes)
         }.toString()
 
-        var connectedNodesCount = 0
         try {
             val nodes = Wearable.getNodeClient(context).connectedNodes.await()
-            connectedNodesCount = nodes.size
 
             val putDataMapReq = PutDataMapRequest.create(DATA_LAYER_PATH).apply {
                 dataMap.putString("events_json", jsonArray.toString())
@@ -240,7 +280,6 @@ object CalendarSyncEngine {
                 .putDataItem(putDataMapReq.asPutDataRequest().setUrgent())
                 .await()
 
-            // Envia também mensagem direta para despertar imediatamente o app do relógio
             for (node in nodes) {
                 Wearable.getMessageClient(context).sendMessage(
                     node.id,
@@ -249,22 +288,25 @@ object CalendarSyncEngine {
                 ).await()
             }
 
-            val nodeStatus = if (connectedNodesCount > 0) {
-                "Sincronizado com $connectedNodesCount relógio(s)"
+            val nodeStatus = if (nodes.isNotEmpty()) {
+                "Enviado para ${nodes.size} relógio(s) (${nodes.joinToString { it.displayName }})"
             } else {
-                "Salvo na fila Data Layer (Relógio offline)"
+                "Gravado no Data Layer (Relógio desconectado)"
             }
-            prefs.recordLastSync(nowMs, events.size, selectedCalendarsCount, nodeStatus)
-        } catch (e: Exception) {
+            prefs.recordLastSync(nowMs, events.size, selectedCalendarsCount, triggerSource, nodeStatus)
+        } catch (_: Exception) {
             prefs.recordLastSync(
                 nowMs,
                 events.size,
                 selectedCalendarsCount,
-                "Fila local pronta (${events.size} eventos)"
+                triggerSource,
+                "Pacote pronto localmente (${events.size} compromissos)"
             )
         }
 
-        context.sendBroadcast(Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(context.packageName))
+        context.sendBroadcast(
+            Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(context.packageName)
+        )
         return events.size
     }
 }
