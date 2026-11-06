@@ -19,8 +19,8 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
- * Utilitário centralizado para atualizar simultaneamente o Slot de Contagem Regressiva
- * e os 3 Slots individuais dos Próximos Eventos na Watch Face.
+ * Utilitário centralizado para atualizar simultaneamente o Slot Principal (Evento #1 + Barra + Timer)
+ * e os Slots dos próximos eventos (Evento #2 e Evento #3) na Watch Face.
  */
 object ChronoWearComplicationUpdater {
     fun requestUpdateAllSlots(context: Context) {
@@ -43,7 +43,10 @@ object ChronoWearComplicationUpdater {
 }
 
 /**
- * SLOT 1 (TOPO): Contagem Regressiva + Barra de Progresso (RANGED_VALUE) + Resumo do Próximo Evento.
+ * SLOT 1 (EVENTO PRINCIPAL #1 DA LISTA CENTRAL):
+ * Exibe o Evento #1 ("16:30  Adolescentes") alinhado como primeiro item do quadro central,
+ * acoplado ao tempo restante (TITLE = "17h" / "36m") e à barra de progresso fina (RANGED_VALUE).
+ * Como ele já é o primeiro item da lista central, não é repetido abaixo.
  */
 class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 
@@ -64,15 +67,12 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
             CountDownTimeReference(Instant.ofEpochMilli(primaryEvent.startEpochMs))
         ).build()
 
-        val primarySummary = "${primaryEvent.formatStartHHMM()} • ${primaryEvent.title}"
-        val threeEventsInline = upcomingThree.mapIndexed { idx, ev ->
-            "${idx + 1}. ${ev.formatStartHHMM()} ${ev.title}"
-        }.joinToString("  |  ")
+        val primaryLine = "${primaryEvent.formatStartHHMM()}  ${primaryEvent.title}"
 
         val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.toLong()).toFloat()
         val remainingMs = (primaryEvent.startEpochMs - nowMs).coerceAtLeast(0L).toFloat()
 
-        // Quando está dentro da janela configurada (ex: 1h ou 2h antes), preenche de 0% a 100%.
+        // Preenche de 0% a 100% quando entra na janela configurada (ex: 1h ou 2h antes do início)
         val progressPercentage = if (remainingMs >= windowMs) {
             0f
         } else {
@@ -85,17 +85,17 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
                     value = progressPercentage,
                     min = 0f,
                     max = 100f,
-                    contentDescription = PlainComplicationText.Builder(primarySummary).build()
+                    contentDescription = PlainComplicationText.Builder(primaryLine).build()
                 )
                     .setTitle(countdownText)
-                    .setText(PlainComplicationText.Builder(primarySummary).build())
+                    .setText(PlainComplicationText.Builder(primaryLine).build())
                     .build()
             }
 
             ComplicationType.LONG_TEXT -> {
                 LongTextComplicationData.Builder(
-                    text = PlainComplicationText.Builder(threeEventsInline).build(),
-                    contentDescription = PlainComplicationText.Builder(threeEventsInline).build()
+                    text = PlainComplicationText.Builder(primaryLine).build(),
+                    contentDescription = PlainComplicationText.Builder(primaryLine).build()
                 )
                     .setTitle(countdownText)
                     .build()
@@ -103,10 +103,10 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 
             ComplicationType.SHORT_TEXT -> {
                 ShortTextComplicationData.Builder(
-                    text = countdownText,
-                    contentDescription = PlainComplicationText.Builder(primarySummary).build()
+                    text = PlainComplicationText.Builder(primaryEvent.title).build(),
+                    contentDescription = PlainComplicationText.Builder(primaryLine).build()
                 )
-                    .setTitle(PlainComplicationText.Builder(primaryEvent.formatStartHHMM()).build())
+                    .setTitle(countdownText)
                     .build()
             }
 
@@ -115,8 +115,8 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
     }
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? {
-        val sampleText = PlainComplicationText.Builder("16:30 • Adolescentes").build()
-        val sampleTitle = PlainComplicationText.Builder("36m").build()
+        val sampleText = PlainComplicationText.Builder("16:30  Adolescentes").build()
+        val sampleTitle = PlainComplicationText.Builder("17h").build()
 
         return when (type) {
             ComplicationType.RANGED_VALUE -> RangedValueComplicationData.Builder(
@@ -132,16 +132,16 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
             ).setTitle(sampleTitle).build()
 
             ComplicationType.SHORT_TEXT -> ShortTextComplicationData.Builder(
-                text = sampleTitle,
+                text = PlainComplicationText.Builder("Adolescentes").build(),
                 contentDescription = sampleText
-            ).setTitle(PlainComplicationText.Builder("16:30").build()).build()
+            ).setTitle(sampleTitle).build()
 
             else -> null
         }
     }
 
     private fun buildEmptyComplication(type: ComplicationType): ComplicationData? {
-        val emptyText = PlainComplicationText.Builder("Agenda livre").build()
+        val emptyText = PlainComplicationText.Builder("Sem eventos hoje").build()
         val emptyTitle = PlainComplicationText.Builder("--").build()
         return when (type) {
             ComplicationType.RANGED_VALUE -> RangedValueComplicationData.Builder(
@@ -167,9 +167,8 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 }
 
 /**
- * Classe base para fornecer cada um dos 3 próximos compromissos individualmente
- * (TITLE = Horário ex. "16:30", TEXT = Nome do Evento ex. "Adolescentes").
- * Assim a Watch Face renderiza 3 cartões horizontais separados, sem colar um texto no outro.
+ * Classe base para fornecer cada compromisso subsequente da lista padronizada
+ * (TITLE = Horário ex. "18:00", TEXT = Nome do Evento ex. "Preparação das atividades").
  */
 abstract class BaseIndexedEventComplicationService(
     private val eventIndex: Int,
@@ -184,7 +183,7 @@ abstract class BaseIndexedEventComplicationService(
         val targetEvent = upcomingThree.getOrNull(eventIndex)
 
         val timeStr = targetEvent?.formatStartHHMM() ?: "--:--"
-        val titleStr = targetEvent?.title ?: "Sem compromisso"
+        val titleStr = targetEvent?.title ?: "Livre"
 
         val timeText = PlainComplicationText.Builder(timeStr).build()
         val eventTitleText = PlainComplicationText.Builder(titleStr).build()

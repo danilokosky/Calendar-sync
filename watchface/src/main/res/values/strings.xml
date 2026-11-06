@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="watch_face_name">ChronoWear Agenda</string>
-    <string name="slot_timer_label">Temporizador &amp; Barra (1h/2h)</string>
-    <string name="slot_event_1_label">Compromisso #1</string>
-    <string name="slot_event_2_label">Compromisso #2</string>
-    <string name="slot_event_3_label">Compromisso #3</string>
+    <string name="slot_event_1_label">Evento Principal #1 (Timer + Barra)</string>
+    <string name="slot_event_2_label">Próximo Evento #2</string>
+    <string name="slot_event_3_label">Próximo Evento #3</string>
+    <string name="slot_circle_left_label">Círculo Esquerdo</string>
+    <string name="slot_circle_center_label">Círculo Central</string>
+    <string name="slot_circle_right_label">Círculo Direito</string>
+    <string name="slot_side_left_label">Barra Lateral Esquerda</string>
+    <string name="slot_side_right_label">Barra Lateral Direita</string>
+    <string name="slot_bottom_bar_label">Barra Inferior (Bateria / Range)</string>
 </resources>
