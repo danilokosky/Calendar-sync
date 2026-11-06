@@ -69,13 +69,18 @@ class WatchAutonomousRepository private constructor(context: Context) :
         eventsJson: String,
         syncTimestampMs: Long,
         horizonDays: Int,
-        progressWindowMinutes: Int
+        progressWindowMinutes: Int,
+        cardPngBase64: String? = null
     ) {
-        prefs.edit()
+        val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
             .putInt("horizon_days", horizonDays)
             .putInt("progress_window_minutes", progressWindowMinutes)
-            .apply()
+        if (!cardPngBase64.isNullOrBlank()) {
+            editor.putString("phone_rendered_card_png_b64", cardPngBase64)
+            editor.putLong("phone_rendered_card_ms", syncTimestampMs)
+        }
+        editor.apply()
 
         val arr = JSONArray(eventsJson)
         val db = writableDatabase
@@ -98,6 +103,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
         } finally {
             db.endTransaction()
         }
+    }
+
+    fun getPhoneRenderedCardBase64IfFresh(nowMs: Long, maxAgeMs: Long = 90_000L): String? {
+        val renderedMs = prefs.getLong("phone_rendered_card_ms", 0L)
+        if (renderedMs <= 0L || (nowMs - renderedMs) > maxAgeMs) return null
+        return prefs.getString("phone_rendered_card_png_b64", null)
     }
 
     /**

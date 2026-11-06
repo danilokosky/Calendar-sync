@@ -63,19 +63,19 @@
             </intent-filter>
         </service>
 
-        <!-- SLOT 1: Temporizador Regressivo + Barra de Progresso (RANGED_VALUE) -->
+        <!-- SLOT 1: Painel Central dos 3 Eventos + Barra (Imagem Renderizada SMALL_IMAGE/PHOTO_IMAGE + RANGED_VALUE) -->
         <service
             android:name=".complication.NextEventComplicationService"
             android:exported="true"
             android:icon="@android:drawable/ic_menu_my_calendar"
-            android:label="ChronoWear • Temporizador &amp; Barra"
+            android:label="ChronoWear • Painel 3 Eventos (Imagem)"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
                 <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
             </intent-filter>
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="RANGED_VALUE,LONG_TEXT,SHORT_TEXT" />
+                android:value="SMALL_IMAGE,PHOTO_IMAGE,RANGED_VALUE,LONG_TEXT,SHORT_TEXT" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="60" />

@@ -206,8 +206,11 @@
                     centerY="225"
                     width="414"
                     height="414"
-                    startAngle="196 - (32 * clamp([BATTERY_PERCENT], 4, 100) / 100)"
+                    startAngle="164"
                     endAngle="196">
+                    <Transform
+                        target="startAngle"
+                        value="196 - (32 * clamp([BATTERY_PERCENT], 4, 100) / 100)" />
                     <Stroke color="#FF88D4DC" thickness="14" cap="ROUND" />
                 </Arc>
                 <!-- 9 Divisórias Radiais Pretas formando os 10 segmentos curvos idênticos ao Samsung -->
@@ -240,17 +243,17 @@
                 </Line>
             </PartDraw>
 
-            <!-- Percentual da Bateria Inclinado na Curva Direita (154°, angle=-26°, ex: 18% / 62%) -->
-            <Group x="292" y="388" width="68" height="32" pivotX="0.5" pivotY="0.5" angle="-26">
+            <!-- Percentual da Bateria Inclinado na Curva Direita (150°, angle=-28°, ex: 18% / 62%) -->
+            <Group x="298" y="390" width="70" height="32" pivotX="0.5" pivotY="0.5" angle="-28">
                 <Variant mode="AMBIENT" target="alpha" value="180" />
-                <PartText x="0" y="0" width="68" height="32">
+                <PartText x="0" y="0" width="70" height="32">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
                             size="22.0"
                             weight="BOLD"
                             color="#FF88D4DC">
-                            <Template><![CDATA[%d%%]]>
+                            <Template><![CDATA[%s%%]]>
                                 <Parameter expression="[BATTERY_PERCENT]" />
                             </Template>
                         </Font>
@@ -299,106 +302,66 @@
         </DigitalClock>
 
         <!-- ================================================================= -->
-        <!-- 2. QUADRO CENTRAL DOS 3 EVENTOS (x=86, w=278)                     -->
+        <!-- 2. PAINEL CENTRAL ÚNICO DOS 3 EVENTOS (1 ÚNICA COMPLICATION!)     -->
+        <!--    - Substitui as 4 complications amontoadas por 1 único slot     -->
+        <!--      de 302x136px (x=74, y=114) que exibe a Imagem Transparente   -->
+        <!--      604x272px (@2x Retina) gerada pelo AgendaCardBitmapRenderer  -->
+        <!--      (no Smartphone quando conectado, ou localmente no Relógio    -->
+        <!--      quando desconectado!).                                       -->
         <!-- ================================================================= -->
 
-        <!-- SLOT 1: Evento Principal #1 (Hora Branca 19sp em x=0 + Nome Dourado 19sp em x=56) -->
         <ComplicationSlot
-            x="86"
-            y="144"
-            width="206"
-            height="28"
+            x="74"
+            y="114"
+            width="302"
+            height="136"
             slotId="1"
             displayName="slot_event_1_text_label"
-            supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
+            supportedTypes="SMALL_IMAGE PHOTO_IMAGE RANGED_VALUE LONG_TEXT SHORT_TEXT EMPTY">
 
             <DefaultProviderPolicy
-                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.FirstEventComplicationService"
-                primaryProviderType="LONG_TEXT"
+                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.NextEventComplicationService"
+                primaryProviderType="SMALL_IMAGE"
                 defaultSystemProvider="NEXT_EVENT"
                 defaultSystemProviderType="LONG_TEXT" />
 
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="206"
-                height="28"
+                width="302"
+                height="136"
                 outlinePadding="0.0"
-                cornerRadius="6" />
+                cornerRadius="20" />
 
-            <Complication type="LONG_TEXT">
-                <PartText x="0" y="1" width="52" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFFFFFFF">
-                            <Template><![CDATA[%s]]>
-                                <Parameter expression="[COMPLICATION.TITLE]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
-                <PartText x="56" y="1" width="150" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFF5C438">
-                            <Template><![CDATA[%s]]>
-                                <Parameter expression="[COMPLICATION.TEXT]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
+            <!-- MODO PRINCIPAL: Imagem Transparente 302x136 (@2x 604x272) com os 3 Eventos + Timer + Barra -->
+            <Complication type="SMALL_IMAGE">
+                <PartImage x="0" y="0" width="302" height="136">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                </PartImage>
             </Complication>
 
-            <Complication type="SHORT_TEXT">
-                <PartText x="0" y="1" width="206" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFF5C438">
-                            <Template><![CDATA[%s %s]]>
-                                <Parameter expression="[COMPLICATION.TITLE]" />
-                                <Parameter expression="[COMPLICATION.TEXT]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
+            <Complication type="PHOTO_IMAGE">
+                <PartImage x="0" y="0" width="302" height="136">
+                    <Image resource="[COMPLICATION.PHOTO_IMAGE]" />
+                </PartImage>
             </Complication>
-        </ComplicationSlot>
 
-        <!-- SLOT 10: Timer à Direita + Barra de Progresso Fininha -->
-        <ComplicationSlot
-            x="86"
-            y="144"
-            width="278"
-            height="36"
-            slotId="10"
-            displayName="slot_event_1_timer_label"
-            supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY">
-
-            <DefaultProviderPolicy
-                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.NextEventComplicationService"
-                primaryProviderType="RANGED_VALUE"
-                defaultSystemProvider="NEXT_EVENT"
-                defaultSystemProviderType="SHORT_TEXT" />
-
-            <BoundingRoundBox
-                x="0"
-                y="0"
-                width="278"
-                height="36"
-                outlinePadding="0.0"
-                cornerRadius="6" />
-
+            <!-- FALLBACK RANGED_VALUE (Caso o usuário escolha o modo barra nativa ou complicação do sistema) -->
             <Complication type="RANGED_VALUE">
-                <PartText x="206" y="3" width="72" height="24">
+                <PartText x="12" y="31" width="206" height="26">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="19.0"
+                            weight="BOLD"
+                            color="#FFF5C438">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+                <PartText x="218" y="33" width="72" height="24">
                     <Text align="END" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
@@ -411,8 +374,7 @@
                         </Font>
                     </Text>
                 </PartText>
-
-                <PartDraw x="0" y="29" width="278" height="5">
+                <PartDraw x="12" y="59" width="278" height="5">
                     <RoundRectangle
                         x="0"
                         y="0"
@@ -437,149 +399,60 @@
                 </PartDraw>
             </Complication>
 
-            <Complication type="SHORT_TEXT">
-                <PartText x="206" y="3" width="72" height="24">
-                    <Text align="END" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="14.5"
-                            weight="BOLD"
-                            color="#FF67E8F9">
-                            <Template><![CDATA[%s]]>
-                                <Parameter expression="[COMPLICATION.TITLE]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
-            </Complication>
-        </ComplicationSlot>
-
-        <!-- SLOT 2: Próximo Evento #2 (19sp BOLD — Hora em x=0, Título em x=56) -->
-        <ComplicationSlot
-            x="86"
-            y="184"
-            width="278"
-            height="28"
-            slotId="2"
-            displayName="slot_event_2_label"
-            supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
-
-            <DefaultProviderPolicy
-                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.SecondEventComplicationService"
-                primaryProviderType="LONG_TEXT"
-                defaultSystemProvider="NEXT_EVENT"
-                defaultSystemProviderType="LONG_TEXT" />
-
-            <BoundingRoundBox
-                x="0"
-                y="0"
-                width="278"
-                height="28"
-                outlinePadding="0.0"
-                cornerRadius="6" />
-
+            <!-- FALLBACK LONG_TEXT (Caso esteja na complicação padrão do sistema antes de selecionar o ChronoWear) -->
             <Complication type="LONG_TEXT">
-                <PartText x="0" y="1" width="52" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFFFFFFF">
-                            <Template><![CDATA[%s]]>
-                                <Parameter expression="[COMPLICATION.TITLE]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
-                <PartText x="56" y="1" width="222" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFF5C438">
-                            <Template><![CDATA[%s]]>
-                                <Parameter expression="[COMPLICATION.TEXT]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
+                <Condition>
+                    <Expressions>
+                        <Expression name="lt_has_title">[COMPLICATION.TITLE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="lt_has_title">
+                        <PartText x="12" y="32" width="76" height="26">
+                            <Text align="START" maxLines="1" ellipsis="TRUE">
+                                <Font
+                                    family="SYNC_TO_DEVICE"
+                                    size="19.0"
+                                    weight="BOLD"
+                                    color="#FFFFFFFF">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]" />
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="88" y="32" width="202" height="26">
+                            <Text align="START" maxLines="1" ellipsis="TRUE">
+                                <Font
+                                    family="SYNC_TO_DEVICE"
+                                    size="19.0"
+                                    weight="BOLD"
+                                    color="#FFF5C438">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]" />
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="12" y="32" width="278" height="26">
+                            <Text align="START" maxLines="1" ellipsis="TRUE">
+                                <Font
+                                    family="SYNC_TO_DEVICE"
+                                    size="19.0"
+                                    weight="BOLD"
+                                    color="#FFF5C438">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]" />
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Default>
+                </Condition>
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartText x="0" y="1" width="278" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFF5C438">
-                            <Template><![CDATA[%s %s]]>
-                                <Parameter expression="[COMPLICATION.TITLE]" />
-                                <Parameter expression="[COMPLICATION.TEXT]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
-            </Complication>
-        </ComplicationSlot>
-
-        <!-- SLOT 3: Próximo Evento #3 (19sp BOLD — Hora em x=0, Título em x=56) -->
-        <ComplicationSlot
-            x="86"
-            y="214"
-            width="278"
-            height="28"
-            slotId="3"
-            displayName="slot_event_3_label"
-            supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
-
-            <DefaultProviderPolicy
-                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.ThirdEventComplicationService"
-                primaryProviderType="LONG_TEXT"
-                defaultSystemProvider="NEXT_EVENT"
-                defaultSystemProviderType="LONG_TEXT" />
-
-            <BoundingRoundBox
-                x="0"
-                y="0"
-                width="278"
-                height="28"
-                outlinePadding="0.0"
-                cornerRadius="6" />
-
-            <Complication type="LONG_TEXT">
-                <PartText x="0" y="1" width="52" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFFFFFFF">
-                            <Template><![CDATA[%s]]>
-                                <Parameter expression="[COMPLICATION.TITLE]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
-                <PartText x="56" y="1" width="222" height="26">
-                    <Text align="START" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="19.0"
-                            weight="BOLD"
-                            color="#FFF5C438">
-                            <Template><![CDATA[%s]]>
-                                <Parameter expression="[COMPLICATION.TEXT]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
-            </Complication>
-
-            <Complication type="SHORT_TEXT">
-                <PartText x="0" y="1" width="278" height="26">
+                <PartText x="12" y="32" width="278" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
@@ -694,7 +567,10 @@
                     <Ellipse x="0" y="0" width="88" height="88">
                         <Fill color="#FF1B1E22" />
                     </Ellipse>
-                    <Arc centerX="44" centerY="44" width="82" height="82" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                    <Arc centerX="44" centerY="44" width="82" height="82" startAngle="0" endAngle="360">
+                        <Transform
+                            target="endAngle"
+                            value="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
                         <Stroke color="#FF88D4DC" thickness="3.5" cap="ROUND" />
                     </Arc>
                 </PartDraw>
@@ -871,7 +747,10 @@
                     <Ellipse x="0" y="0" width="88" height="88">
                         <Fill color="#FF1B1E22" />
                     </Ellipse>
-                    <Arc centerX="44" centerY="44" width="82" height="82" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                    <Arc centerX="44" centerY="44" width="82" height="82" startAngle="0" endAngle="360">
+                        <Transform
+                            target="endAngle"
+                            value="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
                         <Stroke color="#FFF5C438" thickness="3.5" cap="ROUND" />
                     </Arc>
                 </PartDraw>
@@ -1048,7 +927,10 @@
                     <Ellipse x="0" y="0" width="88" height="88">
                         <Fill color="#FF1B1E22" />
                     </Ellipse>
-                    <Arc centerX="44" centerY="44" width="82" height="82" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                    <Arc centerX="44" centerY="44" width="82" height="82" startAngle="0" endAngle="360">
+                        <Transform
+                            target="endAngle"
+                            value="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
                         <Stroke color="#FF88D4DC" thickness="3.5" cap="ROUND" />
                     </Arc>
                 </PartDraw>
@@ -1166,12 +1048,12 @@
 
             <Complication type="RANGED_VALUE">
                 <PartDraw x="0" y="0" width="74" height="264">
-                    <!-- Trilho curvo esquerdo (250°..290°, centro do relógio em 225, 137) -->
+                    <!-- Trilho curvo esquerdo (250°..290°, width=424 p/ alinhar com o ponto laranja nativo da One UI Watch em x=13) -->
                     <Arc
                         centerX="225"
                         centerY="137"
-                        width="414"
-                        height="414"
+                        width="424"
+                        height="424"
                         startAngle="250"
                         endAngle="290">
                         <Stroke color="#FF3B361F" thickness="18" cap="ROUND" />
@@ -1179,16 +1061,15 @@
                     <Arc
                         centerX="225"
                         centerY="137"
-                        width="414"
-                        height="414"
+                        width="424"
+                        height="424"
                         startAngle="250"
-                        endAngle="252 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                        endAngle="290">
+                        <Transform
+                            target="endAngle"
+                            value="252 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
                         <Stroke color="#FFF5C438" thickness="18" cap="ROUND" />
                     </Arc>
-                    <!-- Única bolinha laranja nítida em 270° (sem duplicação de cap!) -->
-                    <Ellipse x="10" y="129" width="16" height="16">
-                        <Fill color="#FFF97316" />
-                    </Ellipse>
                 </PartDraw>
 
                 <!-- Ícone Superior Inclinado na Curvatura (298°, angle=28°) -->
@@ -1198,19 +1079,19 @@
                         <Expression name="left_rv_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="left_rv_small">
-                        <PartImage x="28" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
                     </Compare>
                     <Compare expression="left_rv_mono">
-                        <PartImage x="28" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
 
-                <!-- Texto Inferior Inclinado na Curvatura (242°, angle=-28°, x=18..66, longe do círculo!) -->
-                <PartText x="18" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                <!-- Texto Inferior Inclinado na Curvatura (242°, angle=-28°, longe do círculo!) -->
+                <PartText x="14" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
@@ -1227,12 +1108,12 @@
 
             <Complication type="SHORT_TEXT">
                 <PartDraw x="0" y="0" width="74" height="264">
-                    <!-- Trilho curvo bicolor idêntico ao Samsung (metade superior oliva, metade inferior petróleo) -->
+                    <!-- Trilho curvo bicolor idêntico ao Samsung (width=424 p/ alinhar com o ponto laranja nativo da One UI Watch em x=13) -->
                     <Arc
                         centerX="225"
                         centerY="137"
-                        width="414"
-                        height="414"
+                        width="424"
+                        height="424"
                         startAngle="250"
                         endAngle="270">
                         <Stroke color="#FF2E3B38" thickness="18" cap="ROUND" />
@@ -1240,16 +1121,12 @@
                     <Arc
                         centerX="225"
                         centerY="137"
-                        width="414"
-                        height="414"
+                        width="424"
+                        height="424"
                         startAngle="270"
                         endAngle="290">
                         <Stroke color="#FF453D20" thickness="18" cap="ROUND" />
                     </Arc>
-                    <!-- Única bolinha laranja nítida em 270° -->
-                    <Ellipse x="10" y="129" width="16" height="16">
-                        <Fill color="#FFF97316" />
-                    </Ellipse>
                 </PartDraw>
 
                 <!-- Ícone Superior Inclinado na Curvatura (298°, angle=28°) -->
@@ -1259,19 +1136,19 @@
                         <Expression name="left_st_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="left_st_small">
-                        <PartImage x="28" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
                     </Compare>
                     <Compare expression="left_st_mono">
-                        <PartImage x="28" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
 
                 <!-- Texto Inferior Inclinado na Curvatura (242°, angle=-28°, longe do círculo!) -->
-                <PartText x="18" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                <PartText x="14" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
@@ -1288,24 +1165,22 @@
 
             <Complication type="MONOCHROMATIC_IMAGE">
                 <PartDraw x="0" y="0" width="74" height="264">
-                    <Arc centerX="225" centerY="137" width="414" height="414" startAngle="250" endAngle="290">
+                    <Arc centerX="225" centerY="137" width="424" height="424" startAngle="250" endAngle="290">
                         <Stroke color="#FF3B361F" thickness="18" cap="ROUND" />
                     </Arc>
-                    <Ellipse x="10" y="129" width="16" height="16"><Fill color="#FFF97316" /></Ellipse>
                 </PartDraw>
-                <PartImage x="28" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
+                <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
                     <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="SMALL_IMAGE">
                 <PartDraw x="0" y="0" width="74" height="264">
-                    <Arc centerX="225" centerY="137" width="414" height="414" startAngle="250" endAngle="290">
+                    <Arc centerX="225" centerY="137" width="424" height="424" startAngle="250" endAngle="290">
                         <Stroke color="#FF3B361F" thickness="18" cap="ROUND" />
                     </Arc>
-                    <Ellipse x="10" y="129" width="16" height="16"><Fill color="#FFF97316" /></Ellipse>
                 </PartDraw>
-                <PartImage x="28" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28">
+                <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28">
                     <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                 </PartImage>
             </Complication>
@@ -1338,8 +1213,8 @@
                     <Arc
                         centerX="-151"
                         centerY="137"
-                        width="414"
-                        height="414"
+                        width="424"
+                        height="424"
                         startAngle="70"
                         endAngle="110">
                         <Stroke color="#FF25302B" thickness="18" cap="ROUND" />
@@ -1347,10 +1222,13 @@
                     <Arc
                         centerX="-151"
                         centerY="137"
-                        width="414"
-                        height="414"
+                        width="424"
+                        height="424"
                         startAngle="70"
-                        endAngle="72 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                        endAngle="110">
+                        <Transform
+                            target="endAngle"
+                            value="72 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
                         <Stroke color="#FF86EFAC" thickness="18" cap="ROUND" />
                     </Arc>
                 </PartDraw>
@@ -1362,19 +1240,19 @@
                         <Expression name="right_rv_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="right_rv_small">
-                        <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
                     </Compare>
                     <Compare expression="right_rv_mono">
-                        <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
 
-                <!-- Texto Inferior Inclinado na Curvatura Direita (118°, angle=28°, x=8..56, longe do círculo!) -->
-                <PartText x="8" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="28">
+                <!-- Texto Inferior Inclinado na Curvatura Direita (118°, angle=28°, longe do círculo!) -->
+                <PartText x="12" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="28">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
@@ -1394,8 +1272,8 @@
                     <Arc
                         centerX="-151"
                         centerY="137"
-                        width="414"
-                        height="414"
+                        width="424"
+                        height="424"
                         startAngle="70"
                         endAngle="110">
                         <Stroke color="#FF25302B" thickness="18" cap="ROUND" />
@@ -1408,18 +1286,18 @@
                         <Expression name="right_st_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="right_st_small">
-                        <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
                     </Compare>
                     <Compare expression="right_st_mono">
-                        <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
 
-                <PartText x="8" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="28">
+                <PartText x="12" y="218" width="48" height="26" pivotX="0.5" pivotY="0.5" angle="28">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
@@ -1441,12 +1319,12 @@
                         <Expression name="right_lt_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="right_lt_small">
-                        <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
                     </Compare>
                     <Compare expression="right_lt_mono">
-                        <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
@@ -1456,8 +1334,8 @@
                     <TextCircular
                         centerX="-151"
                         centerY="137"
-                        width="412"
-                        height="412"
+                        width="420"
+                        height="420"
                         startAngle="68"
                         endAngle="114"
                         align="CENTER"
@@ -1478,22 +1356,22 @@
 
             <Complication type="MONOCHROMATIC_IMAGE">
                 <PartDraw x="0" y="0" width="74" height="264">
-                    <Arc centerX="-151" centerY="137" width="414" height="414" startAngle="70" endAngle="110">
+                    <Arc centerX="-151" centerY="137" width="424" height="424" startAngle="70" endAngle="110">
                         <Stroke color="#FF25302B" thickness="18" cap="ROUND" />
                     </Arc>
                 </PartDraw>
-                <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
+                <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
                     <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="SMALL_IMAGE">
                 <PartDraw x="0" y="0" width="74" height="264">
-                    <Arc centerX="-151" centerY="137" width="414" height="414" startAngle="70" endAngle="110">
+                    <Arc centerX="-151" centerY="137" width="424" height="424" startAngle="70" endAngle="110">
                         <Stroke color="#FF25302B" thickness="18" cap="ROUND" />
                     </Arc>
                 </PartDraw>
-                <PartImage x="20" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
                     <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                 </PartImage>
             </Complication>

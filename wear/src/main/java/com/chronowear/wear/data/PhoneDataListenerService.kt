@@ -43,12 +43,14 @@ class PhoneDataListenerService : WearableListenerService() {
                 val syncTimestampMs = dataMap.getLong("sync_timestamp_ms")
                 val horizonDays = dataMap.getInt("horizon_days", 5)
                 val progressWindowMinutes = dataMap.getInt("progress_window_minutes", 60)
+                val cardPngB64 = dataMap.getString("card_png_b64")
 
                 persistAndNotify(
                     eventsJson = eventsJson,
                     syncTimestampMs = syncTimestampMs,
                     horizonDays = horizonDays,
-                    progressWindowMinutes = progressWindowMinutes
+                    progressWindowMinutes = progressWindowMinutes,
+                    cardPngBase64 = cardPngB64
                 )
             }
         }
@@ -69,7 +71,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         Wearable.getMessageClient(applicationContext).sendMessage(
                             messageEvent.sourceNodeId,
                             "/chronowear/pong_watch_app",
-                            "installed:1.0.0-wear".toByteArray(Charsets.UTF_8)
+                            "installed:1.0.8-wear".toByteArray(Charsets.UTF_8)
                         ).await()
                     } catch (_: Exception) {
                     }
@@ -83,12 +85,14 @@ class PhoneDataListenerService : WearableListenerService() {
                     val syncTimestampMs = json.optLong("sync_timestamp_ms", System.currentTimeMillis())
                     val horizonDays = json.optInt("horizon_days", 5)
                     val progressWindowMinutes = json.optInt("progress_window_minutes", 60)
+                    val cardPngB64 = json.optString("card_png_b64", "").takeIf { it.isNotBlank() }
 
                     persistAndNotify(
                         eventsJson = eventsArray,
                         syncTimestampMs = syncTimestampMs,
                         horizonDays = horizonDays,
-                        progressWindowMinutes = progressWindowMinutes
+                        progressWindowMinutes = progressWindowMinutes,
+                        cardPngBase64 = cardPngB64
                     )
                 } catch (_: Exception) {
                 }
@@ -100,7 +104,8 @@ class PhoneDataListenerService : WearableListenerService() {
         eventsJson: String,
         syncTimestampMs: Long,
         horizonDays: Int,
-        progressWindowMinutes: Int
+        progressWindowMinutes: Int,
+        cardPngBase64: String? = null
     ) {
         serviceScope.launch {
             val repo = WatchAutonomousRepository.getInstance(applicationContext)
@@ -108,7 +113,8 @@ class PhoneDataListenerService : WearableListenerService() {
                 eventsJson = eventsJson,
                 syncTimestampMs = syncTimestampMs,
                 horizonDays = horizonDays,
-                progressWindowMinutes = progressWindowMinutes
+                progressWindowMinutes = progressWindowMinutes,
+                cardPngBase64 = cardPngBase64
             )
 
             AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)

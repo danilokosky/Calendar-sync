@@ -56,13 +56,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
       <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · SAMSUNG ONE UI REPLICA (v1.0.7)
+            MÓDULOS :wear &amp; :watchface · SAMSUNG ONE UI REPLICA (v1.0.8)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Bateria segmentada nativa ([BATTERY_PERCENT]) + 3 círculos alinhados + ícones/textos inclinados na curva
+            Transform nativo em &lt;Arc&gt; (sem arco ciano no topo) + sem ponto laranja duplicado + 3 círculos alinhados
           </p>
         </div>
 
@@ -102,7 +102,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           }`}
         >
           <Watch className="w-3.5 h-3.5" />
-          <span>Watch Face v1.0.7</span>
+          <span>Watch Face v1.0.8</span>
         </button>
         <button
           type="button"
