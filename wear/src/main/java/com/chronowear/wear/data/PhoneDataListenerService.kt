@@ -1,10 +1,8 @@
 package com.chronowear.wear.data
 
-import android.content.ComponentName
 import android.content.Intent
 import androidx.wear.tiles.TileService
-import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
-import com.chronowear.wear.complication.NextEventComplicationService
+import com.chronowear.wear.complication.ChronoWearComplicationUpdater
 import com.chronowear.wear.tile.UpNextThreeEventsTileService
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
@@ -115,10 +113,7 @@ class PhoneDataListenerService : WearableListenerService() {
 
             AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
 
-            ComplicationDataSourceUpdateRequester.create(
-                applicationContext,
-                ComponentName(applicationContext, NextEventComplicationService::class.java)
-            ).requestUpdateAll()
+            ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
 
             TileService.getUpdater(applicationContext)
                 .requestUpdate(UpNextThreeEventsTileService::class.java)

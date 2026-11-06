@@ -4,26 +4,54 @@
     <Metadata key="PREVIEW_TIME" value="10:08:32" />
     <Metadata key="STEP_GOAL" value="10000" />
 
-    <Scene backgroundColor="#FF090D16">
+    <Scene backgroundColor="#FF05070B">
 
-        <!-- Relógio Digital Superior (Modo Interativo e Modo Ambiente) -->
-        <DigitalClock x="45" y="26" width="360" height="64">
+        <!-- Anel Circular Externo Sutil de Acabamento Ultra -->
+        <Group x="0" y="0" width="450" height="450" name="outer_bezel_ring">
+            <PartDraw x="8" y="8" width="434" height="434">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <Ellipse x="0" y="0" width="434" height="434">
+                    <Stroke color="#FF182232" thickness="2" />
+                </Ellipse>
+            </PartDraw>
+
+            <!-- Data e Dia da Semana no Topo -->
+            <PartText x="105" y="16" width="240" height="22">
+                <Variant mode="AMBIENT" target="alpha" value="140" />
+                <Text align="CENTER" ellipsis="TRUE">
+                    <Font
+                        family="SYNC_TO_DEVICE"
+                        size="13.0"
+                        weight="BOLD"
+                        color="#FFF59E0B">
+                        <Template><![CDATA[%s  •  %s/%s]]>
+                            <Parameter expression="[DAY_OF_WEEK_S]" />
+                            <Parameter expression="[DAY_Z]" />
+                            <Parameter expression="[MONTH_Z]" />
+                        </Template>
+                    </Font>
+                </Text>
+            </PartText>
+        </Group>
+
+        <!-- Relógio Digital Principal (Modo Interativo e Modo Ambiente) -->
+        <DigitalClock x="65" y="34" width="320" height="60">
             <TimeText
                 format="hh:mm"
                 hourFormat="SYNC_TO_DEVICE"
                 align="CENTER"
                 x="0"
                 y="0"
-                width="360"
-                height="64"
+                width="320"
+                height="60"
                 alpha="255">
                 <Variant mode="AMBIENT" target="alpha" value="0" />
                 <Font
                     family="SYNC_TO_DEVICE"
-                    size="52"
+                    size="54"
                     weight="BOLD"
                     slant="NORMAL"
-                    color="#FFF8FAFC" />
+                    color="#FFFFFFFF" />
             </TimeText>
             <TimeText
                 format="hh:mm"
@@ -31,13 +59,13 @@
                 align="CENTER"
                 x="0"
                 y="0"
-                width="360"
-                height="64"
+                width="320"
+                height="60"
                 alpha="0">
                 <Variant mode="AMBIENT" target="alpha" value="255" />
                 <Font
                     family="SYNC_TO_DEVICE"
-                    size="52"
+                    size="54"
                     weight="THIN"
                     slant="NORMAL"
                     color="#FF94A3B8" />
@@ -45,15 +73,17 @@
         </DigitalClock>
 
         <!--
-            SLOT 1 (TOPO): Contagem Regressiva + Barra de Progresso Automática (1h ou 2h antes)
+            SLOT 1 (TOPO - x=48, y=98, w=354, h=70):
+            Exibe o Próximo Evento à esquerda, a Contagem Regressiva em pílula dourada à direita
+            e a Barra de Progresso RangedValue na base.
         -->
         <ComplicationSlot
-            x="45"
+            x="48"
             y="98"
-            width="360"
-            height="82"
+            width="354"
+            height="70"
             slotId="1"
-            displayName="top_complication_label"
+            displayName="slot_timer_label"
             supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY">
 
             <DefaultProviderPolicy
@@ -65,31 +95,66 @@
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="360"
-                height="82"
+                width="354"
+                height="70"
                 outlinePadding="2.0"
-                cornerRadius="16" />
+                cornerRadius="20" />
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="360" height="82">
+                <PartDraw x="0" y="0" width="354" height="70">
                     <RoundRectangle
                         x="0"
                         y="0"
-                        width="360"
-                        height="82"
-                        cornerRadiusX="16"
-                        cornerRadiusY="16">
-                        <Fill color="#FF111827" />
+                        width="354"
+                        height="70"
+                        cornerRadiusX="20"
+                        cornerRadiusY="20">
+                        <Fill color="#FF101722" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="1"
+                        y="1"
+                        width="352"
+                        height="68"
+                        cornerRadiusX="20"
+                        cornerRadiusY="20">
+                        <Stroke color="#FF243244" thickness="2" />
+                    </RoundRectangle>
+                    <!-- Pílula de destaque da Contagem Regressiva no canto superior direito -->
+                    <RoundRectangle
+                        x="244"
+                        y="8"
+                        width="94"
+                        height="26"
+                        cornerRadiusX="13"
+                        cornerRadiusY="13">
+                        <Fill color="#FF2B1F0C" />
                     </RoundRectangle>
                 </PartDraw>
 
-                <PartText x="18" y="8" width="324" height="28">
+                <!-- Nome e Hora do Próximo Compromisso à esquerda -->
+                <PartText x="16" y="9" width="222" height="24">
+                    <Text align="START" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="15.0"
+                            weight="BOLD"
+                            color="#FFE2E8F0">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+
+                <!-- Tempo Restante (Contagem Regressiva) dentro da pílula à direita -->
+                <PartText x="248" y="9" width="86" height="24">
                     <Text align="CENTER" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="18.0"
+                            size="15.0"
                             weight="BOLD"
-                            color="#FFF59E0B">
+                            color="#FFFBBF24">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TITLE]" />
                             </Template>
@@ -97,11 +162,12 @@
                     </Text>
                 </PartText>
 
-                <PartDraw x="20" y="44" width="320" height="12">
+                <!-- Trilho e Barra de Progresso Configurável (1h / 2h antes) -->
+                <PartDraw x="16" y="44" width="322" height="12">
                     <RoundRectangle
                         x="0"
                         y="0"
-                        width="320"
+                        width="322"
                         height="12"
                         cornerRadiusX="6"
                         cornerRadiusY="6">
@@ -110,37 +176,37 @@
                     <RoundRectangle
                         x="0"
                         y="0"
-                        width="320"
+                        width="322"
                         height="12"
                         cornerRadiusX="6"
                         cornerRadiusY="6">
                         <Transform
                             target="width"
-                            value="320 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
+                            value="14 + 308 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
                         <Fill color="#FFF59E0B" />
                     </RoundRectangle>
                 </PartDraw>
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="360" height="82">
+                <PartDraw x="0" y="0" width="354" height="70">
                     <RoundRectangle
                         x="0"
                         y="0"
-                        width="360"
-                        height="82"
-                        cornerRadiusX="16"
-                        cornerRadiusY="16">
-                        <Fill color="#FF111827" />
+                        width="354"
+                        height="70"
+                        cornerRadiusX="20"
+                        cornerRadiusY="20">
+                        <Fill color="#FF101722" />
                     </RoundRectangle>
                 </PartDraw>
-                <PartText x="18" y="24" width="324" height="34">
+                <PartText x="18" y="20" width="318" height="30">
                     <Text align="CENTER" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="18.0"
+                            size="17.0"
                             weight="BOLD"
-                            color="#FFF8FAFC">
+                            color="#FFFBBF24">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -151,19 +217,20 @@
         </ComplicationSlot>
 
         <!--
-            SLOT 2 (JANELA GRANDE CENTRAL): Exibe sempre os Próximos 3 Eventos
+            SLOT 2 (LINHA 1 DA AGENDA - x=30, y=176, w=390, h=56):
+            Compromisso #1 individual com pílula de horário Âmbar à esquerda e título limpo à direita.
         -->
         <ComplicationSlot
-            x="35"
-            y="192"
-            width="380"
-            height="190"
+            x="30"
+            y="176"
+            width="390"
+            height="56"
             slotId="2"
-            displayName="bottom_complication_label"
-            supportedTypes="LONG_TEXT RANGED_VALUE EMPTY">
+            displayName="slot_event_1_label"
+            supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
 
             <DefaultProviderPolicy
-                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.NextEventComplicationService"
+                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.FirstEventComplicationService"
                 primaryProviderType="LONG_TEXT"
                 defaultSystemProvider="NEXT_EVENT"
                 defaultSystemProviderType="LONG_TEXT" />
@@ -171,74 +238,346 @@
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="380"
-                height="190"
+                width="390"
+                height="56"
                 outlinePadding="2.0"
-                cornerRadius="22" />
+                cornerRadius="18" />
 
             <Complication type="LONG_TEXT">
-                <PartDraw x="0" y="0" width="380" height="190">
+                <PartDraw x="0" y="0" width="390" height="56">
                     <RoundRectangle
                         x="0"
                         y="0"
-                        width="380"
-                        height="190"
-                        cornerRadiusX="22"
-                        cornerRadiusY="22">
-                        <Fill color="#FF111827" />
+                        width="390"
+                        height="56"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Fill color="#FF111926" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="1"
+                        y="1"
+                        width="388"
+                        height="54"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Stroke color="#FF243447" thickness="1.5" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="10"
+                        y="10"
+                        width="76"
+                        height="36"
+                        cornerRadiusX="12"
+                        cornerRadiusY="12">
+                        <Fill color="#FF2B2110" />
                     </RoundRectangle>
                 </PartDraw>
 
-                <Condition>
-                    <Expressions>
-                        <Expression name="has_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
-                    </Expressions>
-                    <Compare expression="has_title">
-                        <PartText x="20" y="12" width="340" height="28">
-                            <Text align="START" ellipsis="TRUE">
-                                <Font
-                                    family="SYNC_TO_DEVICE"
-                                    size="17.0"
-                                    weight="BOLD"
-                                    color="#FFF59E0B">
-                                    <Template><![CDATA[%s]]>
-                                        <Parameter expression="[COMPLICATION.TITLE]" />
-                                    </Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                        <PartText x="20" y="44" width="340" height="132">
-                            <Text align="START" maxLines="4" ellipsis="TRUE">
-                                <Font
-                                    family="SYNC_TO_DEVICE"
-                                    size="18.0"
-                                    weight="MEDIUM"
-                                    color="#FFE2E8F0">
-                                    <Template><![CDATA[%s]]>
-                                        <Parameter expression="[COMPLICATION.TEXT]" />
-                                    </Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                    </Compare>
-                    <Default>
-                        <PartText x="20" y="18" width="340" height="154">
-                            <Text align="START" maxLines="4" ellipsis="TRUE">
-                                <Font
-                                    family="SYNC_TO_DEVICE"
-                                    size="18.0"
-                                    weight="MEDIUM"
-                                    color="#FFE2E8F0">
-                                    <Template><![CDATA[%s]]>
-                                        <Parameter expression="[COMPLICATION.TEXT]" />
-                                    </Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                    </Default>
-                </Condition>
+                <PartText x="12" y="16" width="72" height="24">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="16.0"
+                            weight="BOLD"
+                            color="#FFFBBF24">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TITLE]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+
+                <PartText x="98" y="15" width="278" height="26">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="18.0"
+                            weight="BOLD"
+                            color="#FFFFFFFF">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+
+            <Complication type="SHORT_TEXT">
+                <PartDraw x="0" y="0" width="390" height="56">
+                    <RoundRectangle
+                        x="0"
+                        y="0"
+                        width="390"
+                        height="56"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Fill color="#FF111926" />
+                    </RoundRectangle>
+                </PartDraw>
+                <PartText x="16" y="15" width="358" height="26">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="17.0"
+                            weight="BOLD"
+                            color="#FFFFFFFF">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
             </Complication>
         </ComplicationSlot>
+
+        <!--
+            SLOT 3 (LINHA 2 DA AGENDA - x=44, y=240, w=362, h=54):
+            Compromisso #2 individual acompanhando a curvatura da caixa redonda com pílula Azul-Ciano.
+        -->
+        <ComplicationSlot
+            x="44"
+            y="240"
+            width="362"
+            height="54"
+            slotId="3"
+            displayName="slot_event_2_label"
+            supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
+
+            <DefaultProviderPolicy
+                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.SecondEventComplicationService"
+                primaryProviderType="LONG_TEXT"
+                defaultSystemProvider="NEXT_EVENT"
+                defaultSystemProviderType="LONG_TEXT" />
+
+            <BoundingRoundBox
+                x="0"
+                y="0"
+                width="362"
+                height="54"
+                outlinePadding="2.0"
+                cornerRadius="18" />
+
+            <Complication type="LONG_TEXT">
+                <PartDraw x="0" y="0" width="362" height="54">
+                    <RoundRectangle
+                        x="0"
+                        y="0"
+                        width="362"
+                        height="54"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Fill color="#FF0E1621" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="1"
+                        y="1"
+                        width="360"
+                        height="52"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Stroke color="#FF1E2D40" thickness="1.5" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="10"
+                        y="9"
+                        width="74"
+                        height="36"
+                        cornerRadiusX="12"
+                        cornerRadiusY="12">
+                        <Fill color="#FF0D2538" />
+                    </RoundRectangle>
+                </PartDraw>
+
+                <PartText x="12" y="15" width="70" height="24">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="15.0"
+                            weight="BOLD"
+                            color="#FF38BDF8">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TITLE]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+
+                <PartText x="96" y="14" width="252" height="26">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="17.0"
+                            weight="MEDIUM"
+                            color="#FFE2E8F0">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+
+            <Complication type="SHORT_TEXT">
+                <PartDraw x="0" y="0" width="362" height="54">
+                    <RoundRectangle
+                        x="0"
+                        y="0"
+                        width="362"
+                        height="54"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Fill color="#FF0E1621" />
+                    </RoundRectangle>
+                </PartDraw>
+                <PartText x="16" y="14" width="330" height="26">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="16.0"
+                            weight="MEDIUM"
+                            color="#FFE2E8F0">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+        </ComplicationSlot>
+
+        <!--
+            SLOT 4 (LINHA 3 DA AGENDA - x=74, y=302, w=302, h=52):
+            Compromisso #3 individual perfeitamente inscrito na curvatura inferior do círculo (sem cortar cantos!).
+        -->
+        <ComplicationSlot
+            x="74"
+            y="302"
+            width="302"
+            height="52"
+            slotId="4"
+            displayName="slot_event_3_label"
+            supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
+
+            <DefaultProviderPolicy
+                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.ThirdEventComplicationService"
+                primaryProviderType="LONG_TEXT"
+                defaultSystemProvider="NEXT_EVENT"
+                defaultSystemProviderType="LONG_TEXT" />
+
+            <BoundingRoundBox
+                x="0"
+                y="0"
+                width="302"
+                height="52"
+                outlinePadding="2.0"
+                cornerRadius="18" />
+
+            <Complication type="LONG_TEXT">
+                <PartDraw x="0" y="0" width="302" height="52">
+                    <RoundRectangle
+                        x="0"
+                        y="0"
+                        width="302"
+                        height="52"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Fill color="#FF0C131C" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="1"
+                        y="1"
+                        width="300"
+                        height="50"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Stroke color="#FF1B2838" thickness="1.5" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="10"
+                        y="8"
+                        width="70"
+                        height="36"
+                        cornerRadiusX="12"
+                        cornerRadiusY="12">
+                        <Fill color="#FF0D2821" />
+                    </RoundRectangle>
+                </PartDraw>
+
+                <PartText x="12" y="14" width="66" height="24">
+                    <Text align="CENTER" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="15.0"
+                            weight="BOLD"
+                            color="#FF34D399">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TITLE]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+
+                <PartText x="90" y="13" width="198" height="26">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="16.0"
+                            weight="MEDIUM"
+                            color="#FFCBD5E1">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+
+            <Complication type="SHORT_TEXT">
+                <PartDraw x="0" y="0" width="302" height="52">
+                    <RoundRectangle
+                        x="0"
+                        y="0"
+                        width="302"
+                        height="52"
+                        cornerRadiusX="18"
+                        cornerRadiusY="18">
+                        <Fill color="#FF0C131C" />
+                    </RoundRectangle>
+                </PartDraw>
+                <PartText x="16" y="13" width="270" height="26">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="15.0"
+                            weight="MEDIUM"
+                            color="#FFCBD5E1">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+        </ComplicationSlot>
+
+        <!-- Assinatura Inferior Centralizada dentro da Curva Circular -->
+        <Group x="125" y="366" width="200" height="28" name="bottom_status_pill">
+            <PartText x="0" y="0" width="200" height="24">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <Text align="CENTER" ellipsis="TRUE">
+                    <Font
+                        family="SYNC_TO_DEVICE"
+                        size="11.0"
+                        weight="BOLD"
+                        color="#FF64748B">
+                        <Template><![CDATA[AGENDA  •  %sS]]>
+                            <Parameter expression="[SECOND_Z]" />
+                        </Template>
+                    </Font>
+                </Text>
+            </PartText>
+        </Group>
 
     </Scene>
 </WatchFace>

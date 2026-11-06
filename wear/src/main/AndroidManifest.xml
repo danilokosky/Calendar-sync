@@ -63,12 +63,12 @@
             </intent-filter>
         </service>
 
-        <!-- Complication Service Oficial (RANGED_VALUE + LONG_TEXT + SHORT_TEXT) -->
+        <!-- SLOT 1: Temporizador Regressivo + Barra de Progresso (RANGED_VALUE) -->
         <service
             android:name=".complication.NextEventComplicationService"
             android:exported="true"
             android:icon="@android:drawable/ic_menu_my_calendar"
-            android:label="ChronoWear Event Timer &amp; Upcoming"
+            android:label="ChronoWear • Temporizador &amp; Barra"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
                 <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
@@ -76,6 +76,60 @@
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
                 android:value="RANGED_VALUE,LONG_TEXT,SHORT_TEXT" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="60" />
+        </service>
+
+        <!-- SLOT 2: Compromisso #1 Individual -->
+        <service
+            android:name=".complication.FirstEventComplicationService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_today"
+            android:label="ChronoWear • Evento #1"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="LONG_TEXT,SHORT_TEXT" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="60" />
+        </service>
+
+        <!-- SLOT 3: Compromisso #2 Individual -->
+        <service
+            android:name=".complication.SecondEventComplicationService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_today"
+            android:label="ChronoWear • Evento #2"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="LONG_TEXT,SHORT_TEXT" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="60" />
+        </service>
+
+        <!-- SLOT 4: Compromisso #3 Individual -->
+        <service
+            android:name=".complication.ThirdEventComplicationService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_today"
+            android:label="ChronoWear • Evento #3"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="LONG_TEXT,SHORT_TEXT" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="60" />

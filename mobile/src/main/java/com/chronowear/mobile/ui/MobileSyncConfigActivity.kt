@@ -1,6 +1,7 @@
 package com.chronowear.mobile.ui
 
 import android.Manifest
+import android.animation.LayoutTransition
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
@@ -17,6 +18,8 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -43,13 +46,14 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class MobileSyncConfigActivity : Activity() {
 
-    private enum class BottomTab {
-        HOME,
-        SETTINGS,
-        ABOUT
+    private enum class BottomTab(val index: Int) {
+        HOME(0),
+        SETTINGS(1),
+        ABOUT(2)
     }
 
     private lateinit var prefs: SyncPreferences
@@ -58,22 +62,25 @@ class MobileSyncConfigActivity : Activity() {
     private var activeTab: BottomTab = BottomTab.HOME
     private var suppressSwitchEvents = false
 
-    // Containers das 3 abas únicas do rodapé (Home, Settings, About)
+    // Containers das 3 abas controladas pelo rodapé flutuante estilo Samsung Health
     private lateinit var screenHome: LinearLayout
     private lateinit var screenSettings: LinearLayout
     private lateinit var screenAbout: LinearLayout
 
-    // Indicador de conexão Bluetooth + App instalado no relógio
+    // Indicadores de conexão Bluetooth + App instalado no relógio
     private lateinit var btStatusBannerHome: TextView
     private lateinit var btStatusBannerSettings: TextView
 
-    // Elementos essenciais da tela Home
+    // Elementos da tela Início (estilo Samsung Health + Amoled Watchfaces)
     private lateinit var watchBezelSubtext: TextView
     private lateinit var welcomeDeviceStatusTitle: TextView
     private lateinit var welcomeDeviceStatusDetail: TextView
-    private lateinit var nextEventSummaryText: TextView
+    private lateinit var energyBigCountdownText: TextView
+    private lateinit var energyNextEventSubtitle: TextView
+    private lateinit var energyProgressFillView: View
+    private lateinit var energyProgressCaption: TextView
 
-    // Elementos da tela Settings (padrão Amoled Watchfaces)
+    // Elementos da tela Settings
     private lateinit var switchBackgroundService: Switch
     private lateinit var subtitleBackgroundService: TextView
     private lateinit var switchNotificationsSync: Switch
@@ -86,7 +93,7 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var rowProgressWindowChips: LinearLayout
     private lateinit var rowHorizonDaysChips: LinearLayout
 
-    // Rodapé único com exatamente 3 opções (Home, Settings, About) — sem botão de relógio extra
+    // Pílula Flutuante do Rodapé estilo Samsung Health (apenas 3 opções, sem botão de relógio extra)
     private lateinit var navTabHome: LinearLayout
     private lateinit var navTabSettings: LinearLayout
     private lateinit var navTabAbout: LinearLayout
@@ -108,11 +115,10 @@ class MobileSyncConfigActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = SyncPreferences(this)
-        window.statusBarColor = Color.parseColor("#111315")
-        window.navigationBarColor = Color.parseColor("#181C1F")
+        window.statusBarColor = Color.parseColor("#352E18")
+        window.navigationBarColor = Color.parseColor("#0B0E0C")
 
-        buildCleanUi()
-        // Nenhuma permissão é solicitada automaticamente na abertura.
+        buildSamsungHealthUi()
     }
 
     override fun onResume() {
@@ -157,9 +163,37 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
-    private fun buildCleanUi() {
+    private fun samsungHealthHeaderGradient(): GradientDrawable {
+        return GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(
+                Color.parseColor("#3E351B"), // Topo oliva-dourado suave do Samsung Health
+                Color.parseColor("#17231B"), // Transição verde escuro profundo
+                Color.parseColor("#0B0E0C")  // Fundo preto carbono One UI
+            )
+        )
+    }
+
+    private fun animatePressFeedback(view: View, onEnd: () -> Unit = {}) {
+        view.animate()
+            .scaleX(0.95f)
+            .scaleY(0.95f)
+            .setDuration(85L)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(160L)
+                    .setInterpolator(OvershootInterpolator(1.6f))
+                    .start()
+                onEnd()
+            }
+            .start()
+    }
+
+    private fun buildSamsungHealthUi() {
         val rootFrame = FrameLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#111315"))
+            background = samsungHealthHeaderGradient()
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -176,10 +210,12 @@ class MobileSyncConfigActivity : Activity() {
 
         val mainColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(20), dp(18), dp(96))
+            setPadding(dp(18), dp(22), dp(18), dp(112))
+            layoutTransition = LayoutTransition().apply {
+                enableTransitionType(LayoutTransition.CHANGING)
+            }
         }
 
-        // Sem barra redundante de categorias no topo — apenas as 3 telas controladas pelo rodapé
         screenHome = buildScreenHome()
         screenSettings = buildScreenSettings()
         screenAbout = buildScreenAbout()
@@ -191,51 +227,66 @@ class MobileSyncConfigActivity : Activity() {
         scrollView.addView(mainColumn)
         rootFrame.addView(scrollView)
 
-        // RODAPÉ ÚNICO COM APENAS AS 3 OPÇÕES: Home, Settings, About (sem ícone de relógio)
-        val bottomNavBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#181C1F"))
-            setPadding(dp(12), dp(8), dp(12), dp(10))
+        // =========================================================================
+        // RODAPÉ FLUTUANTE EM PÍLULA IGUAL AO SAMSUNG HEALTH (Apenas 3 opções!)
+        // =========================================================================
+        val floatingFooterContainer = FrameLayout(this).apply {
+            setPadding(dp(26), dp(8), dp(26), dp(18))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(72),
+                FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             )
         }
 
-        navTabHome = createBottomNavTab("⌂", "Home") {
-            switchTab(BottomTab.HOME)
+        val samsungHealthFloatingPill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = pillDrawable("#242B26", "#39443C", 36, 1)
+            elevation = dp(16).toFloat()
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+            layoutTransition = LayoutTransition().apply {
+                enableTransitionType(LayoutTransition.CHANGING)
+            }
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(66)
+            )
+        }
+
+        navTabHome = createSamsungHealthBottomItem("⌂", "Início") {
+            switchTabAnimated(BottomTab.HOME)
         }.also {
             navIconHome = it.getChildAt(0) as TextView
             navLabelHome = it.getChildAt(1) as TextView
         }
 
-        navTabSettings = createBottomNavTab("⚙", "Settings") {
-            switchTab(BottomTab.SETTINGS)
+        navTabSettings = createSamsungHealthBottomItem("⚙", "Settings") {
+            switchTabAnimated(BottomTab.SETTINGS)
         }.also {
             navIconSettings = it.getChildAt(0) as TextView
             navLabelSettings = it.getChildAt(1) as TextView
         }
 
-        navTabAbout = createBottomNavTab("ⓘ", "About") {
-            switchTab(BottomTab.ABOUT)
+        navTabAbout = createSamsungHealthBottomItem("ⓘ", "About") {
+            switchTabAnimated(BottomTab.ABOUT)
         }.also {
             navIconAbout = it.getChildAt(0) as TextView
             navLabelAbout = it.getChildAt(1) as TextView
         }
 
-        bottomNavBar.addView(navTabHome)
-        bottomNavBar.addView(navTabSettings)
-        bottomNavBar.addView(navTabAbout)
+        samsungHealthFloatingPill.addView(navTabHome)
+        samsungHealthFloatingPill.addView(navTabSettings)
+        samsungHealthFloatingPill.addView(navTabAbout)
 
-        rootFrame.addView(bottomNavBar)
+        floatingFooterContainer.addView(samsungHealthFloatingPill)
+        rootFrame.addView(floatingFooterContainer)
         setContentView(rootFrame)
 
-        switchTab(BottomTab.HOME)
+        applyTabImmediate(BottomTab.HOME)
     }
 
-    private fun createBottomNavTab(
+    private fun createSamsungHealthBottomItem(
         iconSymbol: String,
         title: String,
         onClick: () -> Unit
@@ -244,205 +295,337 @@ class MobileSyncConfigActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-            setOnClickListener { onClick() }
+            setOnClickListener {
+                animatePressFeedback(this) { onClick() }
+            }
 
             val iconTv = TextView(this@MobileSyncConfigActivity).apply {
                 text = iconSymbol
                 textSize = 16f
                 gravity = Gravity.CENTER
-                setPadding(dp(20), dp(4), dp(20), dp(4))
-                setTextColor(Color.parseColor("#E2E8F0"))
+                setTextColor(Color.parseColor("#F8FAFC"))
             }
             val labelTv = TextView(this@MobileSyncConfigActivity).apply {
                 text = title
-                textSize = 12f
+                textSize = 11f
                 gravity = Gravity.CENTER
-                setPadding(0, dp(2), 0, 0)
-                setTextColor(Color.parseColor("#94A3B8"))
+                setPadding(0, dp(1), 0, 0)
+                setTextColor(Color.parseColor("#CBD5E1"))
             }
             addView(iconTv)
             addView(labelTv)
         }
     }
 
-    private fun switchTab(tab: BottomTab) {
+    private fun applyTabImmediate(tab: BottomTab) {
         activeTab = tab
         screenHome.visibility = if (tab == BottomTab.HOME) View.VISIBLE else View.GONE
         screenSettings.visibility = if (tab == BottomTab.SETTINGS) View.VISIBLE else View.GONE
         screenAbout.visibility = if (tab == BottomTab.ABOUT) View.VISIBLE else View.GONE
 
-        styleBottomTab(navIconHome, navLabelHome, tab == BottomTab.HOME)
-        styleBottomTab(navIconSettings, navLabelSettings, tab == BottomTab.SETTINGS)
-        styleBottomTab(navIconAbout, navLabelAbout, tab == BottomTab.ABOUT)
+        styleSamsungHealthBottomTab(navTabHome, navIconHome, navLabelHome, tab == BottomTab.HOME)
+        styleSamsungHealthBottomTab(navTabSettings, navIconSettings, navLabelSettings, tab == BottomTab.SETTINGS)
+        styleSamsungHealthBottomTab(navTabAbout, navIconAbout, navLabelAbout, tab == BottomTab.ABOUT)
 
         refreshUiState()
     }
 
-    private fun styleBottomTab(iconView: TextView, labelView: TextView, selected: Boolean) {
-        iconView.background = if (selected) {
-            pillDrawable("#153843", "#1E4E5D", 18)
-        } else {
-            pillDrawable("#00000000", "#00000000", 18)
+    /**
+     * Troca de aba com animação fluida (deslizamento horizontal proporcional + fade + pílula elástica).
+     */
+    private fun switchTabAnimated(targetTab: BottomTab) {
+        if (targetTab == activeTab) return
+
+        val direction = if (targetTab.index > activeTab.index) 1 else -1
+        activeTab = targetTab
+
+        val views = mapOf(
+            BottomTab.HOME to screenHome,
+            BottomTab.SETTINGS to screenSettings,
+            BottomTab.ABOUT to screenAbout
+        )
+
+        views.forEach { (tab, view) ->
+            if (tab == targetTab) {
+                view.visibility = View.VISIBLE
+                view.alpha = 0f
+                view.translationX = dp(28 * direction).toFloat()
+                view.animate()
+                    .alpha(1f)
+                    .translationX(0f)
+                    .setDuration(260L)
+                    .setInterpolator(DecelerateInterpolator(1.5f))
+                    .start()
+            } else {
+                view.visibility = View.GONE
+            }
         }
-        iconView.setTextColor(
-            if (selected) Color.parseColor("#BAE6FD") else Color.parseColor("#CBD5E1")
-        )
-        labelView.setTextColor(
-            if (selected) Color.parseColor("#FFFFFF") else Color.parseColor("#9CA3AF")
-        )
-        labelView.setTypeface(labelView.typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+
+        styleSamsungHealthBottomTab(navTabHome, navIconHome, navLabelHome, targetTab == BottomTab.HOME)
+        styleSamsungHealthBottomTab(navTabSettings, navIconSettings, navLabelSettings, targetTab == BottomTab.SETTINGS)
+        styleSamsungHealthBottomTab(navTabAbout, navIconAbout, navLabelAbout, targetTab == BottomTab.ABOUT)
+
+        refreshUiState()
+    }
+
+    private fun styleSamsungHealthBottomTab(
+        tabContainer: LinearLayout,
+        iconView: TextView,
+        labelView: TextView,
+        selected: Boolean
+    ) {
+        if (selected) {
+            // Pílula interna preenchida que abraça o ícone + texto igual ao botão "Início" do Samsung Health
+            tabContainer.background = pillDrawable("#434E46", "#57655B", 30, 1)
+            iconView.setTextColor(Color.parseColor("#FFFFFF"))
+            labelView.setTextColor(Color.parseColor("#FFFFFF"))
+            labelView.setTypeface(labelView.typeface, Typeface.BOLD)
+            tabContainer.scaleX = 0.92f
+            tabContainer.scaleY = 0.92f
+            tabContainer.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220L)
+                .setInterpolator(OvershootInterpolator(1.8f))
+                .start()
+        } else {
+            tabContainer.background = pillDrawable("#00000000", "#00000000", 30, 0)
+            iconView.setTextColor(Color.parseColor("#CBD5E1"))
+            labelView.setTextColor(Color.parseColor("#9CA3AF"))
+            labelView.setTypeface(labelView.typeface, Typeface.NORMAL)
+        }
+    }
+
+    private fun createOrangeDotBadge(): View {
+        return View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#F97316"))
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(8), dp(8))
+        }
     }
 
     // =========================================================================
-    // ABA 1: HOME (Essencial e Informativa, estilo Amoled Watchfaces)
+    // ABA 1: INÍCIO (Estética Samsung Health + Status Amoled Watchfaces)
     // =========================================================================
     private fun buildScreenHome(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
 
+            val headerRow = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(16) }
+            }
+
             val titleTv = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Calendar Sync Complication"
-                textSize = 22f
+                text = "ChronoWear Health Sync"
+                textSize = 23f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
-                gravity = Gravity.CENTER
-                setPadding(0, dp(4), 0, dp(18))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            addView(titleTv)
+            headerRow.addView(titleTv)
+            headerRow.addView(createOrangeDotBadge())
+            addView(headerRow)
 
-            // Mockup Circular do Relógio no topo
+            // Mockup Circular do Relógio no topo mostrando o novo layout de 4 Slots
             val watchBezel = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#141718"))
-                    setStroke(dp(10), Color.parseColor("#2A2F33"))
+                    setColor(Color.parseColor("#0D1210"))
+                    setStroke(dp(10), Color.parseColor("#28332C"))
                 }
-                setPadding(dp(26), dp(24), dp(26), dp(24))
+                setPadding(dp(24), dp(20), dp(24), dp(20))
                 layoutParams = LinearLayout.LayoutParams(dp(236), dp(236)).apply {
-                    bottomMargin = dp(14)
+                    bottomMargin = dp(12)
                 }
 
-                val slot1 = LinearLayout(this@MobileSyncConfigActivity).apply {
+                val slotTimer = LinearLayout(this@MobileSyncConfigActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    background = pillDrawable("#2B3330", "#3D4844", 18)
-                    setPadding(dp(14), dp(8), dp(14), dp(8))
+                    background = pillDrawable("#1E2822", "#34463B", 16)
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = dp(8) }
+                    ).apply { bottomMargin = dp(6) }
 
                     val t1 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Upcoming Event"
-                        textSize = 12f
-                        setTextColor(Color.parseColor("#FFFFFF"))
+                        text = "⏱ Temporizador & Barra"
+                        textSize = 11f
+                        setTextColor(Color.parseColor("#FBBF24"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
-                    val s1 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Calendar Sync Complication"
-                        textSize = 10f
+                    watchBezelSubtext = TextView(this@MobileSyncConfigActivity).apply {
+                        text = "Slot #1 RangedValue"
+                        textSize = 9.5f
                         setTextColor(Color.parseColor("#CBD5E1"))
                     }
                     addView(t1)
-                    addView(s1)
+                    addView(watchBezelSubtext)
                 }
-                addView(slot1)
+                addView(slotTimer)
 
-                val slot2 = LinearLayout(this@MobileSyncConfigActivity).apply {
+                val slotEvents = LinearLayout(this@MobileSyncConfigActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    background = pillDrawable("#2B3330", "#3D4844", 18)
-                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    background = pillDrawable("#18211C", "#2B3A31", 16)
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     )
 
                     val t2 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Event Timer (1h / 2h)"
-                        textSize = 12f
+                        text = "📅 Slots #2, #3 e #4"
+                        textSize = 11f
                         setTextColor(Color.parseColor("#FFFFFF"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
-                    watchBezelSubtext = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Calendar Sync Complication"
-                        textSize = 10f
-                        setTextColor(Color.parseColor("#CBD5E1"))
+                    val s2 = TextView(this@MobileSyncConfigActivity).apply {
+                        text = "3 Cartões Individuais na Watch Face"
+                        textSize = 9.5f
+                        setTextColor(Color.parseColor("#A7F3D0"))
                     }
                     addView(t2)
-                    addView(watchBezelSubtext)
+                    addView(s2)
                 }
-                addView(slot2)
+                addView(slotEvents)
             }
             addView(watchBezel)
 
-            // Informativo de conexão: só dá positivo se o Wearable estiver conectado E com o app instalado
+            // Status Bluetooth verificado (só dá positivo se o app estiver instalado no relógio)
             btStatusBannerHome = TextView(this@MobileSyncConfigActivity).apply {
                 text = "ᛒ  Verificando conexão com o relógio..."
-                textSize = 14f
+                textSize = 13.5f
                 setTextColor(Color.parseColor("#E2E8F0"))
                 gravity = Gravity.CENTER
-                setPadding(dp(8), dp(4), dp(8), dp(18))
+                setPadding(dp(8), dp(4), dp(8), dp(16))
             }
             addView(btStatusBannerHome)
 
-            // Cartão Welcome! limpo e sem botões redundantes
+            // Cartão Principal estilo "Sua alimentação sob controle / Welcome!" do Samsung Health
             val welcomeCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1B1D21", "#2A2E35", 24)
+                background = pillDrawable("#1D2620", "#2F3D33", 26)
                 setPadding(dp(22), dp(20), dp(22), dp(20))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                ).apply { bottomMargin = dp(16) }
 
                 val wTitle = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Welcome!"
-                    textSize = 22f
+                    text = "Sua agenda sob controle"
+                    textSize = 20f
                     setTextColor(Color.parseColor("#FFFFFF"))
                     setTypeface(typeface, Typeface.BOLD)
                 }
                 addView(wTitle)
 
                 val wDesc = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Este app companion envia seus próximos compromissos e contagem regressiva para as Complications do seu relógio Wear OS."
-                    textSize = 15f
+                    text = "Sincronize seus compromissos em segundo plano para exibir o contador regressivo e os próximos 3 eventos separados no seu smartwatch."
+                    textSize = 14f
                     setTextColor(Color.parseColor("#D1D5DB"))
-                    setPadding(0, dp(10), 0, dp(18))
+                    setPadding(0, dp(8), 0, dp(14))
                 }
                 addView(wDesc)
 
                 welcomeDeviceStatusTitle = TextView(this@MobileSyncConfigActivity).apply {
                     text = "Status do aplicativo no relógio:"
-                    textSize = 15f
-                    setTextColor(Color.parseColor("#E5E7EB"))
+                    textSize = 13f
+                    setTextColor(Color.parseColor("#9CA3AF"))
                     setTypeface(typeface, Typeface.BOLD)
                 }
                 addView(welcomeDeviceStatusTitle)
 
                 welcomeDeviceStatusDetail = TextView(this@MobileSyncConfigActivity).apply {
                     text = "Verificando dispositivos Wear OS..."
-                    textSize = 15f
-                    setTextColor(Color.parseColor("#9CA3AF"))
+                    textSize = 14.5f
+                    setTextColor(Color.parseColor("#4ADE80"))
                     setTypeface(typeface, Typeface.BOLD)
-                    setPadding(0, dp(6), 0, dp(14))
+                    setPadding(0, dp(4), 0, 0)
                 }
                 addView(welcomeDeviceStatusDetail)
-
-                nextEventSummaryText = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Próximo evento: --"
-                    textSize = 13f
-                    setTextColor(Color.parseColor("#94A3B8"))
-                }
-                addView(nextEventSummaryText)
             }
             addView(welcomeCard)
+
+            // Cartão estilo "Pontuação energia" do Samsung Health para o Próximo Evento & Barra
+            val energyScoreCard = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                background = pillDrawable("#141816", "#252C28", 26)
+                setPadding(dp(22), dp(18), dp(22), dp(20))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+
+                val topRow = LinearLayout(this@MobileSyncConfigActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                val eHeader = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "Temporizador do próximo evento"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#E5E7EB"))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                topRow.addView(eHeader)
+                topRow.addView(createOrangeDotBadge())
+                addView(topRow)
+
+                energyBigCountdownText = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "--:--"
+                    textSize = 36f
+                    setTextColor(Color.parseColor("#FFFFFF"))
+                    setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, dp(6), 0, dp(2))
+                }
+                addView(energyBigCountdownText)
+
+                energyNextEventSubtitle = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "Ative Calendar Events Sync em Settings"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#60A5FA"))
+                    setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, 0, 0, dp(12))
+                }
+                addView(energyNextEventSubtitle)
+
+                val barTrack = LinearLayout(this@MobileSyncConfigActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    background = pillDrawable("#262D29", "#36403A", 10)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(14)
+                    )
+                }
+                energyProgressFillView = View(this@MobileSyncConfigActivity).apply {
+                    background = pillDrawable("#4ADE80", "#4ADE80", 10)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT)
+                }
+                barTrack.addView(energyProgressFillView)
+                addView(barTrack)
+
+                energyProgressCaption = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "Barra de progresso no relógio: 0%"
+                    textSize = 11.5f
+                    setTextColor(Color.parseColor("#9CA3AF"))
+                    setPadding(0, dp(8), 0, 0)
+                }
+                addView(energyProgressCaption)
+            }
+            addView(energyScoreCard)
         }
     }
 
     // =========================================================================
-    // ABA 2: SETTINGS (Idêntica à estrutura Amoled Watchfaces)
+    // ABA 2: SETTINGS (Design Samsung Health + Funcionalidades Amoled Watchfaces)
     // =========================================================================
     private fun buildScreenSettings(): LinearLayout {
         return LinearLayout(this).apply {
@@ -454,22 +637,22 @@ class MobileSyncConfigActivity : Activity() {
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setPadding(0, dp(4), 0, dp(10))
+                setPadding(0, dp(2), 0, dp(8))
             }
             addView(settingsHeaderTitle)
 
             btStatusBannerSettings = TextView(this@MobileSyncConfigActivity).apply {
                 text = "ᛒ  Verificando conexão..."
-                textSize = 14f
+                textSize = 13.5f
                 setTextColor(Color.parseColor("#E2E8F0"))
                 gravity = Gravity.CENTER
-                setPadding(dp(8), 0, dp(8), dp(16))
+                setPadding(dp(8), 0, dp(8), dp(14))
             }
             addView(btStatusBannerSettings)
 
             val mainSettingsCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1B1D21", "#2A2E35", 24)
+                background = pillDrawable("#141816", "#262E29", 26)
                 setPadding(dp(20), dp(18), dp(20), dp(18))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -477,15 +660,15 @@ class MobileSyncConfigActivity : Activity() {
                 ).apply { bottomMargin = dp(16) }
             }
 
-            // 1. Background Service
             val bgServiceRow = createSettingToggleRow(
                 title = "Background Service",
                 subtitle = "Important - Notifications Access required",
                 onSubtitleCreated = { subtitleBackgroundService = it },
                 onSwitchCreated = { sw ->
                     switchBackgroundService = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
                         if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
                         onToggleBackgroundService(isChecked)
                     }
                 }
@@ -499,45 +682,45 @@ class MobileSyncConfigActivity : Activity() {
             }
             mainSettingsCard.addView(btnBatteryPermissionPill)
 
-            // 2. Notifications Sync
             val notifSyncRow = createSettingToggleRow(
                 title = "Notifications Sync",
                 subtitle = "Only for Phone Notifications Complication",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchNotificationsSync = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
                         if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
                         onToggleNotificationsSync(isChecked)
                     }
                 }
             )
             mainSettingsCard.addView(notifSyncRow)
 
-            // 3. Media Playback Sync
             val mediaSyncRow = createSettingToggleRow(
                 title = "Media Playback Sync",
                 subtitle = "Now Playing Complication support",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchMediaPlaybackSync = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
                         if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
                         prefs.setMediaPlaybackSyncEnabled(isChecked)
                     }
                 }
             )
             mainSettingsCard.addView(mediaSyncRow)
 
-            // 4. Calendar Events Sync + Synced calendars
             val calSyncRow = createSettingToggleRow(
                 title = "Calendar Events Sync",
                 subtitle = "Upcoming Event & Event Timer Complication",
                 onSubtitleCreated = { subtitleCalendarEventsSync = it },
                 onSwitchCreated = { sw ->
                     switchCalendarEventsSync = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
                         if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
                         onToggleCalendarEventsSync(isChecked)
                     }
                 }
@@ -549,15 +732,15 @@ class MobileSyncConfigActivity : Activity() {
             }
             mainSettingsCard.addView(btnSyncedCalendarsPill)
 
-            // 5. Instant Calendar Change Sync
             val autoChangeRow = createSettingToggleRow(
                 title = "Instant Calendar Change Sync",
                 subtitle = "Relê a agenda automaticamente quando um compromisso é criado ou alterado",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchAutoReadOnChange = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
                         if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
                         prefs.setAutoSyncOnCalendarChangeEnabled(isChecked)
                         if (prefs.isBackgroundServiceEnabled() &&
                             CalendarSyncEngine.hasCalendarPermission(this@MobileSyncConfigActivity)
@@ -575,10 +758,9 @@ class MobileSyncConfigActivity : Activity() {
 
             addView(mainSettingsCard)
 
-            // Configurações de Frequência, Janela da Barra e Horizonte
             val timingCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1B1D21", "#2A2E35", 24)
+                background = pillDrawable("#141816", "#262E29", 26)
                 setPadding(dp(20), dp(18), dp(20), dp(18))
             }
 
@@ -631,7 +813,7 @@ class MobileSyncConfigActivity : Activity() {
     }
 
     // =========================================================================
-    // ABA 3: ABOUT (Informações essenciais e botão de sincronização manual)
+    // ABA 3: ABOUT (Informações essenciais e sincronização manual)
     // =========================================================================
     private fun buildScreenAbout(): LinearLayout {
         return LinearLayout(this).apply {
@@ -643,20 +825,21 @@ class MobileSyncConfigActivity : Activity() {
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setPadding(0, dp(4), 0, dp(16))
+                setPadding(0, dp(2), 0, dp(16))
             }
             addView(aboutHeaderTitle)
 
             val card = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1B1D21", "#2A2E35", 24)
+                background = pillDrawable("#141816", "#262E29", 26)
                 setPadding(dp(22), dp(20), dp(22), dp(20))
             }
 
             val body = TextView(this@MobileSyncConfigActivity).apply {
-                text = "ChronoWear Calendar Sync\n\n" +
-                    "• Conexão Verificada: O status só indica 'Connected' quando o relógio está conectado E o aplicativo da versão Wear OS está instalado no relógio.\n\n" +
-                    "• Leitura da Agenda: Lê CalendarContract.Instances nos calendários selecionados em 'Synced calendars' na frequência configurada e também instantaneamente quando há alterações na agenda."
+                text = "ChronoWear Health & Calendar Sync\n\n" +
+                    "• Watch Face com 4 Slots Dedicados: O Slot #1 exibe o temporizador regressivo e barra de progresso (1h/2h), enquanto os Slots #2, #3 e #4 exibem os próximos 3 compromissos em cartões separados que acompanham a curvatura redonda do relógio.\n\n" +
+                    "• Conexão Verificada: O status só fica positivo quando o relógio está conectado E com o aplicativo da versão Wear OS instalado.\n\n" +
+                    "• Sincronização Inteligente: Lê CalendarContract.Instances na frequência escolhida e também instantaneamente sempre que você cria, edita ou apaga um compromisso."
                 textSize = 14f
                 setTextColor(Color.parseColor("#D1D5DB"))
                 setPadding(0, 0, 0, dp(16))
@@ -723,7 +906,7 @@ class MobileSyncConfigActivity : Activity() {
             textSize = 14f
             setTextColor(Color.parseColor("#E2E8F0"))
             setTypeface(typeface, Typeface.BOLD)
-            background = pillDrawable("#1B1D21", "#4B5563", 24, 1)
+            background = pillDrawable("#1D2420", "#455249", 24, 1)
             setPadding(dp(20), dp(8), dp(20), dp(8))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -732,7 +915,9 @@ class MobileSyncConfigActivity : Activity() {
                 topMargin = dp(4)
                 bottomMargin = dp(10)
             }
-            setOnClickListener { onClick() }
+            setOnClickListener {
+                animatePressFeedback(this) { onClick() }
+            }
         }
     }
 
@@ -871,7 +1056,7 @@ class MobileSyncConfigActivity : Activity() {
 
     private fun triggerManualSync() {
         if (!CalendarSyncEngine.hasCalendarPermission(this)) {
-            switchTab(BottomTab.SETTINGS)
+            switchTabAnimated(BottomTab.SETTINGS)
             return
         }
         if (prefs.getSelectedCalendarIds().isEmpty()) {
@@ -1058,14 +1243,16 @@ class MobileSyncConfigActivity : Activity() {
             setTextColor(if (selected) Color.parseColor("#0B191E") else Color.parseColor("#E5E7EB"))
             setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
             background = pillDrawable(
-                if (selected) "#BAE6FD" else "#262A30",
-                if (selected) "#7DD3FC" else "#373D45",
+                if (selected) "#4ADE80" else "#232A26",
+                if (selected) "#34D399" else "#35403A",
                 18
             )
             layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply {
                 rightMargin = dp(6)
             }
-            setOnClickListener { onClick() }
+            setOnClickListener {
+                animatePressFeedback(this) { onClick() }
+            }
         }
     }
 
@@ -1083,17 +1270,49 @@ class MobileSyncConfigActivity : Activity() {
         val nowMs = System.currentTimeMillis()
         val nextEv = cachedHorizonEvents.firstOrNull { it.startEpochMs > nowMs }
         if (nextEv == null) {
-            nextEventSummaryText.text = "Próximo evento: Nenhum compromisso pendente no horizonte."
+            energyBigCountdownText.text = "Livre"
+            energyNextEventSubtitle.text = "Sem próximo compromisso no horizonte"
+            energyProgressCaption.text =
+                "Barra RangedValue: 0% • Janela: ${prefs.getProgressWindowMinutes()}m antes"
+            energyProgressFillView.layoutParams =
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT)
             return
         }
 
-        val remainingSec = ((nextEv.startEpochMs - nowMs).coerceAtLeast(0L)) / 1000L
-        val hours = remainingSec / 3600L
+        val remainingMs = (nextEv.startEpochMs - nowMs).coerceAtLeast(0L)
+        val remainingSec = remainingMs / 1000L
+        val days = remainingSec / 86400L
+        val hours = (remainingSec % 86400L) / 3600L
         val mins = (remainingSec % 3600L) / 60L
-        val startHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextEv.startEpochMs))
+        val secs = remainingSec % 60L
 
-        nextEventSummaryText.text =
-            "Próximo evento: ${nextEv.title} às $startHHMM (em ${hours}h ${mins}m)"
+        energyBigCountdownText.text = when {
+            days > 0 -> String.format(Locale.getDefault(), "%dd %02dh %02dm", days, hours, mins)
+            hours > 0 -> String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
+            else -> String.format(Locale.getDefault(), "%02dm %02ds", mins, secs)
+        }
+
+        val startHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextEv.startEpochMs))
+        energyNextEventSubtitle.text = "$startHHMM • ${nextEv.title}"
+
+        val windowMs = TimeUnit.MINUTES.toMillis(prefs.getProgressWindowMinutes().toLong()).toFloat()
+        val ratio = if (remainingMs >= windowMs) {
+            0f
+        } else {
+            (1f - (remainingMs.toFloat() / windowMs)).coerceIn(0f, 1f)
+        }
+        val pct = (ratio * 100f).toInt()
+        energyProgressCaption.text =
+            "Barra no Relógio: $pct% (Inicia ${prefs.getProgressWindowMinutes()} min antes)"
+
+        val parentW = (energyProgressFillView.parent as? View)?.width ?: 0
+        if (parentW > 0) {
+            val fillW = (parentW * ratio).toInt().coerceAtLeast(if (ratio > 0f) dp(8) else 0)
+            energyProgressFillView.layoutParams = LinearLayout.LayoutParams(
+                fillW,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+        }
     }
 
     companion object {

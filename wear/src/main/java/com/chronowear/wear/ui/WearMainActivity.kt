@@ -2,7 +2,6 @@ package com.chronowear.wear.ui
 
 import android.app.Activity
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -18,8 +17,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.wear.tiles.TileService
-import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
-import com.chronowear.wear.complication.NextEventComplicationService
+import com.chronowear.wear.complication.ChronoWearComplicationUpdater
 import com.chronowear.wear.data.CachedWearEvent
 import com.chronowear.wear.data.PhoneDataListenerService
 import com.chronowear.wear.data.WatchAutonomousRepository
@@ -100,11 +98,6 @@ class WearMainActivity : Activity() {
         }
     }
 
-    /**
-     * Interface enxuta e essencial para Wear OS:
-     * Mostra apenas o status de conexão com o telefone, o próximo evento com contagem regressiva
-     * e o botão para atualizar as Complications.
-     */
     private fun buildEssentialWatchUi() {
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor("#000000"))
@@ -135,7 +128,6 @@ class WearMainActivity : Activity() {
         }
         container.addView(connectionStatusText)
 
-        // Card único e essencial do Próximo Evento
         val eventCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -287,10 +279,7 @@ class WearMainActivity : Activity() {
     }
 
     private fun forceUpdateComplicationsAndTile() {
-        ComplicationDataSourceUpdateRequester.create(
-            this,
-            ComponentName(this, NextEventComplicationService::class.java)
-        ).requestUpdateAll()
+        ChronoWearComplicationUpdater.requestUpdateAllSlots(this)
 
         TileService.getUpdater(this)
             .requestUpdate(UpNextThreeEventsTileService::class.java)
