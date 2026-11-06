@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -46,6 +48,17 @@
                     android:scheme="wear"
                     android:host="*"
                     android:pathPrefix="/chronowear/pong_watch_app" />
+            </intent-filter>
+        </service>
+
+        <!-- Observa notificações sobre Clima no telefone (App Google ou App Clima) e envia junto com a previsão ao relógio -->
+        <service
+            android:name=".sync.PhoneWeatherNotificationListenerService"
+            android:exported="true"
+            android:label="ChronoWear Detector de Clima (Google / Clima)"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
 

@@ -283,12 +283,102 @@ object CalendarSyncEngine {
         return events.sortedBy { it.startEpochMs }
     }
 
+    /**
+     * Busca as previsões horárias reais pelo Smartphone (via API gratuita Open-Meteo usando a
+     * última localização aproximada do telefone), detecta automaticamente se houve mudança
+     * relevante de temperatura/chuva nas próximas horas (`savePhoneFetchedWeatherAndDetectShift`)
+     * e salva no SyncPreferences para notificar o relógio e alternar dinamicamente o Canvas.
+     */
+    fun fetchPhoneHourlyWeatherIfNeeded(context: Context, forceRefresh: Boolean = false): Boolean {
+        val prefs = SyncPreferences(context)
+        if (!forceRefresh && !prefs.isPhoneWeatherAutoCheckEnabled()) {
+            return false
+        }
+        val nowMs = System.currentTimeMillis()
+        val lastFetch = prefs.getPhoneWeatherLastFetchMs()
+        val checkIntervalMin = prefs.getPhoneWeatherCheckIntervalMinutes()
+        if (!forceRefresh && lastFetch > 0L && (nowMs - lastFetch) < TimeUnit.MINUTES.toMillis(checkIntervalMin)) {
+            return false
+        }
+
+        var shiftDetected = false
+        try {
+            var lat = -23.5505
+            var lon = -46.6333
+            if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+                val loc = lm?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                    ?: lm?.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER)
+                if (loc != null) {
+                    lat = loc.latitude
+                    lon = loc.longitude
+                }
+            }
+
+            val urlStr =
+                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                    "&hourly=temperature_2m,precipitation_probability&forecast_days=2&timezone=auto"
+            val conn = (java.net.URL(urlStr).openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 4500
+                readTimeout = 4500
+            }
+
+            if (conn.responseCode == 200) {
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                val root = JSONObject(body)
+                val hourly = root.optJSONObject("hourly")
+                val timesArr = hourly?.optJSONArray("time")
+                val tempsArr = hourly?.optJSONArray("temperature_2m")
+                val rainArr = hourly?.optJSONArray("precipitation_probability")
+
+                if (timesArr != null && tempsArr != null && timesArr.length() >= 24) {
+                    val cal = java.util.Calendar.getInstance()
+                    val currentHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                    val offsets = listOf(0, 2, 4, 6, 8)
+                    val pickedTemps = mutableListOf<Int>()
+                    val pickedLabels = mutableListOf<String>()
+                    var maxRain = 0
+
+                    for ((idx, offset) in offsets.withIndex()) {
+                        val arrayIdx = (currentHour + offset).coerceAtMost(timesArr.length() - 1)
+                        val tempVal = Math.round(tempsArr.optDouble(arrayIdx, 25.0)).toInt()
+                        val rainVal = rainArr?.optInt(arrayIdx, 0) ?: 0
+                        if (rainVal > maxRain) maxRain = rainVal
+                        pickedTemps.add(tempVal)
+                        if (idx == 0) {
+                            pickedLabels.add("Agora")
+                        } else {
+                            val h = (currentHour + offset) % 24
+                            pickedLabels.add(String.format(Locale.getDefault(), "%02dh", h))
+                        }
+                    }
+
+                    shiftDetected = prefs.savePhoneFetchedWeatherAndDetectShift(
+                        tempsCsv = pickedTemps.joinToString(","),
+                        hoursCsv = pickedLabels.joinToString(","),
+                        rainProbPct = maxRain,
+                        fetchTimestampMs = nowMs
+                    )
+                }
+            }
+            conn.disconnect()
+        } catch (_: Exception) {
+        }
+        return shiftDetected
+    }
+
     suspend fun performFullSyncToWatch(
         context: Context,
         triggerSource: String = "Sincronização Manual"
     ): Int {
         val prefs = SyncPreferences(context)
         val nowMs = System.currentTimeMillis()
+
+        // Atualiza as previsões horárias pelo telefone e detecta mudanças de temperatura
+        fetchPhoneHourlyWeatherIfNeeded(context, forceRefresh = false)
 
         if (!hasCalendarPermission(context)) {
             prefs.recordLastSync(
@@ -345,6 +435,16 @@ object CalendarSyncEngine {
         val highFreq15Min = prefs.isHighFreq15MinRuleEnabled()
         val updateOnWake = prefs.isUpdateOnScreenWakeEnabled()
 
+        val weatherTempsCsv = prefs.getPhoneWeatherTempsCsv()
+        val weatherHoursCsv = prefs.getPhoneWeatherHoursCsv()
+        val weatherRainProb = prefs.getPhoneWeatherRainProbPct()
+        val weatherAlertSource = prefs.getWeatherAlertSource()
+        val weatherAlertHeadline = prefs.getWeatherAlertHeadline()
+        val weatherAlertTsMs = prefs.getWeatherAlertTimestampMs()
+        val watchStandaloneWeatherEnabled = prefs.isWatchStandaloneWeatherEnabled()
+        val watchStandaloneWeatherIntervalMin = prefs.getWatchStandaloneWeatherIntervalMinutes()
+        val selectedWeatherTriggerPackagesCsv = prefs.getSelectedWeatherTriggerPackages().joinToString(",")
+
         val payloadJson = JSONObject().apply {
             put("events", jsonArray)
             put("sync_timestamp_ms", nowMs)
@@ -353,6 +453,15 @@ object CalendarSyncEngine {
             put("context_window_mode", contextMode)
             put("high_freq_15min_rule", highFreq15Min)
             put("update_on_screen_wake", updateOnWake)
+            put("weather_temps_csv", weatherTempsCsv)
+            put("weather_hours_csv", weatherHoursCsv)
+            put("weather_rain_prob", weatherRainProb)
+            put("weather_alert_source", weatherAlertSource)
+            put("weather_alert_headline", weatherAlertHeadline)
+            put("weather_alert_timestamp_ms", weatherAlertTsMs)
+            put("watch_standalone_weather_enabled", watchStandaloneWeatherEnabled)
+            put("watch_standalone_weather_interval_min", watchStandaloneWeatherIntervalMin)
+            put("selected_weather_trigger_packages_csv", selectedWeatherTriggerPackagesCsv)
             if (preRenderedCardPngB64.isNotBlank()) {
                 put("card_png_b64", preRenderedCardPngB64)
             }
@@ -370,6 +479,15 @@ object CalendarSyncEngine {
                 dataMap.putString("context_window_mode", contextMode)
                 dataMap.putBoolean("high_freq_15min_rule", highFreq15Min)
                 dataMap.putBoolean("update_on_screen_wake", updateOnWake)
+                dataMap.putString("weather_temps_csv", weatherTempsCsv)
+                dataMap.putString("weather_hours_csv", weatherHoursCsv)
+                dataMap.putInt("weather_rain_prob", weatherRainProb)
+                dataMap.putString("weather_alert_source", weatherAlertSource)
+                dataMap.putString("weather_alert_headline", weatherAlertHeadline)
+                dataMap.putLong("weather_alert_timestamp_ms", weatherAlertTsMs)
+                dataMap.putBoolean("watch_standalone_weather_enabled", watchStandaloneWeatherEnabled)
+                dataMap.putLong("watch_standalone_weather_interval_min", watchStandaloneWeatherIntervalMin)
+                dataMap.putString("selected_weather_trigger_packages_csv", selectedWeatherTriggerPackagesCsv)
                 if (preRenderedCardPngB64.isNotBlank()) {
                     dataMap.putString("card_png_b64", preRenderedCardPngB64)
                 }

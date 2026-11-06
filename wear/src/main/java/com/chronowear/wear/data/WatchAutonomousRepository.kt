@@ -38,6 +38,7 @@ data class CachedWearEvent(
 }
 
 data class HourlyWeatherSnapshot(
+    val alertSource: String,
     val alertHeadline: String,
     val hourlyLabels: List<String>,
     val hourlyTempsC: List<Int>,
@@ -88,7 +89,16 @@ class WatchAutonomousRepository private constructor(context: Context) :
         cardPngBase64: String? = null,
         contextMode: String? = null,
         highFreq15MinRule: Boolean? = null,
-        updateOnScreenWake: Boolean? = null
+        updateOnScreenWake: Boolean? = null,
+        weatherTempsCsv: String? = null,
+        weatherHoursCsv: String? = null,
+        weatherRainProb: Int? = null,
+        weatherAlertSource: String? = null,
+        weatherAlertHeadline: String? = null,
+        weatherAlertTimestampMs: Long? = null,
+        watchStandaloneWeatherEnabled: Boolean? = null,
+        watchStandaloneWeatherIntervalMin: Int? = null,
+        selectedWeatherTriggerPackagesCsv: String? = null
     ) {
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
@@ -106,6 +116,37 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (updateOnScreenWake != null) {
             editor.putBoolean("update_on_screen_wake", updateOnScreenWake)
+        }
+        if (watchStandaloneWeatherEnabled != null) {
+            editor.putBoolean("watch_standalone_weather_enabled", watchStandaloneWeatherEnabled)
+        }
+        if (watchStandaloneWeatherIntervalMin != null && watchStandaloneWeatherIntervalMin >= 15) {
+            editor.putInt("watch_standalone_weather_interval_min", watchStandaloneWeatherIntervalMin)
+        }
+        if (!selectedWeatherTriggerPackagesCsv.isNullOrBlank()) {
+            editor.putString("selected_weather_trigger_packages_csv", selectedWeatherTriggerPackagesCsv)
+        }
+        // Salva a previsão horária real buscada pelo telefone
+        if (!weatherTempsCsv.isNullOrBlank()) {
+            editor.putString("weather_temps_csv", weatherTempsCsv)
+        }
+        if (!weatherHoursCsv.isNullOrBlank()) {
+            editor.putString("weather_hours_csv", weatherHoursCsv)
+        }
+        if (weatherRainProb != null) {
+            editor.putInt("weather_rain_prob", weatherRainProb.coerceIn(0, 100))
+        }
+        if (!weatherAlertSource.isNullOrBlank()) {
+            editor.putString("weather_alert_source", weatherAlertSource)
+        }
+        if (!weatherAlertHeadline.isNullOrBlank()) {
+            editor.putString("weather_alert_headline", weatherAlertHeadline)
+        }
+        if (weatherAlertTimestampMs != null && weatherAlertTimestampMs > 0L) {
+            val currentTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
+            if (weatherAlertTimestampMs > currentTs) {
+                editor.putLong("weather_alert_timestamp_ms", weatherAlertTimestampMs)
+            }
         }
         editor.apply()
 
@@ -138,13 +179,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return prefs.getString("phone_rendered_card_png_b64", null)
     }
 
-    /**
-     * Modo da Janela de Contexto escolhido no App (Smartphone ou Relógio):
-     * - "DYNAMIC": Muda sozinho (Agenda por padrão, Clima quando chega notificação de mudança climática, Turbo Agenda nos 15m finais)
-     * - "EVENTS": Sempre mostra os Próximos 3 Eventos + Barra
-     * - "WEATHER": Sempre mostra o Gráfico de Mudança de Temperatura nas Próximas Horas
-     * - "STEPS": Sempre mostra o Gráfico de Passos Semanais & Meta Diária
-     */
     fun getContextWindowMode(): String {
         return prefs.getString("context_window_mode", MODE_DYNAMIC) ?: MODE_DYNAMIC
     }
@@ -153,10 +187,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit().putString("context_window_mode", mode).apply()
     }
 
-    /**
-     * Regra de atualização de alta frequência: atualiza o Canvas a cada 1 minuto
-     * quando faltar 15 minutos ou menos para o próximo evento iniciar.
-     */
     fun isHighFreq15MinRuleEnabled(): Boolean {
         return prefs.getBoolean("high_freq_15min_rule", true)
     }
@@ -165,9 +195,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit().putBoolean("high_freq_15min_rule", enabled).apply()
     }
 
-    /**
-     * Atualiza o Canvas sempre que o usuário acorda a tela do relógio (ACTION_SCREEN_ON).
-     */
     fun isUpdateOnScreenWakeEnabled(): Boolean {
         return prefs.getBoolean("update_on_screen_wake", true)
     }
@@ -177,44 +204,149 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Registra uma mudança climática / alerta meteorológico interceptado diretamente
-     * nas notificações do relógio pelo `WearContextNotificationListenerService`.
+     * Serviço Stand-Alone de Clima no Relógio (opcional, desligado por padrão caso o usuário
+     * não queira que o relógio busque sozinho de hora em hora).
      */
-    fun recordWatchWeatherNotificationAlert(
-        headline: String,
-        tempsCsv: String = "28,26,22,19,18",
-        hoursCsv: String = "Agora,+1h,+2h,+4h,+6h",
-        rainProbPct: Int = 75,
-        nowMs: Long = System.currentTimeMillis()
-    ) {
-        prefs.edit()
-            .putString("weather_alert_headline", headline)
-            .putString("weather_temps_csv", tempsCsv)
-            .putString("weather_hours_csv", hoursCsv)
-            .putInt("weather_rain_prob", rainProbPct.coerceIn(0, 100))
-            .putLong("weather_alert_timestamp_ms", nowMs)
-            .apply()
+    fun isWatchStandaloneWeatherEnabled(): Boolean {
+        return prefs.getBoolean("watch_standalone_weather_enabled", false)
     }
 
-    fun hasActiveWeatherNotificationOverride(nowMs: Long, windowMinutes: Long = 25L): Boolean {
+    fun setWatchStandaloneWeatherEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("watch_standalone_weather_enabled", enabled).apply()
+    }
+
+    fun getWatchStandaloneWeatherIntervalMinutes(): Int {
+        return prefs.getInt("watch_standalone_weather_interval_min", 60).coerceAtLeast(15)
+    }
+
+    fun setWatchStandaloneWeatherIntervalMinutes(minutes: Int) {
+        prefs.edit().putInt("watch_standalone_weather_interval_min", minutes.coerceAtLeast(15)).apply()
+    }
+
+    fun getLastStandaloneWeatherFetchMs(): Long {
+        return prefs.getLong("watch_standalone_last_fetch_ms", 0L)
+    }
+
+    fun setLastStandaloneWeatherFetchMs(timestampMs: Long) {
+        prefs.edit().putLong("watch_standalone_last_fetch_ms", timestampMs).apply()
+    }
+
+    /**
+     * Lista de pacotes de aplicativos de clima de terceiros escolhidos pelo usuário
+     * para servir como Trigger de Notificação.
+     */
+    fun getSelectedWeatherTriggerPackages(): Set<String> {
+        val csv = prefs.getString(
+            "selected_weather_trigger_packages_csv",
+            DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV
+        ) ?: DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV
+        return csv.split(",").map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+    }
+
+    /**
+     * Avalia se a curva horária buscada (pelo serviço Stand-Alone do relógio) apresenta
+     * uma mudança significativa de temperatura nas próximas horas (>= 4°C ou diferença >= 3°C
+     * em relação à leitura anterior) ou alta chance de chuva (>= 55%). Se sim, aciona
+     * automaticamente o alerta dinâmico para trocar a Janela de Contexto (Canvas)!
+     */
+    fun saveStandaloneWeatherAndDetectShift(
+        pickedTemps: List<Int>,
+        pickedLabels: List<String>,
+        maxRainProbPct: Int,
+        nowMs: Long = System.currentTimeMillis()
+    ): Boolean {
+        val prevTempsStr = prefs.getString("weather_temps_csv", "") ?: ""
+        val prevFirstTemp = prevTempsStr.split(",").firstOrNull()?.trim()?.toIntOrNull()
+
+        val tempsCsv = pickedTemps.joinToString(",")
+        val hoursCsv = pickedLabels.joinToString(",")
+
+        val minT = pickedTemps.minOrNull() ?: 22
+        val maxT = pickedTemps.maxOrNull() ?: 22
+        val firstT = pickedTemps.firstOrNull() ?: 22
+        val lastT = pickedTemps.lastOrNull() ?: firstT
+
+        val shiftAcrossHours = (maxT - minT) >= 4
+        val shiftFromPreviousFetch = prevFirstTemp != null && kotlin.math.abs(firstT - prevFirstTemp) >= 3
+        val rainAlert = maxRainProbPct >= 55
+
+        val shiftDetected = shiftAcrossHours || shiftFromPreviousFetch || rainAlert
+
+        val editor = prefs.edit()
+            .putString("weather_temps_csv", tempsCsv)
+            .putString("weather_hours_csv", hoursCsv)
+            .putInt("weather_rain_prob", maxRainProbPct.coerceIn(0, 100))
+            .putLong("watch_standalone_last_fetch_ms", nowMs)
+
+        if (shiftDetected) {
+            val headline = when {
+                rainAlert && shiftAcrossHours ->
+                    "Relógio 1h • Mudança ${firstT}°→${lastT}° (Chuva ${maxRainProbPct}%)"
+                shiftAcrossHours ->
+                    "Relógio 1h • Variação ${firstT}°→${lastT}° nas próx. horas"
+                rainAlert ->
+                    "Relógio 1h • Previsão de chuva (${maxRainProbPct}%)"
+                else ->
+                    "Relógio 1h • Mudança térmica p/ ${firstT}°C"
+            }
+            editor.putString("weather_alert_source", "Relógio Stand-Alone")
+            editor.putString("weather_alert_headline", headline)
+            editor.putLong("weather_alert_timestamp_ms", nowMs)
+        }
+        editor.apply()
+        return shiftDetected
+    }
+
+    /**
+     * Registra uma notificação de Clima observada (vinda de um App de terceiro escolhido pelo usuário),
+     * mantendo a curva horária de temperaturas que foi buscada pelo telefone ou pelo relógio!
+     */
+    fun recordWatchWeatherNotificationAlert(
+        sourceAppLabel: String = "App Clima",
+        headline: String,
+        tempsCsv: String? = null,
+        hoursCsv: String? = null,
+        rainProbPct: Int? = null,
+        nowMs: Long = System.currentTimeMillis()
+    ) {
+        val editor = prefs.edit()
+            .putString("weather_alert_source", sourceAppLabel)
+            .putString("weather_alert_headline", headline)
+            .putLong("weather_alert_timestamp_ms", nowMs)
+
+        if (!tempsCsv.isNullOrBlank()) {
+            editor.putString("weather_temps_csv", tempsCsv)
+        }
+        if (!hoursCsv.isNullOrBlank()) {
+            editor.putString("weather_hours_csv", hoursCsv)
+        }
+        if (rainProbPct != null) {
+            editor.putInt("weather_rain_prob", rainProbPct.coerceIn(0, 100))
+        }
+        editor.apply()
+    }
+
+    fun hasActiveWeatherNotificationOverride(nowMs: Long, windowMinutes: Long = 45L): Boolean {
         val alertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
         if (alertTs <= 0L) return false
         return (nowMs - alertTs) in 0..TimeUnit.MINUTES.toMillis(windowMinutes)
     }
 
     fun getHourlyWeatherSnapshot(nowMs: Long): HourlyWeatherSnapshot {
-        val headline = prefs.getString("weather_alert_headline", "Queda térmica • Chuva em 40m")
-            ?: "Queda térmica • Chuva em 40m"
-        val tempsStr = prefs.getString("weather_temps_csv", "28,26,22,19,18") ?: "28,26,22,19,18"
+        val source = prefs.getString("weather_alert_source", "Previsão do Telefone") ?: "Previsão do Telefone"
+        val headline = prefs.getString("weather_alert_headline", "Previsão horária sincronizada pelo telefone")
+            ?: "Previsão horária sincronizada pelo telefone"
+        val tempsStr = prefs.getString("weather_temps_csv", "29,27,24,23,25") ?: "29,27,24,23,25"
         val hoursStr = prefs.getString("weather_hours_csv", "Agora,16h,18h,20h,22h") ?: "Agora,16h,18h,20h,22h"
-        val rainProb = prefs.getInt("weather_rain_prob", 75)
+        val rainProb = prefs.getInt("weather_rain_prob", 65)
 
         val temps = tempsStr.split(",").mapNotNull { it.trim().toIntOrNull() }
-            .ifEmpty { listOf(28, 26, 22, 19, 18) }
+            .ifEmpty { listOf(29, 27, 24, 23, 25) }
         val labels = hoursStr.split(",").map { it.trim() }
             .ifEmpty { listOf("Agora", "16h", "18h", "20h", "22h") }
 
         return HourlyWeatherSnapshot(
+            alertSource = source,
             alertHeadline = headline,
             hourlyLabels = labels,
             hourlyTempsC = temps,
@@ -311,6 +443,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val MODE_EVENTS = "EVENTS"
         const val MODE_WEATHER = "WEATHER"
         const val MODE_STEPS = "STEPS"
+
+        const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
+            "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"
 
         @Volatile
         private var INSTANCE: WatchAutonomousRepository? = null

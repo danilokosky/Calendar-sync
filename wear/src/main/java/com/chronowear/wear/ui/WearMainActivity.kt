@@ -49,6 +49,7 @@ class WearMainActivity : Activity() {
     private lateinit var complicationStatusText: TextView
     private lateinit var contextModeButton: Button
     private lateinit var turboRuleButton: Button
+    private lateinit var standaloneWeatherButton: Button
 
     private var upcomingThree: List<CachedWearEvent> = emptyList()
 
@@ -237,6 +238,35 @@ class WearMainActivity : Activity() {
         }
         container.addView(turboRuleButton)
 
+        // Serviço Opcional Stand-Alone de Clima no Relógio (1h em 1h) — Desligado por padrão
+        standaloneWeatherButton = Button(this).apply {
+            val enabled = repo.isWatchStandaloneWeatherEnabled()
+            text = if (enabled) "🌤 Clima Stand-Alone (1h): ON" else "🌤 Clima Stand-Alone (1h): OFF"
+            isAllCaps = false
+            textSize = 10.5f
+            setTextColor(Color.parseColor(if (enabled) "#4ADE80" else "#94A3B8"))
+            background = pillBg("#161D1B", "#2B3935", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(32)
+            ).apply { bottomMargin = dp(6) }
+            setOnClickListener {
+                val next = !repo.isWatchStandaloneWeatherEnabled()
+                repo.setWatchStandaloneWeatherEnabled(next)
+                text = if (next) "🌤 Clima Stand-Alone (1h): ON" else "🌤 Clima Stand-Alone (1h): OFF"
+                setTextColor(Color.parseColor(if (next) "#4ADE80" else "#94A3B8"))
+                if (next) {
+                    AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
+                        this@WearMainActivity,
+                        forceRefresh = true
+                    )
+                }
+                AutonomousCountdownScheduler.scheduleNextTransition(this@WearMainActivity)
+                forceUpdateComplicationsAndTile()
+            }
+        }
+        container.addView(standaloneWeatherButton)
+
         // Permissão para Ler Notificações do Relógio (Clima / Alertas Contextuais)
         val notifAccessBtn = Button(this).apply {
             text = "🔔 Acesso Notificações (Clima)"
@@ -295,6 +325,15 @@ class WearMainActivity : Activity() {
         } else {
             "⚡ Turbo 1m (≤15m): OFF"
         }
+        val standAloneOn = repo.isWatchStandaloneWeatherEnabled()
+        standaloneWeatherButton.text = if (standAloneOn) {
+            "🌤 Clima Stand-Alone (1h): ON"
+        } else {
+            "🌤 Clima Stand-Alone (1h): OFF"
+        }
+        standaloneWeatherButton.setTextColor(
+            Color.parseColor(if (standAloneOn) "#4ADE80" else "#94A3B8")
+        )
         updateCountdownTick()
 
         uiScope.launch {

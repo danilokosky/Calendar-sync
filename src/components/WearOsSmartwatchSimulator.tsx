@@ -52,6 +52,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   onResetTime,
 }) => {
   const [watchScreenMode, setWatchScreenMode] = useState<'wff' | 'tile' | 'cache'>('wff');
+  const [weatherNotifSource, setWeatherNotifSource] = useState<
+    'ChronoWear Auto (1h)' | 'App Clima (Escolhido)' | 'Relógio Stand-Alone (1h)'
+  >('ChronoWear Auto (1h)');
 
   const ev1 = watchState.upcomingThree[0] || null;
   const ev2 = watchState.upcomingThree[1] || null;
@@ -82,19 +85,33 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     { day: 'Dom', steps: 5140, isToday: false },
   ];
 
+  const handleCycleWeatherNotif = () => {
+    if (!hasActiveWatchWeatherAlert) {
+      setWeatherNotifSource('ChronoWear Auto (1h)');
+      onToggleWatchWeatherAlert();
+    } else if (weatherNotifSource === 'ChronoWear Auto (1h)') {
+      setWeatherNotifSource('App Clima (Escolhido)');
+    } else if (weatherNotifSource === 'App Clima (Escolhido)') {
+      setWeatherNotifSource('Relógio Stand-Alone (1h)');
+      onUpdateConfig({ watchStandaloneWeatherEnabled: true });
+    } else {
+      onToggleWatchWeatherAlert();
+    }
+  };
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col h-full justify-between">
       {/* Top Header & Autonomous Mode Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.0)
+            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.1)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Única Complication de Imagem (604×272px) · Turbo 1 min (≤15m) + Leitor de Notificações do Relógio
+            3 Gatilhos de Clima: Busca Periódica (1h) · Apps Escolhidos · Stand-Alone no Relógio
           </p>
         </div>
 
@@ -135,7 +152,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             }`}
           >
             <Watch className="w-3.5 h-3.5" />
-            <span>Watch Face v1.1.0</span>
+            <span>Watch Face v1.1.1</span>
           </button>
           <button
             type="button"
@@ -163,7 +180,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           </button>
         </div>
 
-        {/* Seletor Rápido da Janela de Contexto + Simulador de Notificação Exclusiva do Relógio */}
+        {/* Seletor Rápido da Janela de Contexto + Simulador dos 3 Gatilhos de Mudança de Clima */}
         <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/90 border border-slate-800/80 rounded-xl px-3 py-2">
           <div className="flex items-center gap-1">
             <span className="text-[11px] font-mono text-slate-400 mr-1">Janela:</span>
@@ -188,8 +205,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 
           <button
             type="button"
-            onClick={onToggleWatchWeatherAlert}
-            title="Simula o WearContextNotificationListenerService interceptando uma notificação de mudança climática no relógio"
+            onClick={handleCycleWeatherNotif}
+            title="Testa os 3 gatilhos de mudança de clima: Busca Periódica do App (1h), App de Terceiro Escolhido ou Serviço Stand-Alone do Relógio"
             className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
               hasActiveWatchWeatherAlert
                 ? 'bg-sky-500/20 border-sky-400 text-sky-300'
@@ -199,8 +216,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             <BellRing className="w-3 h-3 text-sky-400" />
             <span>
               {hasActiveWatchWeatherAlert
-                ? 'Notif. Clima no Relógio: ATIVA'
-                : 'Simular Notif. Clima (Relógio)'}
+                ? `🔔 ${weatherNotifSource}: ATIVO`
+                : 'Simular Gatilho de Clima'}
             </span>
           </button>
         </div>
@@ -411,23 +428,31 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </>
                 )}
 
-                {/* MODO 2: CURVA DE TEMPERATURA NAS PRÓXIMAS HORAS (WEATHER) */}
+                {/* MODO 2: CURVA DE TEMPERATURA NAS PRÓXIMAS HORAS (WEATHER — Buscada pelo Telefone) */}
                 {effectiveMode === 'WEATHER' && (
                   <>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <CloudRain className="w-3.5 h-3.5 text-[#67E8F9] shrink-0" />
-                        <span className="text-[12px] font-bold text-[#F5C438] leading-none truncate">
-                          Clima • Próximas Horas
+                        <span className="text-[11.5px] font-bold text-[#F5C438] leading-none truncate">
+                          {hasActiveWatchWeatherAlert
+                            ? `🔔 ${weatherNotifSource} • Clima`
+                            : 'Clima • Pelo Telefone'}
                         </span>
                       </div>
                       <span className="text-[10px] font-mono font-bold text-[#67E8F9] shrink-0">
-                        {hasActiveWatchWeatherAlert ? '🔔 Chuva 18h' : '29° → 23°'}
+                        {hasActiveWatchWeatherAlert ? 'Chuva 75%' : '29° → 23°'}
                       </span>
                     </div>
 
+                    <div className="text-[9.5px] text-slate-300 truncate leading-none">
+                      {hasActiveWatchWeatherAlert
+                        ? `${weatherNotifSource}: Queda p/ 23°C e chuva às 18h`
+                        : 'Previsão horária sincronizada pelo telefone'}
+                    </div>
+
                     {/* Curva Bezier de Temperatura no Canvas 604x272 */}
-                    <div className="relative w-full h-[54px] flex items-center">
+                    <div className="relative w-full h-[44px] flex items-center">
                       <svg viewBox="0 0 240 54" className="w-full h-full overflow-visible">
                         <defs>
                           <linearGradient id="tempFill" x1="0" y1="0" x2="0" y2="1">

@@ -6,12 +6,16 @@ import workflowRaw from '../../.github/workflows/android-build.yml?raw';
 import mobileManifestRaw from '../../mobile/src/main/AndroidManifest.xml?raw';
 import mobileActivityRaw from '../../mobile/src/main/java/com/chronowear/mobile/ui/MobileSyncConfigActivity.kt?raw';
 import mobileEngineRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncEngine.kt?raw';
+import mobilePrefsRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/SyncPreferences.kt?raw';
+import mobileWearListenerRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/WearRequestListenerService.kt?raw';
 import mobileWorkerRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncWorker.kt?raw';
 import wearBuildGradleRaw from '../../wear/build.gradle.kts?raw';
 import wearManifestRaw from '../../wear/src/main/AndroidManifest.xml?raw';
 import wearCapabilitiesXmlRaw from '../../wear/src/main/res/values/wear.xml?raw';
 import wearMainActivityRaw from '../../wear/src/main/java/com/chronowear/wear/ui/WearMainActivity.kt?raw';
 import wearPhoneDataListenerRaw from '../../wear/src/main/java/com/chronowear/wear/data/PhoneDataListenerService.kt?raw';
+import wearRepoRaw from '../../wear/src/main/java/com/chronowear/wear/data/WatchAutonomousRepository.kt?raw';
+import wearSchedulerRaw from '../../wear/src/main/java/com/chronowear/wear/data/AutonomousCountdownScheduler.kt?raw';
 import wearComplicationServiceRaw from '../../wear/src/main/java/com/chronowear/wear/complication/NextEventComplicationService.kt?raw';
 import watchfaceBuildGradleRaw from '../../watchface/build.gradle.kts?raw';
 import watchfaceManifestRaw from '../../watchface/src/main/AndroidManifest.xml?raw';
@@ -60,28 +64,46 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     path: 'mobile/src/main/AndroidManifest.xml',
     module: 'mobile',
     language: 'xml',
-    title: 'Manifesto do Smartphone (:mobile)',
+    title: 'Manifesto do Smartphone (:mobile) + Detector de Clima (Google/Clima)',
     description:
-      'Declara permissões controladas pelo usuário, serviço de segundo plano e receptor de confirmação de instalação no relógio (/chronowear/pong_watch_app).',
+      'Declara permissões de Calendário, Internet/Localização aproximada (para previsão horária) e PhoneWeatherNotificationListenerService para observar notificações do App Google e App Clima.',
     content: mobileManifestRaw,
   },
   {
     path: 'mobile/src/main/java/com/chronowear/mobile/ui/MobileSyncConfigActivity.kt',
     module: 'mobile',
     language: 'kotlin',
-    title: 'MobileSyncConfigActivity.kt (3 Abas no Rodapé + Verificação Wear)',
+    title: 'MobileSyncConfigActivity.kt (3 Abas + Contexto Canvas + Clima pelo Telefone)',
     description:
-      'Interface limpa com apenas as 3 abas no rodapé (Home, Settings, About) e verificação real se o app está instalado no relógio conectado.',
+      'Interface estilo Samsung Health com seletor de função da Janela de Contexto, regra de 1 min (≤15m) e autorização de leitura de notificações (App Google / App Clima).',
     content: mobileActivityRaw,
   },
   {
     path: 'mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncEngine.kt',
     module: 'mobile',
     language: 'kotlin',
-    title: 'CalendarSyncEngine.kt (Leitura da Agenda + Verificação Capability/Ping)',
+    title: 'CalendarSyncEngine.kt (Agenda + Previsão Horária pelo Telefone)',
     description:
-      'Verifica se o relógio conectado possui o app instalado (CONNECTED_WITH_APP_INSTALLED vs WEARABLE_CONNECTED_APP_MISSING) e sincroniza CalendarContract.Instances.',
+      'Busca as previsões horárias reais pelo telefone (Open-Meteo API) e envia junto com os compromissos e avisos do App Google / App Clima para o relógio.',
     content: mobileEngineRaw,
+  },
+  {
+    path: 'mobile/src/main/java/com/chronowear/mobile/sync/WearRequestListenerService.kt',
+    module: 'mobile',
+    language: 'kotlin',
+    title: 'WearRequestListenerService.kt + PhoneWeatherNotificationListenerService',
+    description:
+      'Observa notificações sobre clima no smartphone vindas do App Google ou do App Clima, atualiza a previsão horária pelo telefone e sincroniza imediatamente com o relógio.',
+    content: mobileWearListenerRaw,
+  },
+  {
+    path: 'mobile/src/main/java/com/chronowear/mobile/sync/SyncPreferences.kt',
+    module: 'mobile',
+    language: 'kotlin',
+    title: 'SyncPreferences.kt (Preferências + Cache de Previsão do Telefone)',
+    description:
+      'Armazena configurações da Janela de Contexto, regra Turbo 15 min, curva horária de clima buscada pelo telefone e última notificação observada (App Google / App Clima).',
+    content: mobilePrefsRaw,
   },
   {
     path: 'mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncWorker.kt',
@@ -107,7 +129,7 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     language: 'xml',
     title: 'Manifesto Exclusivo Wear OS (:wear) — Única Complication Canvas + NotificationListener',
     description:
-      'Expõe apenas 1 Complication (ChronoWear • Janela de Contexto (Canvas), SMALL_IMAGE/PHOTO_IMAGE) e registra o WearContextNotificationListenerService para ler notificações no próprio relógio.',
+      'Expõe apenas 1 Complication (ChronoWear • Janela de Contexto (Canvas), SMALL_IMAGE/PHOTO_IMAGE) e registra o WearContextNotificationListenerService.',
     content: wearManifestRaw,
   },
   {
@@ -134,8 +156,26 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     language: 'kotlin',
     title: 'PhoneDataListenerService.kt + WearContextNotificationListenerService',
     description:
-      'Sincroniza configurações/eventos com o smartphone e intercepta notificações diretamente no relógio (ex: alerta de chuva ou mudança brusca de temperatura) para alternar o Canvas.',
+      'Recebe do telefone a agenda + previsão horária de clima e observa notificações do App Google ou App Clima para alternar o Canvas e informar a origem.',
     content: wearPhoneDataListenerRaw,
+  },
+  {
+    path: 'wear/src/main/java/com/chronowear/wear/data/WatchAutonomousRepository.kt',
+    module: 'wear',
+    language: 'kotlin',
+    title: 'WatchAutonomousRepository.kt (Banco SQLite + Previsão do Telefone + Contexto)',
+    description:
+      'Gerencia o cache autônomo de compromissos, a curva horária de clima recebida do telefone e a resolução automática do modo Dinâmico.',
+    content: wearRepoRaw,
+  },
+  {
+    path: 'wear/src/main/java/com/chronowear/wear/data/AutonomousCountdownScheduler.kt',
+    module: 'wear',
+    language: 'kotlin',
+    title: 'AutonomousCountdownScheduler.kt (Screen-Wake + Regra Turbo 1 min nos 15m Finais)',
+    description:
+      'Atualiza o Canvas ao ligar a tela (ACTION_SCREEN_ON) e agenda alarmes exatos a cada 1 minuto quando faltam ≤ 15 minutos para o evento começar.',
+    content: wearSchedulerRaw,
   },
   {
     path: 'wear/src/main/java/com/chronowear/wear/complication/NextEventComplicationService.kt',
@@ -143,7 +183,7 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     language: 'kotlin',
     title: 'NextEventComplicationService.kt (Renderizador Canvas Bitmap 604×272px Multi-Contexto)',
     description:
-      'Desenha em Bitmap ARGB_8888 transparente o contexto ativo: Próximos 3 Eventos com barra de 5px, Curva Bezier de Temperatura nas Próximas Horas ou Gráfico de Passos Semanais.',
+      'Desenha em Bitmap ARGB_8888 transparente o contexto ativo: Próximos 3 Eventos, Curva Bezier de Temperatura (informando se veio do App Google / App Clima) ou Passos Semanais.',
     content: wearComplicationServiceRaw,
   },
   {

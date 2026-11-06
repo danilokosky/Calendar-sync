@@ -19,7 +19,52 @@ export interface CalendarEventItem {
 export type SyncHorizonDays = 2 | 3 | 5 | 7;
 export type ProgressWindowMinutes = 30 | 60 | 120 | 180;
 export type SyncIntervalMinutes = 15 | 30 | 60;
+export type PhoneWeatherCheckIntervalMinutes = 30 | 60 | 120 | 180;
 export type ContextWindowMode = 'DYNAMIC' | 'EVENTS' | 'WEATHER' | 'STEPS';
+
+export interface WeatherTriggerAppItem {
+  packageName: string;
+  displayName: string;
+  categorySubtitle: string;
+}
+
+export const WEATHER_TRIGGER_CATALOG: WeatherTriggerAppItem[] = [
+  {
+    packageName: 'com.google.android.googlequicksearchbox',
+    displayName: 'App Google',
+    categorySubtitle: 'Alertas de Clima e Previsão do Google',
+  },
+  {
+    packageName: 'com.google.android.apps.weather',
+    displayName: 'Google Weather',
+    categorySubtitle: 'App Clima oficial do Google / Pixel / Wear',
+  },
+  {
+    packageName: 'com.sec.android.daemonapp',
+    displayName: 'App Clima (Samsung)',
+    categorySubtitle: 'Clima nativo One UI / Galaxy Watch',
+  },
+  {
+    packageName: 'br.com.climatempo.meteorologia',
+    displayName: 'Climatempo',
+    categorySubtitle: 'Previsão do Tempo e Alertas de Chuva',
+  },
+  {
+    packageName: 'com.accuweather.android',
+    displayName: 'AccuWeather',
+    categorySubtitle: 'Alertas Meteorológicos e Radar',
+  },
+  {
+    packageName: 'com.weather.Weather',
+    displayName: 'The Weather Channel',
+    categorySubtitle: 'Radar e Mudanças Bruscas de Clima',
+  },
+  {
+    packageName: 'com.windyty.android',
+    displayName: 'Windy',
+    categorySubtitle: 'Mapas de Vento, Frente Fria e Tempestade',
+  },
+];
 
 export interface SyncConfiguration {
   horizonDays: SyncHorizonDays;
@@ -29,6 +74,10 @@ export interface SyncConfiguration {
   contextWindowMode: ContextWindowMode;
   highFreq15MinRule: boolean;
   updateOnScreenWake: boolean;
+  phoneWeatherAutoCheckEnabled?: boolean;
+  phoneWeatherCheckIntervalMinutes?: PhoneWeatherCheckIntervalMinutes;
+  selectedWeatherTriggerApps?: string[];
+  watchStandaloneWeatherEnabled?: boolean;
 }
 
 export interface WatchCacheState {
@@ -41,6 +90,7 @@ export interface WatchCacheState {
   highFreq15MinRule?: boolean;
   updateOnScreenWake?: boolean;
   hasActiveWatchWeatherAlert?: boolean;
+  watchStandaloneWeatherEnabled?: boolean;
 }
 
 export interface ComplicationProgressState {
@@ -57,6 +107,38 @@ export interface ComplicationProgressState {
   isOngoing: boolean;
   autonomousCacheValidUntilMs: number;
   isOperatingAutonomously: boolean;
+}
+
+/**
+ * Avalia se a previsão horária buscada periodicamente pelo nosso App (no telefone ou no serviço
+ * Stand-Alone do relógio) apresenta mudança relevante de temperatura ou chuva nas próximas horas.
+ */
+export function detectHourlyWeatherShift(
+  temps: number[],
+  rainProbPct: number,
+  previousFirstTemp?: number | null
+): { hasShift: boolean; summary: string } {
+  if (temps.length < 2) {
+    return { hasShift: false, summary: 'Estável' };
+  }
+  const firstT = temps[0];
+  const lastT = temps[temps.length - 1];
+  const minT = Math.min(...temps);
+  const maxT = Math.max(...temps);
+  const swingInUpcomingHours = maxT - minT >= 4;
+  const deltaFromPreviousCheck =
+    previousFirstTemp != null && Math.abs(firstT - previousFirstTemp) >= 3;
+  const highRain = rainProbPct >= 55;
+
+  const hasShift = swingInUpcomingHours || deltaFromPreviousCheck || highRain;
+  const summary =
+    lastT < firstT
+      ? `Queda ${firstT}°→${minT}°C (${rainProbPct}% chuva)`
+      : lastT > firstT
+      ? `Subida ${firstT}°→${maxT}°C (${rainProbPct}% chuva)`
+      : `Variação ${minT}°..${maxT}°C (${rainProbPct}% chuva)`;
+
+  return { hasShift, summary };
 }
 
 export function resolveEffectiveWatchContextMode(

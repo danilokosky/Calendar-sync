@@ -3,6 +3,7 @@ import {
   CalendarSource,
   CalendarEventItem,
   SyncConfiguration,
+  WEATHER_TRIGGER_CATALOG,
 } from '../utils/calendarSyncEngine';
 import {
   Bluetooth,
@@ -15,6 +16,7 @@ import {
   Plus,
   Trash2,
   AlertTriangle,
+  CloudRain,
 } from 'lucide-react';
 
 interface SmartphoneCompanionSimulatorProps {
@@ -61,12 +63,27 @@ export const SmartphoneCompanionSimulator: React.FC<
   const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
   const [calendarPermGranted, setCalendarPermGranted] = useState(true);
 
-  // Modal "Synced calendars"
+  // Modal "Synced calendars" e Modal "Apps de Clima (Trigger)"
   const [isSyncedCalendarsDialogOpen, setIsSyncedCalendarsDialogOpen] = useState(false);
+  const [isWeatherAppsDialogOpen, setIsWeatherAppsDialogOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newMinutesFromNow, setNewMinutesFromNow] = useState<number>(45);
 
   const selectedCalendarsCount = calendars.filter((c) => c.enabled).length;
+  const selectedWeatherApps = config.selectedWeatherTriggerApps ?? [
+    'com.google.android.googlequicksearchbox',
+    'com.google.android.apps.weather',
+    'com.sec.android.daemonapp',
+    'br.com.climatempo.meteorologia',
+  ];
+
+  const handleToggleWeatherTriggerApp = (pkg: string) => {
+    const exists = selectedWeatherApps.includes(pkg);
+    const next = exists
+      ? selectedWeatherApps.filter((p) => p !== pkg)
+      : [...selectedWeatherApps, pkg];
+    onUpdateConfig({ selectedWeatherTriggerApps: next });
+  };
   const upcomingEvents = events
     .filter((e) => e.startEpochMs > referenceTimeMs)
     .sort((a, b) => a.startEpochMs - b.startEpochMs);
@@ -225,7 +242,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Janela de Contexto em Canvas Bitmap
                   </div>
                   <p className="text-[11px] text-[#C8D3CC] leading-relaxed">
-                    1 única Complication no relógio: escolha abaixo qual função o Canvas desenha (Eventos, Clima, Passos ou Dinâmico por notificação).
+                    1 única Complication no relógio: atualiza o clima pelo próprio app (de hora em hora), por apps de clima escolhidos ou pelo serviço Stand-Alone no relógio.
                   </p>
                 </div>
               </div>
@@ -329,13 +346,13 @@ export const SmartphoneCompanionSimulator: React.FC<
 
                 <div className="rounded-2xl bg-[#1B201D] p-3">
                   <div className="text-[10px] text-slate-400">
-                    Agendas &amp; Janela
+                    Clima &amp; Triggers
                   </div>
                   <div className="text-xs font-bold text-white mt-0.5">
-                    {selectedCalendarsCount} calendário(s)
+                    {selectedWeatherApps.length} apps trigger
                   </div>
                   <div className="text-[11px] font-mono text-sky-400 mt-0.5">
-                    Leitura {config.syncIntervalMinutes}m • Barra {config.progressWindowMinutes}m
+                    Auto {config.phoneWeatherCheckIntervalMinutes ?? 60}m • Watch SA: {config.watchStandaloneWeatherEnabled ? 'ON' : 'OFF'}
                   </div>
                 </div>
               </div>
@@ -388,31 +405,148 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </button>
               </div>
 
-              {/* 2. Watch Notifications Context Listener */}
+              {/* 2. Busca Periódica de Clima pelo Nosso App (Independente de Notificação Externa) */}
+              <div className="space-y-2 pt-2 border-t border-[#232925]">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-bold text-sky-300">
+                      Busca Periódica de Clima pelo App
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Nosso app busca o clima de hora em hora e notifica o relógio se houver mudança de temperatura
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={config.phoneWeatherAutoCheckEnabled ?? true}
+                    aria-label="Busca Periódica de Clima pelo App"
+                    onClick={() =>
+                      onUpdateConfig({
+                        phoneWeatherAutoCheckEnabled: !(
+                          config.phoneWeatherAutoCheckEnabled ?? true
+                        ),
+                      })
+                    }
+                    className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
+                      config.phoneWeatherAutoCheckEnabled ?? true
+                        ? 'bg-[#BAE6FD]'
+                        : 'bg-[#36393F]'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 rounded-full transition-all duration-200 ${
+                        config.phoneWeatherAutoCheckEnabled ?? true
+                          ? 'translate-x-5 bg-[#311B92]'
+                          : 'translate-x-0 bg-[#8E9297]'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-slate-300">
+                    Intervalo da busca de clima:
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {([30, 60, 120, 180] as const).map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() =>
+                          onUpdateConfig({
+                            phoneWeatherCheckIntervalMinutes: mins,
+                          })
+                        }
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-all cursor-pointer ${
+                          (config.phoneWeatherCheckIntervalMinutes ?? 60) === mins
+                            ? 'bg-[#BAE6FD] text-slate-950 font-bold'
+                            : 'bg-[#222824] text-slate-300 hover:bg-[#2C342F]'
+                        }`}
+                      >
+                        {mins === 30 ? '30m' : `${mins / 60}h`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Trigger por Apps de Terceiros de Clima Escolhidos pelo Usuário */}
+              <div className="space-y-2.5 pt-2 border-t border-[#232925]">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-bold text-slate-100">
+                      Trigger por Apps de Clima Escolhidos
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Dispara atualização de clima e muda o Canvas quando um app escolhido notificar
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={notificationsSyncEnabled}
+                    aria-label="Trigger por Apps de Clima Escolhidos"
+                    onClick={() => setNotificationsSyncEnabled((v) => !v)}
+                    className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
+                      notificationsSyncEnabled
+                        ? 'bg-[#BAE6FD]'
+                        : 'bg-[#36393F]'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 rounded-full transition-all duration-200 ${
+                        notificationsSyncEnabled
+                          ? 'translate-x-5 bg-[#311B92]'
+                          : 'translate-x-0 bg-[#8E9297]'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsWeatherAppsDialogOpen(true)}
+                  className="px-4 py-2 rounded-full border border-[#4B5850] bg-[#1E2420] hover:bg-[#28312B] active:scale-95 text-xs font-semibold text-slate-100 inline-flex items-center gap-2 transition-all duration-150 cursor-pointer"
+                >
+                  <CloudRain className="w-4 h-4 text-sky-300" />
+                  <span>
+                    Escolher Apps de Clima ({selectedWeatherApps.length})
+                  </span>
+                </button>
+              </div>
+
+              {/* 4. Serviço Stand-Alone de Clima no Relógio (1h em 1h, opcional) */}
               <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
                 <div>
-                  <div className="text-sm font-bold text-slate-100">
-                    Watch Notifications Context
+                  <div className="text-sm font-bold text-emerald-300">
+                    Serviço Stand-Alone no Relógio (1h)
                   </div>
                   <div className="text-xs text-slate-400">
-                    Lê alertas de clima/saúde no relógio p/ modo Dinâmico
+                    Opcional: relógio busca sozinho o clima de hora em hora (desligado por padrão)
                   </div>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={notificationsSyncEnabled}
-                  aria-label="Watch Notifications Context"
-                  onClick={() => setNotificationsSyncEnabled((v) => !v)}
+                  aria-checked={config.watchStandaloneWeatherEnabled ?? false}
+                  aria-label="Serviço Stand-Alone no Relógio (1h)"
+                  onClick={() =>
+                    onUpdateConfig({
+                      watchStandaloneWeatherEnabled: !(
+                        config.watchStandaloneWeatherEnabled ?? false
+                      ),
+                    })
+                  }
                   className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                    notificationsSyncEnabled
+                    config.watchStandaloneWeatherEnabled
                       ? 'bg-[#BAE6FD]'
                       : 'bg-[#36393F]'
                   }`}
                 >
                   <span
                     className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                      notificationsSyncEnabled
+                      config.watchStandaloneWeatherEnabled
                         ? 'translate-x-5 bg-[#311B92]'
                         : 'translate-x-0 bg-[#8E9297]'
                     }`}
@@ -420,7 +554,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </button>
               </div>
 
-              {/* 3. Regra Turbo 15 min (Atualizar a cada 1 min) */}
+              {/* 5. Regra Turbo 15 min (Atualizar a cada 1 min) */}
               <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
                 <div>
                   <div className="text-sm font-bold text-amber-300">
@@ -456,43 +590,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </button>
               </div>
 
-              {/* 4. Atualizar Canvas ao Ligar a Tela (Screen-On) */}
-              <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
-                <div>
-                  <div className="text-sm font-bold text-slate-100">
-                    Atualizar ao Acordar a Tela
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Redesenha o Canvas ao ligar a tela do relógio (Screen-On)
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={config.updateOnScreenWake}
-                  aria-label="Atualizar ao Acordar a Tela"
-                  onClick={() =>
-                    onUpdateConfig({
-                      updateOnScreenWake: !config.updateOnScreenWake,
-                    })
-                  }
-                  className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                    config.updateOnScreenWake
-                      ? 'bg-[#BAE6FD]'
-                      : 'bg-[#36393F]'
-                  }`}
-                >
-                  <span
-                    className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                      config.updateOnScreenWake
-                        ? 'translate-x-5 bg-[#311B92]'
-                        : 'translate-x-0 bg-[#8E9297]'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* 5. Calendar Events Sync + Synced calendars */}
+              {/* 6. Calendar Events Sync + Synced calendars */}
               <div className="space-y-3 pt-2 border-t border-[#232925]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -633,22 +731,25 @@ export const SmartphoneCompanionSimulator: React.FC<
             <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-3 text-xs text-slate-300 leading-relaxed shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
               <div className="text-sm font-bold text-white">
-                Janela de Contexto em Canvas Bitmap (v1.1.0)
+                3 Gatilhos Inteligentes de Clima para o Canvas (v1.1.1)
               </div>
               <p>
-                • <strong>Complication Única no Seletor</strong>: Removemos as
-                complications de texto. No relógio aparece apenas{' '}
-                <code className="text-amber-300">
-                  ChronoWear • Janela de Contexto (Canvas)
-                </code>
-                , e o conteúdo que ela renderiza (Eventos, Curva de Clima,
-                Passos Semanais ou Dinâmico) é escolhido aqui no App.
+                • <strong>1. Busca Periódica pelo Nosso App (Telefone)</strong>:
+                Mesmo que nenhum app externo envie notificação, o próprio ChronoWear
+                busca o clima de hora em hora (ou no intervalo configurado) e,
+                se detectar mudança relevante de temperatura nas próximas horas,
+                notifica o relógio para mudar dinamicamente o Canvas.
               </p>
               <p>
-                • <strong>Regra Turbo 15 min + Screen-On</strong>: O Canvas
-                atualiza quando o usuário liga a tela e, quando faltar{' '}
-                <strong>≤ 15 minutos</strong> para o evento iniciar, passa a
-                atualizar automaticamente <strong>a cada 1 minuto</strong>.
+                • <strong>2. Trigger por App de Clima Escolhido</strong>: Você
+                escolhe em Settings quais apps de clima (App Google, Google Weather,
+                App Clima Samsung, Climatempo, AccuWeather, The Weather Channel,
+                Windy) disparam a atualização imediata e enviam o contexto ao relógio.
+              </p>
+              <p>
+                • <strong>3. Serviço Stand-Alone no Relógio (1h em 1h)</strong>:
+                Opcional e configurável caso o usuário queira que o próprio
+                relógio busque sozinho o clima de hora em hora.
               </p>
             </div>
 
@@ -842,6 +943,84 @@ export const SmartphoneCompanionSimulator: React.FC<
           </div>
         </div>
       )}
+
+      {/* Modal Nativo Multi-Escolha "Apps de Clima (Trigger de Notificação)" */}
+      {isWeatherAppsDialogOpen && (
+        <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-5 z-20 transition-opacity duration-200">
+          <div className="w-full max-w-sm rounded-[28px] bg-[#1A201C] border border-[#344038] p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Apps de Clima (Trigger)
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Escolha quais apps da categoria de clima disparam a atualização do Canvas
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWeatherAppsDialogOpen(false)}
+                aria-label="Fechar seleção de apps de clima"
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+              {WEATHER_TRIGGER_CATALOG.map((app) => {
+                const isSelected = selectedWeatherApps.includes(
+                  app.packageName
+                );
+                return (
+                  <button
+                    key={app.packageName}
+                    type="button"
+                    onClick={() => handleToggleWeatherTriggerApp(app.packageName)}
+                    className={`w-full flex items-center justify-between gap-3 p-2.5 rounded-2xl border text-left transition-all duration-150 cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#26322B] border-[#4A6353]'
+                        : 'bg-[#141815] border-[#242B26] opacity-70'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-white truncate">
+                        {app.displayName}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {app.categorySubtitle}
+                      </div>
+                    </div>
+                    <div
+                      className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? 'bg-[#BAE6FD] text-slate-950'
+                          : 'border border-slate-600'
+                      }`}
+                    >
+                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWeatherAppsDialogOpen(false);
+                  onTriggerManualSync();
+                }}
+                className="px-5 py-2 rounded-full bg-[#BAE6FD] text-slate-950 font-bold text-xs active:scale-95 transition-transform cursor-pointer"
+              >
+                Salvar Apps Trigger
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

@@ -296,10 +296,15 @@ object AgendaCardBitmapRenderer {
 
         val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#F5C438")
-            textSize = 33f
+            textSize = 32f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText("Clima • Próximas Horas", 74f, 46f, headerPaint)
+        val headerLabel = if (weather.triggeredByWatchNotification) {
+            "🔔 ${weather.alertSource} • Clima"
+        } else {
+            "Clima • Pelo Telefone"
+        }
+        canvas.drawText(headerLabel, 74f, 46f, headerPaint)
 
         val rainBadgePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#67E8F9")
@@ -309,10 +314,10 @@ object AgendaCardBitmapRenderer {
         }
         canvas.drawText("Chuva ${weather.rainProbabilityPct}%", CARD_WIDTH - 24f, 45f, rainBadgePaint)
 
-        // Subtítulo do Alerta (ex: lido da notificação do relógio)
+        // Subtítulo do Alerta (informa se recebeu notificação do App Google ou do App Clima)
         val subPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#E2E8F0")
-            textSize = 26f
+            textSize = 25f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         }
         val ellipsizedAlert = TextUtils.ellipsize(

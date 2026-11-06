@@ -114,6 +114,15 @@ export default function App() {
     contextWindowMode: 'DYNAMIC',
     highFreq15MinRule: true,
     updateOnScreenWake: true,
+    phoneWeatherAutoCheckEnabled: true,
+    phoneWeatherCheckIntervalMinutes: 60,
+    selectedWeatherTriggerApps: [
+      'com.google.android.googlequicksearchbox',
+      'com.google.android.apps.weather',
+      'com.sec.android.daemonapp',
+      'br.com.climatempo.meteorologia',
+    ],
+    watchStandaloneWeatherEnabled: false,
   });
 
   // Watch clock can be fast-forwarded to test autonomous offline behavior
@@ -148,6 +157,7 @@ export default function App() {
         highFreq15MinRule: config.highFreq15MinRule,
         updateOnScreenWake: config.updateOnScreenWake,
         hasActiveWatchWeatherAlert,
+        watchStandaloneWeatherEnabled: config.watchStandaloneWeatherEnabled,
       };
     }
     return {
@@ -160,6 +170,7 @@ export default function App() {
       highFreq15MinRule: config.highFreq15MinRule,
       updateOnScreenWake: config.updateOnScreenWake,
       hasActiveWatchWeatherAlert,
+      watchStandaloneWeatherEnabled: config.watchStandaloneWeatherEnabled,
     };
   }, [
     isBluetoothConnected,
@@ -170,6 +181,7 @@ export default function App() {
     config.contextWindowMode,
     config.highFreq15MinRule,
     config.updateOnScreenWake,
+    config.watchStandaloneWeatherEnabled,
     hasActiveWatchWeatherAlert,
     offlineFrozenCache,
     offlineFrozenHorizonDays,

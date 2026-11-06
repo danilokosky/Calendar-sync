@@ -4,6 +4,7 @@ import {
   buildSyncPayload,
   evaluateWatchAutonomousState,
   formatCountdownText,
+  detectHourlyWeatherShift,
   CalendarSource,
   CalendarEventItem,
   WatchCacheState,
@@ -141,3 +142,19 @@ test('evaluateWatchAutonomousState enables 1-minute turbo rule at <= 15m and swi
   assert.equal(stateAt10mRemaining.isWithinTurbo15MinWindow, true);
   assert.equal(stateAt10mRemaining.effectiveContextMode, 'EVENTS');
 });
+
+test('detectHourlyWeatherShift detects temperature shifts and rain across periodic checks', () => {
+  // 1) Temperature drop >= 4°C in upcoming hours triggers shift
+  const shiftDrop = detectHourlyWeatherShift([29, 27, 24, 23, 25], 30, 29);
+  assert.equal(shiftDrop.hasShift, true);
+  assert.match(shiftDrop.summary, /Queda 29°→23°C/);
+
+  // 2) Stable temperatures (< 4°C swing, low rain, small delta from previous check) does NOT trigger shift
+  const stable = detectHourlyWeatherShift([26, 26, 25, 25, 26], 15, 25);
+  assert.equal(stable.hasShift, false);
+
+  // 3) Sudden delta >= 3°C compared to previous periodic check triggers shift
+  const deltaShift = detectHourlyWeatherShift([22, 22, 21, 21, 22], 20, 26);
+  assert.equal(deltaShift.hasShift, true);
+});
+

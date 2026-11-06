@@ -83,7 +83,10 @@ class MobileSyncConfigActivity : Activity() {
     // Elementos da tela Settings
     private lateinit var switchBackgroundService: Switch
     private lateinit var subtitleBackgroundService: TextView
+    private lateinit var switchPhoneWeatherAutoCheck: Switch
     private lateinit var switchNotificationsSync: Switch
+    private lateinit var btnWeatherTriggerAppsPill: Button
+    private lateinit var switchWatchStandaloneWeather: Switch
     private lateinit var switchMediaPlaybackSync: Switch
     private lateinit var switchCalendarEventsSync: Switch
     private lateinit var subtitleCalendarEventsSync: TextView
@@ -92,6 +95,7 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchHighFreq15MinRule: Switch
     private lateinit var switchUpdateOnScreenWake: Switch
     private lateinit var rowContextModeChips: LinearLayout
+    private lateinit var rowPhoneWeatherIntervalChips: LinearLayout
     private lateinit var rowFrequencyChips: LinearLayout
     private lateinit var rowProgressWindowChips: LinearLayout
     private lateinit var rowHorizonDaysChips: LinearLayout
@@ -685,9 +689,25 @@ class MobileSyncConfigActivity : Activity() {
             }
             mainSettingsCard.addView(btnBatteryPermissionPill)
 
+            val phoneAutoWeatherRow = createSettingToggleRow(
+                title = "Busca Periódica de Clima pelo App (Auto)",
+                subtitle = "Mesmo sem notificação externa, nosso app busca o clima de hora em hora e notifica o relógio se houver mudança de temperatura",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchPhoneWeatherAutoCheck = sw
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
+                        prefs.setPhoneWeatherAutoCheckEnabled(isChecked)
+                        triggerManualSync()
+                    }
+                }
+            )
+            mainSettingsCard.addView(phoneAutoWeatherRow)
+
             val notifSyncRow = createSettingToggleRow(
-                title = "Notifications Sync",
-                subtitle = "Only for Phone Notifications Complication",
+                title = "Trigger por Notificação de Apps de Clima",
+                subtitle = "Quando o app de clima escolhido disparar uma notificação, atualiza a previsão e muda o Canvas no relógio",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchNotificationsSync = sw
@@ -699,6 +719,69 @@ class MobileSyncConfigActivity : Activity() {
                 }
             )
             mainSettingsCard.addView(notifSyncRow)
+
+            btnWeatherTriggerAppsPill = createOutlineActionPillButton(
+                "🌦  Escolher Apps de Clima (Trigger)"
+            ) {
+                openWeatherTriggerAppsDialog()
+            }
+            mainSettingsCard.addView(btnWeatherTriggerAppsPill)
+
+            val btnNotifAccessPill = createOutlineActionPillButton(
+                "🔔  Autorizar Leitura de Notificações"
+            ) {
+                try {
+                    startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                } catch (_: Exception) {
+                }
+            }
+            mainSettingsCard.addView(btnNotifAccessPill)
+
+            val watchStandaloneWeatherRow = createSettingToggleRow(
+                title = "Serviço Stand-Alone de Clima no Relógio (1h)",
+                subtitle = "Opcional: permite que o próprio relógio busque o clima de hora em hora sozinho (desligado por padrão)",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchWatchStandaloneWeather = sw
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
+                        prefs.setWatchStandaloneWeatherEnabled(isChecked)
+                        triggerManualSync()
+                    }
+                }
+            )
+            mainSettingsCard.addView(watchStandaloneWeatherRow)
+
+            val btnWeatherFetchPill = createOutlineActionPillButton(
+                "🌤  Atualizar Previsão pelo Telefone Agora"
+            ) {
+                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 3009)
+                } else {
+                    uiScope.launch {
+                        withContext(Dispatchers.IO) {
+                            CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
+                                this@MobileSyncConfigActivity,
+                                forceRefresh = true
+                            )
+                            CalendarSyncEngine.performFullSyncToWatch(
+                                this@MobileSyncConfigActivity,
+                                "Previsão do Clima pelo Telefone"
+                            )
+                        }
+                        Toast.makeText(
+                            this@MobileSyncConfigActivity,
+                            "Previsão horária buscada pelo telefone e enviada ao relógio!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        refreshUiState()
+                    }
+                }
+            }
+            mainSettingsCard.addView(btnWeatherFetchPill)
 
             val mediaSyncRow = createSettingToggleRow(
                 title = "Media Playback Sync",
@@ -814,6 +897,21 @@ class MobileSyncConfigActivity : Activity() {
             }
             timingCard.addView(rowContextModeChips)
 
+            val weatherCheckLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Intervalo de Busca Automática de Clima (Telefone)"
+                textSize = 15f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 0, 0, dp(8))
+            }
+            timingCard.addView(weatherCheckLabel)
+
+            rowPhoneWeatherIntervalChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(14))
+            }
+            timingCard.addView(rowPhoneWeatherIntervalChips)
+
             val freqLabel = TextView(this@MobileSyncConfigActivity).apply {
                 text = "Frequência de Leitura do Calendário"
                 textSize = 15f
@@ -886,10 +984,11 @@ class MobileSyncConfigActivity : Activity() {
             }
 
             val body = TextView(this@MobileSyncConfigActivity).apply {
-                text = "ChronoWear Health & Calendar Sync (v1.1.0)\n\n" +
-                    "• Complication Única em Canvas Bitmap: No menu de personalização da Watch Face aparece apenas 'ChronoWear • Janela de Contexto (Canvas)'. O conteúdo renderizado (Próximos Eventos, Curva de Clima nas Próximas Horas, Passos Semanais ou Dinâmico) é escolhido diretamente aqui no App!\n\n" +
-                    "• Regra Turbo 15 min (1 min): Quando faltar 15 minutos ou menos para iniciar o próximo evento, o relógio atualiza o Canvas a cada 1 minuto. Fora dessa janela, atualiza ao acordar a tela (Screen-On) ou nas transições.\n\n" +
-                    "• Leitura de Notificações no Relógio: O serviço WearContextNotificationListenerService escuta notificações diretamente no Wear OS (ex: alertas de mudança climática/chuva) para alternar temporariamente a Janela de Contexto no modo Dinâmico."
+                text = "ChronoWear Health & Calendar Sync (v1.1.1)\n\n" +
+                    "• 3 Gatilhos Inteligentes de Clima para o Canvas:\n" +
+                    "  1) Busca Periódica pelo Nosso App (Telefone): De hora em hora (ou no intervalo configurado), o próprio ChronoWear busca a previsão e, se detectar mudança relevante de temperatura nas próximas horas, notifica o relógio para mudar dinamicamente o Canvas.\n" +
+                    "  2) Trigger por App de Terceiro Escolhido: Você escolhe quais apps da categoria de clima (App Google, Google Weather, App Clima Samsung, Climatempo, AccuWeather, The Weather Channel, Windy) disparam a atualização imediata e enviam o contexto ao relógio.\n" +
+                    "  3) Serviço Stand-Alone no Relógio (1h em 1h): Opcional e configurável caso queira que o próprio relógio busque sozinho o clima de hora em hora quando desconectado do celular."
                 textSize = 14f
                 setTextColor(Color.parseColor("#D1D5DB"))
                 setPadding(0, 0, 0, dp(16))
@@ -1084,6 +1183,66 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
+    /**
+     * Permite ao usuário escolher quais aplicativos da categoria de Clima (App Google, Google Weather,
+     * App Clima Samsung, Climatempo, AccuWeather, The Weather Channel, Windy e outros apps de clima
+     * instalados no aparelho) funcionarão como trigger de notificação para atualizar o clima e
+     * enviar o contexto ao relógio.
+     */
+    private fun openWeatherTriggerAppsDialog() {
+        val catalog = SyncPreferences.KNOWN_WEATHER_TRIGGER_CATALOG.toMutableList()
+        val knownPkgs = catalog.map { it.packageName.lowercase() }.toMutableSet()
+
+        try {
+            val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+            for (app in installedApps) {
+                val pkgLower = app.packageName.lowercase()
+                if (!knownPkgs.contains(pkgLower) && (
+                        pkgLower.contains("weather") ||
+                            pkgLower.contains("clima") ||
+                            pkgLower.contains("meteo") ||
+                            pkgLower.contains("forecast")
+                        )
+                ) {
+                    val label = packageManager.getApplicationLabel(app).toString()
+                    catalog.add(
+                        SyncPreferences.WeatherTriggerAppOption(
+                            packageName = app.packageName,
+                            displayName = label,
+                            categorySubtitle = "App de Clima instalado (${app.packageName})"
+                        )
+                    )
+                    knownPkgs.add(pkgLower)
+                }
+            }
+        } catch (_: Exception) {
+        }
+
+        val currentSelected = prefs.getSelectedWeatherTriggerPackages().toMutableSet()
+        val labels = catalog.map { opt ->
+            "${opt.displayName} • ${opt.categorySubtitle}"
+        }.toTypedArray()
+        val checkedItems = BooleanArray(catalog.size) { idx ->
+            currentSelected.contains(catalog[idx].packageName)
+        }
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Apps de Clima (Trigger de Notificação)")
+            .setMultiChoiceItems(labels, checkedItems) { _, which, isChecked ->
+                val pkg = catalog[which].packageName
+                if (isChecked) currentSelected.add(pkg) else currentSelected.remove(pkg)
+            }
+            .setPositiveButton("Salvar") { _, _ ->
+                prefs.setSelectedWeatherTriggerPackages(currentSelected)
+                if (currentSelected.isNotEmpty()) {
+                    prefs.setNotificationsSyncEnabled(true)
+                }
+                triggerManualSync()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun requestUnrestrictedBatteryPermissionByUser() {
         try {
             if (!CalendarSyncEngine.isIgnoringBatteryOptimizations(this)) {
@@ -1153,16 +1312,22 @@ class MobileSyncConfigActivity : Activity() {
         val hasCalPerm = CalendarSyncEngine.hasCalendarPermission(this)
         val isBgUnrestricted = CalendarSyncEngine.isIgnoringBatteryOptimizations(this)
         val selectedCalsCount = prefs.getSelectedCalendarIds().size
+        val selectedWeatherAppsCount = prefs.getSelectedWeatherTriggerPackages().size
 
         suppressSwitchEvents = true
         switchBackgroundService.isChecked = prefs.isBackgroundServiceEnabled()
+        switchPhoneWeatherAutoCheck.isChecked = prefs.isPhoneWeatherAutoCheckEnabled()
         switchNotificationsSync.isChecked = prefs.isNotificationsSyncEnabled()
+        switchWatchStandaloneWeather.isChecked = prefs.isWatchStandaloneWeatherEnabled()
         switchMediaPlaybackSync.isChecked = prefs.isMediaPlaybackSyncEnabled()
         switchCalendarEventsSync.isChecked = prefs.isCalendarEventsSyncEnabled() && hasCalPerm
         switchAutoReadOnChange.isChecked = prefs.isAutoSyncOnCalendarChangeEnabled()
         switchHighFreq15MinRule.isChecked = prefs.isHighFreq15MinRuleEnabled()
         switchUpdateOnScreenWake.isChecked = prefs.isUpdateOnScreenWakeEnabled()
         suppressSwitchEvents = false
+
+        btnWeatherTriggerAppsPill.text =
+            "🌦  Escolher Apps de Clima ($selectedWeatherAppsCount selecionado(s))"
 
         subtitleBackgroundService.text = if (prefs.isBackgroundServiceEnabled()) {
             if (isBgUnrestricted) "Ativo em 2º plano (Sem restrição)"
@@ -1251,6 +1416,17 @@ class MobileSyncConfigActivity : Activity() {
             rowContextModeChips.addView(
                 createSelectableChip(label, curCtx == mode) {
                     prefs.setContextWindowMode(mode)
+                    triggerManualSync()
+                }
+            )
+        }
+
+        rowPhoneWeatherIntervalChips.removeAllViews()
+        val curWeatherInt = prefs.getPhoneWeatherCheckIntervalMinutes()
+        listOf(30L to "30m", 60L to "1h", 120L to "2h", 180L to "3h").forEach { (mins, label) ->
+            rowPhoneWeatherIntervalChips.addView(
+                createSelectableChip(label, curWeatherInt == mins) {
+                    prefs.setPhoneWeatherCheckIntervalMinutes(mins)
                     triggerManualSync()
                 }
             )
