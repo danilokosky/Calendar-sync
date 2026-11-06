@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_face_name">ChronoWear Agenda</string>
+    <string name="colors_label">Tema de Cores</string>
+    <string name="theme_one_label">Âmbar &amp; Carbono</string>
+    <string name="theme_two_label">Ciano &amp; Esmeralda</string>
+    <string name="top_complication_label">Temporizador &amp; Barra (1h/2h)</string>
+    <string name="bottom_complication_label">Próximos 3 Eventos</string>
+</resources>

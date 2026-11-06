@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-feature android:name="android.hardware.type.watch" />
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="true" />
 
+    <!-- hasCode="false" é obrigatório no Watch Face Format -->
     <application
-        android:allowBackup="false"
-        android:hasCode="false"
-        android:label="ChronoWear WFF Top 3">
+        android:label="@string/watch_face_name"
+        android:hasCode="false">
+
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="true" />
 
         <property
             android:name="com.google.wear.watchface.format.version"

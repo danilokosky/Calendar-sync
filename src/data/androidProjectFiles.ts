@@ -13,6 +13,10 @@ import wearCapabilitiesXmlRaw from '../../wear/src/main/res/values/wear.xml?raw'
 import wearMainActivityRaw from '../../wear/src/main/java/com/chronowear/wear/ui/WearMainActivity.kt?raw';
 import wearPhoneDataListenerRaw from '../../wear/src/main/java/com/chronowear/wear/data/PhoneDataListenerService.kt?raw';
 import wearComplicationServiceRaw from '../../wear/src/main/java/com/chronowear/wear/complication/NextEventComplicationService.kt?raw';
+import watchfaceBuildGradleRaw from '../../watchface/build.gradle.kts?raw';
+import watchfaceManifestRaw from '../../watchface/src/main/AndroidManifest.xml?raw';
+import watchfaceInfoXmlRaw from '../../watchface/src/main/res/xml/watch_face_info.xml?raw';
+import watchfaceStringsXmlRaw from '../../watchface/src/main/res/values/strings.xml?raw';
 import watchfaceXmlRaw from '../../watchface/src/main/res/raw/watchface.xml?raw';
 
 export interface ProjectSourceFile {
@@ -143,12 +147,48 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     content: wearComplicationServiceRaw,
   },
   {
+    path: 'watchface/build.gradle.kts',
+    module: 'watchface',
+    language: 'gradle',
+    title: 'watchface/build.gradle.kts (isMinifyEnabled=true para hasCode=false)',
+    description:
+      'Habilita isMinifyEnabled=true no debug e release para remover classes.dex vazio, requisito obrigatório para o Wear OS reconhecer pacotes WFF.',
+    content: watchfaceBuildGradleRaw,
+  },
+  {
+    path: 'watchface/src/main/AndroidManifest.xml',
+    module: 'watchface',
+    language: 'xml',
+    title: 'watchface/src/main/AndroidManifest.xml (Manifesto WFF)',
+    description:
+      'Declara android:hasCode="false", standalone="true" e com.google.wear.watchface.format.version="1".',
+    content: watchfaceManifestRaw,
+  },
+  {
+    path: 'watchface/src/main/res/xml/watch_face_info.xml',
+    module: 'watchface',
+    language: 'xml',
+    title: 'watch_face_info.xml (Metadados Obrigatórios do Seletor de Watch Face)',
+    description:
+      'Define o recurso de Preview (@drawable/preview) e Editable="true" exigidos pelo seletor de Watch Faces do Wear OS.',
+    content: watchfaceInfoXmlRaw,
+  },
+  {
+    path: 'watchface/src/main/res/values/strings.xml',
+    module: 'watchface',
+    language: 'xml',
+    title: 'watchface/src/main/res/values/strings.xml',
+    description:
+      'Define @string/watch_face_name e os rótulos dos slots de Complication.',
+    content: watchfaceStringsXmlRaw,
+  },
+  {
     path: 'watchface/src/main/res/raw/watchface.xml',
     module: 'watchface',
     language: 'xml',
-    title: 'watchface.xml (Watch Face Format Oficial WFF 450x450)',
+    title: 'watchface.xml (Watch Face Format Oficial Validado no XSD)',
     description:
-      'Watch Face declarativa com slot para barra de progresso + contagem regressiva e slot amplo para os próximos 3 eventos.',
+      'Watch Face declarativa validada contra o XSD oficial do Google/Samsung (DefaultProviderPolicy, BoundingRoundBox, RoundRectangle e Transform).',
     content: watchfaceXmlRaw,
   },
 ];
