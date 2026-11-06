@@ -15,7 +15,6 @@ import {
   Layers,
   Database,
   Calendar,
-  Battery,
   CloudMoon,
   Footprints,
   Sun,
@@ -46,10 +45,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   const ev3 = watchState.upcomingThree[2] || null;
 
   const watchDate = new Date(currentWatchTimeMs);
-  const weekdayShort = watchDate
-    .toLocaleDateString('pt-BR', { weekday: 'short' })
-    .replace('.', '')
-    .toUpperCase();
+  const weekdayMap = ['DOM.', 'SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.'];
+  const weekdayUpper = weekdayMap[watchDate.getDay()] || 'SEX.';
   const dayOfMonth = String(watchDate.getDate()).padStart(2, '0');
   const timeHHMMSS = `${formatTimeHHMM(currentWatchTimeMs)}:32`;
 
@@ -59,13 +56,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
       <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · LAYOUT ONE UI WATCH (9 SLOTS WFF)
+            MÓDULOS :wear &amp; :watchface · GEOMETRIA RADIAL 450×450 (v1.0.5)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Quadro central padronizado (3 eventos alinhados sem repetição) + 2 barras laterais + 3 círculos + barra inferior
+            Arcos curvos reais (&lt;Arc&gt;) no bisel + 3 círculos em curva + único quadro central com colunas 100% alinhadas
           </p>
         </div>
 
@@ -105,7 +102,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           }`}
         >
           <Watch className="w-3.5 h-3.5" />
-          <span>Watch Face (9 Slots)</span>
+          <span>Watch Face Radial</span>
         </button>
         <button
           type="button"
@@ -133,175 +130,200 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
         </button>
       </div>
 
-      {/* Center Circular Watch Bezel (450x450 logical representation matching Samsung One UI Watch reference) */}
+      {/* Center Circular Watch Bezel (450x450 logical representation with true curved <Arc> bezel tracks) */}
       <div className="flex flex-col items-center justify-center my-2">
         <div
           data-testid="wear-watch-face"
-          className="relative w-[360px] h-[360px] sm:w-[380px] sm:h-[380px] rounded-full bg-black border-[8px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-3.5 px-3 select-none overflow-hidden"
+          className="relative w-[368px] h-[368px] sm:w-[384px] sm:h-[384px] rounded-full bg-black border-[8px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-3 px-6 select-none overflow-hidden"
         >
-          {/* TOPO: SEX. 06 + Relógio Digital 00:12:32 em destaque com DPI equilibrado */}
-          <div className="text-center w-full z-10">
-            <div className="text-[13px] font-bold tracking-wide flex items-center justify-center gap-1.5 leading-none">
-              <span className="text-[#FACC15]">{weekdayShort}.</span>
+          {/* SVG Overlay Renderizando os 3 Arcos Curvos Reais (<Arc>) do watchface.xml (Esquerdo, Direito e Inferior) */}
+          {watchScreenMode === 'wff' && (
+            <svg
+              viewBox="0 0 450 450"
+              className="absolute inset-0 w-full h-full pointer-events-none z-0"
+            >
+              {/* SLOT 7: Arco Lateral Esquerdo Curvo (250° a 290°) */}
+              <path
+                d="M 29.5 153.8 A 208 208 0 0 0 29.5 296.2"
+                fill="none"
+                stroke="#333627"
+                strokeWidth="14"
+                strokeLinecap="round"
+              />
+              <path
+                d="M 29.5 153.8 A 208 208 0 0 0 17.5 232.0"
+                fill="none"
+                stroke="#FACC15"
+                strokeWidth="14"
+                strokeLinecap="round"
+              />
+              {/* Ponto indicador no arco esquerdo */}
+              <circle cx="17.5" cy="232" r="6.5" fill="#F97316" />
+
+              {/* SLOT 8: Arco Lateral Direito Curvo (70° a 110°) */}
+              <path
+                d="M 420.5 153.8 A 208 208 0 0 1 420.5 296.2"
+                fill="none"
+                stroke="#25302B"
+                strokeWidth="14"
+                strokeLinecap="round"
+              />
+              <path
+                d="M 420.5 153.8 A 208 208 0 0 1 432.5 232.0"
+                fill="none"
+                stroke="#86EFAC"
+                strokeWidth="14"
+                strokeLinecap="round"
+              />
+              <circle cx="432.5" cy="232" r="6" fill="#FACC15" />
+
+              {/* SLOT 9: Arco Inferior Curvo de Bateria (162° a 198°) */}
+              <path
+                d="M 160.7 422.8 A 208 208 0 0 0 289.3 422.8"
+                fill="none"
+                stroke="#2B3024"
+                strokeWidth="14"
+                strokeLinecap="round"
+              />
+              <path
+                d="M 160.7 422.8 A 208 208 0 0 0 245.0 432.0"
+                fill="none"
+                stroke="#86EFAC"
+                strokeWidth="14"
+                strokeLinecap="round"
+              />
+              {/* Ícone de Bateria Dourado à esquerda do arco inferior */}
+              <rect x="131" y="405" width="6" height="3" rx="1" fill="#FACC15" />
+              <rect x="128" y="408" width="12" height="18" rx="3" fill="#FACC15" />
+            </svg>
+          )}
+
+          {/* TOPO: SEX. 06 (Sempre em Caixa Alta e 1 único ponto) + Relógio 00:12:32 */}
+          <div className="text-center w-full z-10 pt-0.5">
+            <div className="text-[14px] font-bold tracking-wide flex items-center justify-center gap-1.5 leading-none">
+              <span className="text-[#FACC15]">{weekdayUpper}</span>
               <span className="text-white">{dayOfMonth}</span>
             </div>
-            <div className="text-[36px] font-medium font-mono tabular-nums tracking-tight text-white leading-none mt-1">
+            <div className="text-[40px] font-light font-mono tabular-nums tracking-tight text-white leading-none mt-0.5">
               {timeHHMMSS}
             </div>
           </div>
 
-          {/* VIEW 1: Official Watch Face Format (WFF) — Quadro Central Padronizado + Complications Laterais, Circulares e Inferior */}
+          {/* VIEW 1: Official Watch Face Format (WFF) — Único Quadro Central + Arcos Curvos + 3 Círculos em Curva */}
           {watchScreenMode === 'wff' && (
             <>
-              {/* Linha Central: Barra Lateral Esquerda (Slot #7) + Quadro Padronizado 3 Eventos (Slots #1, #2, #3) + Barra Lateral Direita (Slot #8) */}
-              <div className="w-full flex items-center justify-between gap-1.5 px-1 z-10">
-                {/* SLOT #7: Barra Lateral Esquerda (Range / Short Text) */}
-                <div
-                  title="Slot #7: Barra Lateral Esquerda (Range / Texto Curto)"
-                  className="w-7 h-[118px] flex flex-col items-center justify-between py-1 shrink-0"
-                >
-                  <span className="text-[9px] font-bold text-[#FACC15]">⏳</span>
-                  <div className="relative w-2.5 h-20 rounded-full bg-[#2F3429] overflow-hidden flex flex-col justify-end">
-                    <div className="w-full h-1/2 bg-[#EAB308]/60 rounded-full" />
-                    <span className="absolute top-1/2 -translate-y-1/2 left-0.5 w-2 h-2 rounded-full bg-[#F97316]" />
-                  </div>
-                  <span className="text-[9px] font-mono font-bold text-[#67E8F9]">
-                    --
+              {/* Rótulos dos Arcos Laterais (Recuados para dentro da corda circular, sem cortar no bisel) */}
+              <span className="absolute left-5 top-[106px] text-[10px] font-bold text-[#FACC15] z-10">
+                ⏳
+              </span>
+              <span className="absolute left-6 top-[256px] text-[11px] font-bold font-mono text-[#67E8F9] z-10">
+                1
+              </span>
+              <span className="absolute right-5 top-[106px] w-4 h-4 rounded-full bg-[#FACC15] text-black text-[9px] font-bold flex items-center justify-center z-10">
+                ✓
+              </span>
+              <span className="absolute right-5 top-[256px] text-[10px] font-bold font-mono text-slate-200 z-10">
+                62%
+              </span>
+
+              {/* ÚNICO QUADRO DA TELA: Quadro Central Padronizado dos 3 Próximos Eventos */}
+              <div className="w-[80%] rounded-[18px] bg-[#0B0E12] border border-[#1B232E] px-3.5 py-2.5 space-y-1.5 shadow-inner z-10 -mt-1">
+                {/* Cabeçalho Hoje com Ícone de Calendário Dourado real e espaçamento limpo */}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-3.5 h-3.5 text-[#FACC15] shrink-0" />
+                  <span className="text-[12px] font-bold text-[#FACC15] leading-none">
+                    Hoje
                   </span>
                 </div>
 
-                {/* QUADRO CENTRAL PADRONIZADO (Mesma largura e alinhamento para os 3 eventos, SEM repetir o #1!) */}
-                <div className="flex-1 min-w-0 rounded-[14px] bg-[#0B0E13] border border-[#1A222D] px-3 py-2 space-y-1.5 shadow-inner">
-                  {/* Cabeçalho Hoje */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#FACC15]">
-                      <Calendar className="w-3 h-3 text-[#FACC15]" />
-                      <span>Hoje</span>
-                    </div>
-                    <span className="text-[9px] font-mono text-slate-400">
-                      {watchCache.isBluetoothConnected ? 'SYNC' : 'OFFLINE'}
-                    </span>
-                  </div>
-
-                  {/* SLOT #1: Evento Principal #1 + Contagem Regressiva + Barra de Progresso Fininha Acoplada */}
-                  <div className="w-full space-y-1">
-                    <div className="flex items-center justify-between gap-1.5 text-[12px] leading-tight">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="font-mono font-bold text-white shrink-0">
-                          {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
-                        </span>
-                        <span className="font-bold text-white truncate">
-                          {ev1 ? ev1.title : 'Sem eventos'}
-                        </span>
-                      </div>
-                      <span className="font-mono font-bold text-[11px] text-[#67E8F9] shrink-0">
-                        {watchState.hasUpcomingEvent
-                          ? watchState.formattedCountdown
-                          : '--'}
+                {/* LINHA 1 (Slots #1 + #10): Hora Branca (w=42px) + Título Dourado (#FACC15) + Timer Ciano + Barra Fina */}
+                <div className="w-full space-y-1">
+                  <div className="flex items-center justify-between gap-1 text-[12.5px] leading-tight">
+                    <div className="flex items-center min-w-0">
+                      <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                        {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
+                      </span>
+                      <span className="font-bold text-[#FACC15] truncate">
+                        {ev1 ? ev1.title : 'Sem eventos'}
                       </span>
                     </div>
-                    {/* Barra de progresso fininha acoplada ao Evento Principal #1 */}
-                    <div className="w-full h-[4px] bg-[#232B36] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#FACC15] rounded-full transition-all duration-200"
-                        style={{
-                          width: `${Math.max(8, Math.round(watchState.progressRatio * 100))}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* SLOT #2: Próximo Evento #2 (Alinhado no mesmo quadro padrão, sem repetir o #1) */}
-                  <div className="w-full flex items-center gap-1.5 text-[12px] leading-tight">
-                    <span className="font-mono font-bold text-white shrink-0">
-                      {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
-                    </span>
-                    <span className="font-bold text-[#FACC15] truncate">
-                      {ev2 ? ev2.title : 'Livre'}
+                    <span className="font-mono font-bold text-[11px] text-[#67E8F9] shrink-0 ml-1">
+                      {watchState.hasUpcomingEvent
+                        ? watchState.formattedCountdown
+                        : '--'}
                     </span>
                   </div>
-
-                  {/* SLOT #3: Próximo Evento #3 (Alinhado no mesmo quadro padrão) */}
-                  <div className="w-full flex items-center gap-1.5 text-[12px] leading-tight">
-                    <span className="font-mono font-bold text-white shrink-0">
-                      {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
-                    </span>
-                    <span className="font-bold text-[#FACC15] truncate">
-                      {ev3 ? ev3.title : 'Livre'}
-                    </span>
+                  {/* Barra fininha (3.5px) acoplada logo abaixo do Evento #1 */}
+                  <div className="w-full h-[3.5px] bg-[#232B36] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#FACC15] rounded-full transition-all duration-200"
+                      style={{
+                        width: `${Math.max(8, Math.round(watchState.progressRatio * 100))}%`,
+                      }}
+                    />
                   </div>
                 </div>
 
-                {/* SLOT #8: Barra Lateral Direita (Range / Short Text) */}
-                <div
-                  title="Slot #8: Barra Lateral Direita (Range / Texto Curto)"
-                  className="w-7 h-[118px] flex flex-col items-center justify-between py-1 shrink-0"
-                >
-                  <span className="w-3.5 h-3.5 rounded-full bg-[#FACC15] text-black text-[9px] font-bold flex items-center justify-center">
-                    ✓
+                {/* LINHA 2 (Slot #2): Mesma coluna de Hora Branca (w=42px) + Mesma coluna de Título Dourado (#FACC15) */}
+                <div className="w-full flex items-center text-[12.5px] leading-tight pt-0.5">
+                  <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                    {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
                   </span>
-                  <div className="relative w-2.5 h-20 rounded-full bg-[#25302B] overflow-hidden flex flex-col justify-end">
-                    <div className="w-full h-2/3 bg-[#67E8F9]/60 rounded-full" />
-                  </div>
-                  <span className="text-[8px] font-bold text-slate-300">
-                    OK
+                  <span className="font-bold text-[#FACC15] truncate">
+                    {ev2 ? ev2.title : 'Livre'}
+                  </span>
+                </div>
+
+                {/* LINHA 3 (Slot #3): Mesma coluna de Hora Branca (w=42px) + Mesma coluna de Título Dourado (#FACC15) */}
+                <div className="w-full flex items-center text-[12.5px] leading-tight">
+                  <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                    {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
+                  </span>
+                  <span className="font-bold text-[#FACC15] truncate">
+                    {ev3 ? ev3.title : 'Livre'}
                   </span>
                 </div>
               </div>
 
-              {/* SLOTS #4, #5 e #6: 3 Círculos de Complication Alinhados Abaixo do Quadro Central */}
-              <div className="flex items-center justify-center gap-3.5 z-10">
-                {/* Slot #4: Círculo Esquerdo */}
+              {/* SLOTS #4, #5 e #6: 3 Círculos Distribuídos em Curva (Laterais mais altos, Central mais baixo acompanhando o aro) */}
+              <div className="flex items-start justify-center gap-3.5 z-10 -mt-1">
+                {/* Slot #4: Círculo Esquerdo (y=246) */}
                 <div
                   title="Slot #4: Complication Circular Esquerda"
-                  className="w-[58px] h-[58px] rounded-full bg-[#181B1F] border border-[#262B31] flex flex-col items-center justify-center p-1"
+                  className="w-[62px] h-[62px] rounded-full bg-[#191C20] flex flex-col items-center justify-center p-1"
                 >
-                  <Footprints className="w-3 h-3 text-[#67E8F9]" />
-                  <span className="text-[11px] font-bold text-white leading-tight mt-0.5">
-                    4.820
+                  <Footprints className="w-3.5 h-3.5 text-[#67E8F9]" />
+                  <span className="text-[12px] font-bold text-white leading-tight mt-0.5">
+                    1.486
                   </span>
                 </div>
 
-                {/* Slot #5: Círculo Central */}
+                {/* Slot #5: Círculo Central na Curva (y=266 -> deslocado +14px acompanhando a curvatura redonda) */}
                 <div
                   title="Slot #5: Complication Circular Central"
-                  className="w-[58px] h-[58px] rounded-full bg-[#181B1F] border border-[#262B31] flex flex-col items-center justify-center p-1"
+                  className="w-[62px] h-[62px] mt-3.5 rounded-full bg-[#191C20] flex flex-col items-center justify-center p-1"
                 >
-                  <Sun className="w-3 h-3 text-[#FACC15]" />
-                  <span className="text-[11px] font-bold text-white leading-tight mt-0.5">
+                  <Sun className="w-3.5 h-3.5 text-[#FACC15]" />
+                  <span className="text-[12px] font-bold text-white leading-tight mt-0.5">
                     06:12
                   </span>
                 </div>
 
-                {/* Slot #6: Círculo Direito (ex: Clima 27°) */}
+                {/* Slot #6: Círculo Direito (y=246) */}
                 <div
                   title="Slot #6: Complication Circular Direita"
-                  className="w-[58px] h-[58px] rounded-full bg-[#181B1F] border border-[#262B31] flex flex-col items-center justify-center p-1"
+                  className="w-[62px] h-[62px] rounded-full bg-[#191C20] flex flex-col items-center justify-center p-1"
                 >
-                  <CloudMoon className="w-3.5 h-3.5 text-[#67E8F9]" />
-                  <span className="text-[12px] font-bold text-white leading-tight mt-0.5">
-                    27°
+                  <CloudMoon className="w-4 h-4 text-[#67E8F9]" />
+                  <span className="text-[13px] font-bold text-white leading-tight mt-0.5">
+                    31°
                   </span>
                 </div>
               </div>
 
-              {/* SLOT #9: Barra Inferior (Bateria / Range / Texto Curto) */}
-              <div
-                title="Slot #9: Barra Inferior (Bateria / Range / Texto)"
-                className="flex items-center justify-center gap-2 z-10 pb-0.5"
-              >
-                <Battery className="w-3.5 h-3.5 text-[#FACC15] fill-[#FACC15]" />
-                <div className="flex items-center gap-[3px] bg-[#1C2018] px-2 py-1 rounded-full">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((seg) => (
-                    <span
-                      key={seg}
-                      className={`w-[3px] h-2.5 rounded-full ${
-                        seg <= 6 ? 'bg-[#86EFAC]' : 'bg-[#3A3F31]'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <span className="text-xs font-bold font-mono text-[#67E8F9]">
+              {/* Texto percentual à direita do Arco Inferior de Bateria (Slot #9) */}
+              <div className="w-full flex items-center justify-center z-10 pb-0.5">
+                <span className="ml-36 text-[13px] font-bold font-mono text-[#67E8F9]">
                   62%
                 </span>
               </div>
