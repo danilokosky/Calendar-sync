@@ -15,7 +15,6 @@ import {
   Layers,
   Database,
   Calendar,
-  CloudMoon,
   Footprints,
   Sun,
 } from 'lucide-react';
@@ -56,13 +55,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
       <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · SAMSUNG ONE UI REPLICA (v1.0.8)
+            MÓDULOS :wear &amp; :watchface · SAMSUNG ONE UI REPLICA (v1.0.9)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Transform nativo em &lt;Arc&gt; (sem arco ciano no topo) + sem ponto laranja duplicado + 3 círculos alinhados
+            Dock em cartucho duplo com contorno forte + bateria tubo de ensaio (cortes ao fundo + líquido 80% opaco)
           </p>
         </div>
 
@@ -102,7 +101,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           }`}
         >
           <Watch className="w-3.5 h-3.5" />
-          <span>Watch Face v1.0.8</span>
+          <span>Watch Face v1.0.9</span>
         </button>
         <button
           type="button"
@@ -136,7 +135,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           data-testid="wear-watch-face"
           className="relative w-[376px] h-[376px] sm:w-[396px] sm:h-[396px] rounded-full bg-black border-[8px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-2.5 px-7 select-none overflow-hidden"
         >
-          {/* SVG Overlay Renderizando os Arcos Laterais, Ícones Inclinados e a Barra Inferior Segmentada ([BATTERY_PERCENT]) */}
+          {/* SVG Overlay Renderizando os Arcos Laterais, Ícones Inclinados e a Barra Inferior Estilo Tubo de Ensaio */}
           {watchScreenMode === 'wff' && (
             <svg
               viewBox="0 0 450 450"
@@ -175,38 +174,42 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 strokeLinecap="round"
               />
 
-              {/* BARRA INFERIOR DE BATERIA NATIVA SEGMENTADA (164°..196° + 9 divisórias radiais) */}
+              {/* BARRA INFERIOR DE BATERIA ESTILO TUBO DE ENSAIO (164°..196°) */}
+              {/* 1. Borda externa do tubo (mais grossa: 22px) */}
               <path
                 d="M 168.0 424.0 A 207 207 0 0 0 282.0 424.0"
                 fill="none"
-                stroke="#23261A"
-                strokeWidth="20"
+                stroke="#22261A"
+                strokeWidth="22"
                 strokeLinecap="round"
               />
+              {/* 2. Cartucho interno de fundo (17px, mais grosso que a barra de progresso) */}
               <path
                 d="M 168.0 424.0 A 207 207 0 0 0 282.0 424.0"
                 fill="none"
-                stroke="#3B3F2C"
-                strokeWidth="14"
+                stroke="#3F4430"
+                strokeWidth="17"
                 strokeLinecap="round"
               />
+              {/* 3. 9 Cortes radiais AO FUNDO (cortando o cartucho de fundo antes do líquido) */}
+              <line x1="182" y1="414" x2="177" y2="439" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="192" y1="416" x2="189" y2="441" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="203" y1="418" x2="201" y2="443" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="214" y1="419" x2="213" y2="444" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="225" y1="419" x2="225" y2="444" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="236" y1="419" x2="237" y2="444" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="247" y1="418" x2="249" y2="443" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="258" y1="416" x2="261" y2="441" stroke="#14170F" strokeWidth="3.2" />
+              <line x1="268" y1="414" x2="273" y2="439" stroke="#14170F" strokeWidth="3.2" />
+              {/* 4. Líquido de progresso da bateria À FRENTE (11.5px, 80% opaco / 20% transparente) */}
               <path
                 d="M 168.0 424.0 A 207 207 0 0 0 246.0 431.0"
                 fill="none"
                 stroke="#88D4DC"
-                strokeWidth="14"
+                strokeOpacity="0.8"
+                strokeWidth="11.5"
                 strokeLinecap="round"
               />
-              {/* 9 Divisórias Radiais formando os 10 blocos curvos da bateria */}
-              <line x1="182" y1="416" x2="177" y2="438" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="192" y1="418" x2="189" y2="440" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="203" y1="420" x2="201" y2="442" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="214" y1="421" x2="213" y2="443" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="225" y1="421" x2="225" y2="443" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="236" y1="421" x2="237" y2="443" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="247" y1="420" x2="249" y2="442" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="258" y1="418" x2="261" y2="440" stroke="#181A12" strokeWidth="3.5" />
-              <line x1="268" y1="416" x2="273" y2="438" stroke="#181A12" strokeWidth="3.5" />
 
               {/* Ícone de Bateria Dourado Inclinado a +26° na curva esquerda inferior */}
               <g transform="translate(130, 408) rotate(26) translate(-14, -16)">
@@ -242,7 +245,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             </div>
           </div>
 
-          {/* VIEW 1: Official Watch Face Format (WFF) — Samsung 14:04:06 Layout */}
+          {/* VIEW 1: Official Watch Face Format (WFF) — Samsung 16:22:13 + v1.0.9 Cartridge Dock */}
           {watchScreenMode === 'wff' && (
             <>
               {/* Ícones e textos dos arcos laterais INCLINADOS (rotate +-28deg) seguindo a curvatura da tela */}
@@ -250,17 +253,17 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 ⏳
               </span>
               <span className="absolute left-5 top-[278px] -rotate-[28deg] text-[13px] font-bold font-mono text-[#88D4DC] z-10">
-                --
+                0
               </span>
               <span className="absolute right-6 top-[102px] -rotate-[28deg] w-5 h-5 rounded-full bg-[#F5C438] text-black text-[11px] font-bold flex items-center justify-center z-10">
                 ✓
               </span>
               <span className="absolute right-5 top-[278px] rotate-[28deg] text-[13px] font-bold font-mono text-slate-200 z-10">
-                3
+                0
               </span>
 
-              {/* ÚNICO QUADRO CENTRAL (x=74, w=302) */}
-              <div className="w-[80%] rounded-[16px] bg-[#080A0E] border border-[#161D26] px-3 py-1.5 space-y-0.5 z-10 -mt-1">
+              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — Renderizado via Bitmap Transparente no Slot 1 */}
+              <div className="w-[80%] rounded-[16px] bg-[#080A0E] border border-[#1B2430] px-3 py-1.5 space-y-0.5 z-10 -mt-1.5">
                 {/* Cabeçalho Hoje (18sp BOLD Dourado) */}
                 <div className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-[#F5C438] shrink-0" />
@@ -269,7 +272,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </span>
                 </div>
 
-                {/* LINHA 1 (Slots #1 + #10): Hora Branca 19sp + Nome Dourado 19sp + Timer Ciano + Barra 5px */}
+                {/* LINHA 1: Hora Branca + Nome Dourado + Timer Ciano + Barra 5px */}
                 <div className="w-full space-y-0.5">
                   <div className="flex items-center justify-between gap-1 text-[14px] leading-tight">
                     <div className="flex items-center min-w-0">
@@ -296,7 +299,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </div>
                 </div>
 
-                {/* LINHA 2 (Slot #2): Hora Branca 19sp + Título Dourado 19sp */}
+                {/* LINHA 2: Hora Branca + Título Dourado */}
                 <div className="w-full flex items-center text-[14px] leading-tight pt-0.5">
                   <span className="w-[44px] font-mono font-bold text-white shrink-0">
                     {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
@@ -306,7 +309,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </span>
                 </div>
 
-                {/* LINHA 3 (Slot #3): Hora Branca 19sp + Título Dourado 19sp */}
+                {/* LINHA 3: Hora Branca + Título Dourado */}
                 <div className="w-full flex items-center text-[14px] leading-tight">
                   <span className="w-[44px] font-mono font-bold text-white shrink-0">
                     {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
@@ -317,38 +320,30 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 </div>
               </div>
 
-              {/* SLOTS #4, #5 e #6: 3 Círculos ALINHADOS NA MESMA LINHA (y=260, x=80/181/282) igual à print 14:04:06! */}
-              <div className="flex items-center justify-center gap-2.5 z-10 -mt-1.5 mb-7">
-                {/* Slot #4: Círculo Esquerdo */}
+              {/* DOCK EM CARTUCHO ENVOLVENTE (x=84, y=268, w=282, h=92) COM APENAS 2 COMPLICATIONS MAIORES E CONTORNO FORTE */}
+              <div
+                title="Cartucho Externo Envolvente (x=84, y=268, w=282, h=92, r=46)"
+                className="rounded-full bg-[#161D1C] border-[1.5px] border-[#283533] px-2 py-1.5 flex items-center justify-center gap-2.5 z-10 mt-0.5 mb-10 shadow-inner"
+              >
+                {/* Slot #4: Cartucho Interno Esquerdo (x=92, y=275, w=127, h=78, r=39) */}
                 <div
-                  title="Slot #4: Complication Circular Esquerda"
-                  className="w-[66px] h-[66px] rounded-full bg-[#1B1E22] flex flex-col items-center justify-center p-1"
+                  title="Slot #4: Complication Cartucho Esquerdo (Fundo #263230 + Contorno #455955)"
+                  className="w-[104px] h-[56px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
                 >
                   <Footprints className="w-4 h-4 text-[#22C55E]" />
-                  <span className="text-[14px] font-bold text-white leading-tight mt-0.5">
-                    1.872
+                  <span className="text-[15px] font-bold text-white leading-tight mt-0.5 tracking-tight">
+                    2.435
                   </span>
                 </div>
 
-                {/* Slot #5: Círculo Central (Na mesma linha horizontal y=260!) */}
+                {/* Slot #5: Cartucho Interno Direito (x=231, y=275, w=127, h=78, r=39) */}
                 <div
-                  title="Slot #5: Complication Circular Central"
-                  className="w-[66px] h-[66px] rounded-full bg-[#1B1E22] flex flex-col items-center justify-center p-1"
+                  title="Slot #5: Complication Cartucho Direito (Fundo #263230 + Contorno #455955)"
+                  className="w-[104px] h-[56px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
                 >
                   <Sun className="w-4 h-4 text-[#F97316]" />
-                  <span className="text-[14px] font-bold text-white leading-tight mt-0.5">
+                  <span className="text-[15px] font-bold text-white leading-tight mt-0.5 tracking-tight">
                     17:40
-                  </span>
-                </div>
-
-                {/* Slot #6: Círculo Direito */}
-                <div
-                  title="Slot #6: Complication Circular Direita"
-                  className="w-[66px] h-[66px] rounded-full bg-[#1B1E22] flex flex-col items-center justify-center p-1"
-                >
-                  <CloudMoon className="w-4 h-4 text-[#88D4DC]" />
-                  <span className="text-[15px] font-bold text-white leading-tight mt-0.5">
-                    31°
                   </span>
                 </div>
               </div>
