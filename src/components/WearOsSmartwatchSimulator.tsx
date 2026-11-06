@@ -56,13 +56,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
       <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · GEOMETRIA RADIAL 450×450 (v1.0.5)
+            MÓDULOS :wear &amp; :watchface · DPI &amp; PROPORÇÃO SAMSUNG ONE UI (v1.0.6)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Arcos curvos reais (&lt;Arc&gt;) no bisel + 3 círculos em curva + único quadro central com colunas 100% alinhadas
+            DPI Samsung (Relógio 70sp, Eventos 19sp, Círculos 84px) + BoundingRoundBox 100% sem cortes
           </p>
         </div>
 
@@ -102,7 +102,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           }`}
         >
           <Watch className="w-3.5 h-3.5" />
-          <span>Watch Face Radial</span>
+          <span>Watch Face Samsung DPI</span>
         </button>
         <button
           type="button"
@@ -130,11 +130,11 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
         </button>
       </div>
 
-      {/* Center Circular Watch Bezel (450x450 logical representation with true curved <Arc> bezel tracks) */}
+      {/* Center Circular Watch Bezel (450x450 logical representation with Samsung DPI & unclipped BoundingBoxes) */}
       <div className="flex flex-col items-center justify-center my-2">
         <div
           data-testid="wear-watch-face"
-          className="relative w-[368px] h-[368px] sm:w-[384px] sm:h-[384px] rounded-full bg-black border-[8px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-3 px-6 select-none overflow-hidden"
+          className="relative w-[372px] h-[372px] sm:w-[392px] sm:h-[392px] rounded-full bg-black border-[8px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-2.5 px-6 select-none overflow-hidden"
         >
           {/* SVG Overlay Renderizando os 3 Arcos Curvos Reais (<Arc>) do watchface.xml (Esquerdo, Direito e Inferior) */}
           {watchScreenMode === 'wff' && (
@@ -142,188 +142,186 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               viewBox="0 0 450 450"
               className="absolute inset-0 w-full h-full pointer-events-none z-0"
             >
-              {/* SLOT 7: Arco Lateral Esquerdo Curvo (250° a 290°) */}
+              {/* SLOT 7: Arco Lateral Esquerdo Curvo (250° a 290°, thickness=16) */}
               <path
-                d="M 29.5 153.8 A 208 208 0 0 0 29.5 296.2"
+                d="M 31.4 154.5 A 206 206 0 0 0 31.4 295.5"
                 fill="none"
-                stroke="#333627"
-                strokeWidth="14"
+                stroke="#3B361F"
+                strokeWidth="16"
                 strokeLinecap="round"
               />
               <path
-                d="M 29.5 153.8 A 208 208 0 0 0 17.5 232.0"
+                d="M 31.4 154.5 A 206 206 0 0 0 19.0 228.0"
                 fill="none"
-                stroke="#FACC15"
-                strokeWidth="14"
+                stroke="#F5C438"
+                strokeWidth="16"
                 strokeLinecap="round"
               />
-              {/* Ponto indicador no arco esquerdo */}
-              <circle cx="17.5" cy="232" r="6.5" fill="#F97316" />
+              <circle cx="19.0" cy="228" r="8" fill="#F97316" />
 
-              {/* SLOT 8: Arco Lateral Direito Curvo (70° a 110°) */}
+              {/* SLOT 8: Arco Lateral Direito Curvo (70° a 110°, thickness=16) */}
               <path
-                d="M 420.5 153.8 A 208 208 0 0 1 420.5 296.2"
+                d="M 418.6 154.5 A 206 206 0 0 1 418.6 295.5"
                 fill="none"
                 stroke="#25302B"
-                strokeWidth="14"
+                strokeWidth="16"
                 strokeLinecap="round"
               />
               <path
-                d="M 420.5 153.8 A 208 208 0 0 1 432.5 232.0"
+                d="M 418.6 154.5 A 206 206 0 0 1 418.6 295.5"
                 fill="none"
                 stroke="#86EFAC"
-                strokeWidth="14"
+                strokeWidth="16"
                 strokeLinecap="round"
               />
-              <circle cx="432.5" cy="232" r="6" fill="#FACC15" />
 
-              {/* SLOT 9: Arco Inferior Curvo de Bateria (162° a 198°) */}
+              {/* SLOT 9: Arco Inferior Curvo de Bateria (162° a 198°, thickness=16) */}
               <path
-                d="M 160.7 422.8 A 208 208 0 0 0 289.3 422.8"
+                d="M 161.3 420.9 A 206 206 0 0 0 288.7 420.9"
                 fill="none"
                 stroke="#2B3024"
-                strokeWidth="14"
+                strokeWidth="16"
                 strokeLinecap="round"
               />
               <path
-                d="M 160.7 422.8 A 208 208 0 0 0 245.0 432.0"
+                d="M 161.3 420.9 A 206 206 0 0 0 248.0 429.5"
                 fill="none"
-                stroke="#86EFAC"
-                strokeWidth="14"
+                stroke="#88D4DC"
+                strokeWidth="16"
                 strokeLinecap="round"
               />
               {/* Ícone de Bateria Dourado à esquerda do arco inferior */}
-              <rect x="131" y="405" width="6" height="3" rx="1" fill="#FACC15" />
-              <rect x="128" y="408" width="12" height="18" rx="3" fill="#FACC15" />
+              <rect x="126" y="392" width="8" height="4" rx="1.5" fill="#F5C438" />
+              <rect x="122" y="396" width="16" height="24" rx="3.5" fill="#F5C438" />
             </svg>
           )}
 
-          {/* TOPO: SEX. 06 (Sempre em Caixa Alta e 1 único ponto) + Relógio 00:12:32 */}
+          {/* TOPO NO DPI SAMSUNG: SEX. 06 (25sp BOLD) + Relógio 00:12:32 (70sp NORMAL amplo) */}
           <div className="text-center w-full z-10 pt-0.5">
-            <div className="text-[14px] font-bold tracking-wide flex items-center justify-center gap-1.5 leading-none">
-              <span className="text-[#FACC15]">{weekdayUpper}</span>
+            <div className="text-[18px] font-bold tracking-wide flex items-center justify-center gap-2 leading-none">
+              <span className="text-[#F5C438]">{weekdayUpper}</span>
               <span className="text-white">{dayOfMonth}</span>
             </div>
-            <div className="text-[40px] font-light font-mono tabular-nums tracking-tight text-white leading-none mt-0.5">
+            <div className="text-[50px] font-normal font-mono tabular-nums tracking-tight text-white leading-none mt-0.5">
               {timeHHMMSS}
             </div>
           </div>
 
-          {/* VIEW 1: Official Watch Face Format (WFF) — Único Quadro Central + Arcos Curvos + 3 Círculos em Curva */}
+          {/* VIEW 1: Official Watch Face Format (WFF) — DPI Samsung + BoundingRoundBox Completo */}
           {watchScreenMode === 'wff' && (
             <>
-              {/* Rótulos dos Arcos Laterais (Recuados para dentro da corda circular, sem cortar no bisel) */}
-              <span className="absolute left-5 top-[106px] text-[10px] font-bold text-[#FACC15] z-10">
+              {/* Ícones e textos dos arcos laterais na circunferência R=198px (100% visíveis sem cortes!) */}
+              <span className="absolute left-8 top-[98px] text-[13px] font-bold text-[#F5C438] z-10">
                 ⏳
               </span>
-              <span className="absolute left-6 top-[256px] text-[11px] font-bold font-mono text-[#67E8F9] z-10">
-                1
+              <span className="absolute left-7 top-[266px] text-[13px] font-bold font-mono text-[#88D4DC] z-10">
+                --
               </span>
-              <span className="absolute right-5 top-[106px] w-4 h-4 rounded-full bg-[#FACC15] text-black text-[9px] font-bold flex items-center justify-center z-10">
+              <span className="absolute right-8 top-[98px] w-5 h-5 rounded-full bg-[#F5C438] text-black text-[11px] font-bold flex items-center justify-center z-10">
                 ✓
               </span>
-              <span className="absolute right-5 top-[256px] text-[10px] font-bold font-mono text-slate-200 z-10">
-                62%
+              <span className="absolute right-6 top-[266px] text-[12px] font-bold font-mono text-slate-200 z-10">
+                75%
               </span>
 
-              {/* ÚNICO QUADRO DA TELA: Quadro Central Padronizado dos 3 Próximos Eventos */}
-              <div className="w-[80%] rounded-[18px] bg-[#0B0E12] border border-[#1B232E] px-3.5 py-2.5 space-y-1.5 shadow-inner z-10 -mt-1">
-                {/* Cabeçalho Hoje com Ícone de Calendário Dourado real e espaçamento limpo */}
+              {/* ÚNICO QUADRO CENTRAL (DPI Samsung 19sp BOLD para hora e eventos + Barra visível) */}
+              <div className="w-[82%] rounded-[20px] bg-[#080A0E] border border-[#161D26] px-3.5 py-2 space-y-1 z-10 -mt-1">
+                {/* Cabeçalho Hoje (18sp BOLD Dourado) */}
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5 text-[#FACC15] shrink-0" />
-                  <span className="text-[12px] font-bold text-[#FACC15] leading-none">
+                  <Calendar className="w-4 h-4 text-[#F5C438] shrink-0" />
+                  <span className="text-[15px] font-bold text-[#F5C438] leading-none">
                     Hoje
                   </span>
                 </div>
 
-                {/* LINHA 1 (Slots #1 + #10): Hora Branca (w=42px) + Título Dourado (#FACC15) + Timer Ciano + Barra Fina */}
+                {/* LINHA 1 (Slots #1 + #10): Hora Branca 19sp + Nome Dourado 19sp + Timer Ciano + Barra 5px */}
                 <div className="w-full space-y-1">
-                  <div className="flex items-center justify-between gap-1 text-[12.5px] leading-tight">
+                  <div className="flex items-center justify-between gap-1 text-[15px] leading-tight">
                     <div className="flex items-center min-w-0">
-                      <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                      <span className="w-[46px] font-mono font-bold text-white shrink-0">
                         {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
                       </span>
-                      <span className="font-bold text-[#FACC15] truncate">
+                      <span className="font-bold text-[#F5C438] truncate">
                         {ev1 ? ev1.title : 'Sem eventos'}
                       </span>
                     </div>
-                    <span className="font-mono font-bold text-[11px] text-[#67E8F9] shrink-0 ml-1">
+                    <span className="font-mono font-bold text-[12px] text-[#67E8F9] shrink-0 ml-1">
                       {watchState.hasUpcomingEvent
                         ? watchState.formattedCountdown
                         : '--'}
                     </span>
                   </div>
-                  {/* Barra fininha (3.5px) acoplada logo abaixo do Evento #1 */}
-                  <div className="w-full h-[3.5px] bg-[#232B36] rounded-full overflow-hidden">
+                  {/* Barra de progresso fininha (5px) 100% dentro do BoundingRoundBox */}
+                  <div className="w-full h-[4.5px] bg-[#252E3A] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-[#FACC15] rounded-full transition-all duration-200"
+                      className="h-full bg-[#F5C438] rounded-full transition-all duration-200"
                       style={{
-                        width: `${Math.max(8, Math.round(watchState.progressRatio * 100))}%`,
+                        width: `${Math.max(10, Math.round(watchState.progressRatio * 100))}%`,
                       }}
                     />
                   </div>
                 </div>
 
-                {/* LINHA 2 (Slot #2): Mesma coluna de Hora Branca (w=42px) + Mesma coluna de Título Dourado (#FACC15) */}
-                <div className="w-full flex items-center text-[12.5px] leading-tight pt-0.5">
-                  <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                {/* LINHA 2 (Slot #2): Hora Branca 19sp + Título Dourado 19sp */}
+                <div className="w-full flex items-center text-[15px] leading-tight pt-0.5">
+                  <span className="w-[46px] font-mono font-bold text-white shrink-0">
                     {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
                   </span>
-                  <span className="font-bold text-[#FACC15] truncate">
+                  <span className="font-bold text-[#F5C438] truncate">
                     {ev2 ? ev2.title : 'Livre'}
                   </span>
                 </div>
 
-                {/* LINHA 3 (Slot #3): Mesma coluna de Hora Branca (w=42px) + Mesma coluna de Título Dourado (#FACC15) */}
-                <div className="w-full flex items-center text-[12.5px] leading-tight">
-                  <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                {/* LINHA 3 (Slot #3): Hora Branca 19sp + Título Dourado 19sp */}
+                <div className="w-full flex items-center text-[15px] leading-tight">
+                  <span className="w-[46px] font-mono font-bold text-white shrink-0">
                     {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
                   </span>
-                  <span className="font-bold text-[#FACC15] truncate">
+                  <span className="font-bold text-[#F5C438] truncate">
                     {ev3 ? ev3.title : 'Livre'}
                   </span>
                 </div>
               </div>
 
-              {/* SLOTS #4, #5 e #6: 3 Círculos Distribuídos em Curva (Laterais mais altos, Central mais baixo acompanhando o aro) */}
-              <div className="flex items-start justify-center gap-3.5 z-10 -mt-1">
-                {/* Slot #4: Círculo Esquerdo (y=246) */}
+              {/* SLOTS #4, #5 e #6: 3 Círculos no DPI da Samsung (84x84px, ícones 28px, texto 20sp) */}
+              <div className="flex items-start justify-center gap-3 z-10 -mt-1">
+                {/* Slot #4: Círculo Esquerdo */}
                 <div
                   title="Slot #4: Complication Circular Esquerda"
-                  className="w-[62px] h-[62px] rounded-full bg-[#191C20] flex flex-col items-center justify-center p-1"
+                  className="w-[68px] h-[68px] rounded-full bg-[#1B1E22] flex flex-col items-center justify-center p-1"
                 >
-                  <Footprints className="w-3.5 h-3.5 text-[#67E8F9]" />
-                  <span className="text-[12px] font-bold text-white leading-tight mt-0.5">
-                    1.486
+                  <Footprints className="w-4 h-4 text-[#22C55E]" />
+                  <span className="text-[14px] font-bold text-white leading-tight mt-0.5">
+                    1.551
                   </span>
                 </div>
 
-                {/* Slot #5: Círculo Central na Curva (y=266 -> deslocado +14px acompanhando a curvatura redonda) */}
+                {/* Slot #5: Círculo Central */}
                 <div
                   title="Slot #5: Complication Circular Central"
-                  className="w-[62px] h-[62px] mt-3.5 rounded-full bg-[#191C20] flex flex-col items-center justify-center p-1"
+                  className="w-[68px] h-[68px] mt-2.5 rounded-full bg-[#1B1E22] flex flex-col items-center justify-center p-1"
                 >
-                  <Sun className="w-3.5 h-3.5 text-[#FACC15]" />
-                  <span className="text-[12px] font-bold text-white leading-tight mt-0.5">
-                    06:12
+                  <Sun className="w-4 h-4 text-[#F97316]" />
+                  <span className="text-[14px] font-bold text-white leading-tight mt-0.5">
+                    17:40
                   </span>
                 </div>
 
-                {/* Slot #6: Círculo Direito (y=246) */}
+                {/* Slot #6: Círculo Direito */}
                 <div
                   title="Slot #6: Complication Circular Direita"
-                  className="w-[62px] h-[62px] rounded-full bg-[#191C20] flex flex-col items-center justify-center p-1"
+                  className="w-[68px] h-[68px] rounded-full bg-[#1B1E22] flex flex-col items-center justify-center p-1"
                 >
-                  <CloudMoon className="w-4 h-4 text-[#67E8F9]" />
-                  <span className="text-[13px] font-bold text-white leading-tight mt-0.5">
-                    31°
+                  <CloudMoon className="w-4 h-4 text-[#88D4DC]" />
+                  <span className="text-[16px] font-bold text-white leading-tight mt-0.5">
+                    27°
                   </span>
                 </div>
               </div>
 
-              {/* Texto percentual à direita do Arco Inferior de Bateria (Slot #9) */}
+              {/* Texto percentual à direita do Arco Inferior de Bateria (Slot #9 — 22sp BOLD Ciano) */}
               <div className="w-full flex items-center justify-center z-10 pb-0.5">
-                <span className="ml-36 text-[13px] font-bold font-mono text-[#67E8F9]">
+                <span className="ml-40 text-[16px] font-bold font-mono text-[#88D4DC]">
                   62%
                 </span>
               </div>

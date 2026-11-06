@@ -7,11 +7,11 @@
     <Scene backgroundColor="#FF000000">
 
         <!-- ================================================================= -->
-        <!-- 1. TOPO REDONDO: DIA DA SEMANA EM CAIXA ALTA (SEX. 06) + RELÓGIO  -->
+        <!-- 1. TOPO IDÊNTICO AO DPI DA SAMSUNG: SEX. 06 (25sp) + 00:12:32     -->
         <!-- ================================================================= -->
-        <Group x="0" y="0" width="450" height="450" name="top_header_and_central_box">
+        <Group x="0" y="0" width="450" height="450" name="samsung_top_and_agenda_frame">
 
-            <!-- Dia da Semana sempre em CAIXA ALTA e com 1 único ponto (DOM. a SÁB.) -->
+            <!-- Dia da Semana sempre em CAIXA ALTA com 1 ponto (25sp BOLD Dourado Samsung #F5C438) -->
             <Condition>
                 <Expressions>
                     <Expression name="is_sun">[DAY_OF_WEEK] == 1</Expression>
@@ -22,49 +22,49 @@
                     <Expression name="is_fri">[DAY_OF_WEEK] == 6</Expression>
                 </Expressions>
                 <Compare expression="is_sun">
-                    <PartText x="130" y="10" width="90" height="24">
-                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFACC15">DOM.</Font></Text>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">DOM.</Font></Text>
                     </PartText>
                 </Compare>
                 <Compare expression="is_mon">
-                    <PartText x="130" y="10" width="90" height="24">
-                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFACC15">SEG.</Font></Text>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">SEG.</Font></Text>
                     </PartText>
                 </Compare>
                 <Compare expression="is_tue">
-                    <PartText x="130" y="10" width="90" height="24">
-                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFACC15">TER.</Font></Text>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">TER.</Font></Text>
                     </PartText>
                 </Compare>
                 <Compare expression="is_wed">
-                    <PartText x="130" y="10" width="90" height="24">
-                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFACC15">QUA.</Font></Text>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">QUA.</Font></Text>
                     </PartText>
                 </Compare>
                 <Compare expression="is_thu">
-                    <PartText x="130" y="10" width="90" height="24">
-                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFACC15">QUI.</Font></Text>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">QUI.</Font></Text>
                     </PartText>
                 </Compare>
                 <Compare expression="is_fri">
-                    <PartText x="130" y="10" width="90" height="24">
-                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFACC15">SEX.</Font></Text>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">SEX.</Font></Text>
                     </PartText>
                 </Compare>
                 <Default>
-                    <PartText x="130" y="10" width="90" height="24">
-                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFACC15">SÁB.</Font></Text>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">SÁB.</Font></Text>
                     </PartText>
                 </Default>
             </Condition>
 
-            <!-- Dia do Mês em Branco (ex: 06) -->
-            <PartText x="228" y="10" width="90" height="24">
+            <!-- Dia do Mês em Branco (25sp BOLD, ex: 06) -->
+            <PartText x="232" y="12" width="96" height="32">
                 <Variant mode="AMBIENT" target="alpha" value="180" />
                 <Text align="START" ellipsis="TRUE">
                     <Font
                         family="SYNC_TO_DEVICE"
-                        size="19.0"
+                        size="25.0"
                         weight="BOLD"
                         color="#FFFFFFFF">
                         <Template><![CDATA[%s]]>
@@ -74,80 +74,77 @@
                 </Text>
             </PartText>
 
-            <!-- ÚNICO QUADRO DA TELA: Quadro Central dos 3 Próximos Eventos (x=72, y=100, w=306, h=134) -->
-            <PartDraw x="72" y="100" width="306" height="134">
+            <!-- ÚNICO QUADRO CENTRAL (x=66, y=116, w=318, h=136) com cantos suaves -->
+            <PartDraw x="66" y="116" width="318" height="136">
                 <Variant mode="AMBIENT" target="alpha" value="110" />
                 <RoundRectangle
                     x="0"
                     y="0"
-                    width="306"
-                    height="134"
-                    cornerRadiusX="20"
-                    cornerRadiusY="20">
-                    <Fill color="#FF0B0E12" />
+                    width="318"
+                    height="136"
+                    cornerRadiusX="22"
+                    cornerRadiusY="22">
+                    <Fill color="#FF080A0E" />
                 </RoundRectangle>
                 <RoundRectangle
                     x="1"
                     y="1"
-                    width="304"
-                    height="132"
-                    cornerRadiusX="20"
-                    cornerRadiusY="20">
-                    <Stroke color="#FF1B232E" thickness="1.5" />
+                    width="316"
+                    height="134"
+                    cornerRadiusX="22"
+                    cornerRadiusY="22">
+                    <Stroke color="#FF161D26" thickness="1.2" />
                 </RoundRectangle>
 
-                <!-- Ícone de Calendário Desenhado (Argolas + Cabeçalho + Corpo, sem sobrepor "Hoje") -->
+                <!-- Ícone de Calendário Dourado no tamanho Samsung (18x16px) -->
                 <RoundRectangle
                     x="14"
-                    y="10"
-                    width="15"
-                    height="13"
+                    y="9"
+                    width="18"
+                    height="16"
                     cornerRadiusX="3"
                     cornerRadiusY="3">
-                    <Stroke color="#FFFACC15" thickness="1.8" />
+                    <Fill color="#FFF5C438" />
                 </RoundRectangle>
-                <Line startX="14" startY="14" endX="29" endY="14">
-                    <Stroke color="#FFFACC15" thickness="1.8" />
+                <Line startX="17" startY="15" endX="29" endY="15">
+                    <Stroke color="#FF080A0E" thickness="2.0" />
                 </Line>
-                <Line startX="18" startY="8" endX="18" endY="11">
-                    <Stroke color="#FFFACC15" thickness="1.8" />
-                </Line>
-                <Line startX="25" startY="8" endX="25" endY="11">
-                    <Stroke color="#FFFACC15" thickness="1.8" />
+                <Line startX="17" startY="20" endX="26" endY="20">
+                    <Stroke color="#FF080A0E" thickness="2.0" />
                 </Line>
             </PartDraw>
 
-            <!-- Rótulo "Hoje" com espaçamento limpo após o ícone de calendário (x=108) -->
-            <PartText x="108" y="106" width="120" height="20">
+            <!-- Rótulo "Hoje" no DPI da Samsung (18sp BOLD Dourado) -->
+            <PartText x="106" y="120" width="140" height="24">
                 <Variant mode="AMBIENT" target="alpha" value="180" />
                 <Text align="START" ellipsis="TRUE">
                     <Font
                         family="SYNC_TO_DEVICE"
-                        size="14.0"
+                        size="18.0"
                         weight="BOLD"
-                        color="#FFFACC15">
+                        color="#FFF5C438">
                         <Template><![CDATA[Hoje]]></Template>
                     </Font>
                 </Text>
             </PartText>
         </Group>
 
-        <!-- Relógio Digital Principal com Segundos (Proporção Samsung equilibrada) -->
-        <DigitalClock x="40" y="32" width="370" height="66">
+        <!-- Relógio Digital Principal no DPI da Samsung (70sp NORMAL, amplo e legível) -->
+        <DigitalClock x="35" y="40" width="380" height="74">
             <TimeText
                 format="hh:mm:ss"
                 hourFormat="SYNC_TO_DEVICE"
                 align="CENTER"
                 x="0"
                 y="0"
-                width="370"
-                height="66"
+                width="380"
+                height="74"
                 alpha="255">
                 <Variant mode="AMBIENT" target="alpha" value="0" />
                 <Font
                     family="SYNC_TO_DEVICE"
-                    size="58"
-                    weight="LIGHT"
+                    size="70"
+                    weight="NORMAL"
                     slant="NORMAL"
                     color="#FFFFFFFF" />
             </TimeText>
@@ -157,13 +154,13 @@
                 align="CENTER"
                 x="0"
                 y="0"
-                width="370"
-                height="66"
+                width="380"
+                height="74"
                 alpha="0">
                 <Variant mode="AMBIENT" target="alpha" value="255" />
                 <Font
                     family="SYNC_TO_DEVICE"
-                    size="58"
+                    size="70"
                     weight="THIN"
                     slant="NORMAL"
                     color="#FF94A3B8" />
@@ -171,18 +168,17 @@
         </DigitalClock>
 
         <!-- ================================================================= -->
-        <!-- 2. CONTEÚDO DO QUADRO CENTRAL PADRONIZADO (x=86, w=278):          -->
-        <!-- Todas as 3 linhas têm EXATAMENTE a mesma coluna de Hora (Branco,  -->
-        <!-- x=0, w=46) e a mesma coluna de Título (Dourado #FACC15, x=50),    -->
-        <!-- com o Evento #1 acoplado ao Timer Ciano + Barra Fininha!          -->
+        <!-- 2. OS 3 EVENTOS COM DPI SAMSUNG (19sp BOLD) E BARRA VISÍVEL       -->
+        <!-- IMPORTANTE: BoundingRoundBox sempre cobre 100% do slot para que   -->
+        <!-- o Wear OS NUNCA corte a barra de progresso nem os textos!         -->
         <!-- ================================================================= -->
 
-        <!-- SLOT 1: Evento Principal #1 — Hora Branca (x=0) + Título Dourado (x=50) -->
+        <!-- SLOT 1: Evento Principal #1 (Hora Branca 19sp em x=0 + Nome Dourado 19sp em x=58) -->
         <ComplicationSlot
-            x="86"
-            y="128"
-            width="210"
-            height="26"
+            x="80"
+            y="146"
+            width="214"
+            height="28"
             slotId="1"
             displayName="slot_event_1_text_label"
             supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
@@ -196,17 +192,17 @@
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="210"
-                height="26"
-                outlinePadding="1.0"
+                width="214"
+                height="28"
+                outlinePadding="0.0"
                 cornerRadius="6" />
 
             <Complication type="LONG_TEXT">
-                <PartText x="0" y="1" width="46" height="22">
+                <PartText x="0" y="1" width="54" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
                             color="#FFFFFFFF">
                             <Template><![CDATA[%s]]>
@@ -215,13 +211,13 @@
                         </Font>
                     </Text>
                 </PartText>
-                <PartText x="50" y="1" width="160" height="22">
+                <PartText x="58" y="1" width="156" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
-                            color="#FFFACC15">
+                            color="#FFF5C438">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -231,14 +227,14 @@
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartText x="0" y="1" width="210" height="22">
+                <PartText x="0" y="1" width="214" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
-                            color="#FFFACC15">
-                            <Template><![CDATA[%s  %s]]>
+                            color="#FFF5C438">
+                            <Template><![CDATA[%s %s]]>
                                 <Parameter expression="[COMPLICATION.TITLE]" />
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -248,12 +244,12 @@
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 10: Timer Regressivo à Direita (4h25min) + Barra de Progresso Fininha Acoplada ao Evento #1 -->
+        <!-- SLOT 10: Timer à Direita + Barra de Progresso Fininha (BoundingRoundBox 290x36 completo!) -->
         <ComplicationSlot
-            x="86"
-            y="128"
-            width="278"
-            height="32"
+            x="80"
+            y="146"
+            width="290"
+            height="36"
             slotId="10"
             displayName="slot_event_1_timer_label"
             supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY">
@@ -264,21 +260,21 @@
                 defaultSystemProvider="NEXT_EVENT"
                 defaultSystemProviderType="SHORT_TEXT" />
 
+            <!-- Cobre todos os 290x36 para NUNCA cortar a barra de progresso em y=29 -->
             <BoundingRoundBox
-                x="212"
+                x="0"
                 y="0"
-                width="66"
-                height="24"
-                outlinePadding="1.0"
+                width="290"
+                height="36"
+                outlinePadding="0.0"
                 cornerRadius="6" />
 
             <Complication type="RANGED_VALUE">
-                <!-- Contagem Regressiva (ex: 4h25min) alinhada à direita na Linha 1 -->
-                <PartText x="212" y="1" width="66" height="22">
+                <PartText x="214" y="3" width="76" height="24">
                     <Text align="END" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="13.5"
+                            size="15.0"
                             weight="BOLD"
                             color="#FF67E8F9">
                             <Template><![CDATA[%s]]>
@@ -288,38 +284,38 @@
                     </Text>
                 </PartText>
 
-                <!-- Barra de Progresso Fininha (height=4) acoplada imediatamente abaixo da Linha 1 -->
-                <PartDraw x="0" y="25" width="278" height="4">
+                <!-- Barra de Progresso Fininha (y=29, h=5) 100% dentro do BoundingRoundBox 290x36 -->
+                <PartDraw x="0" y="29" width="290" height="5">
                     <RoundRectangle
                         x="0"
                         y="0"
-                        width="278"
-                        height="4"
-                        cornerRadiusX="2"
-                        cornerRadiusY="2">
-                        <Fill color="#FF232B36" />
+                        width="290"
+                        height="5"
+                        cornerRadiusX="2.5"
+                        cornerRadiusY="2.5">
+                        <Fill color="#FF252E3A" />
                     </RoundRectangle>
                     <RoundRectangle
                         x="0"
                         y="0"
-                        width="278"
-                        height="4"
-                        cornerRadiusX="2"
-                        cornerRadiusY="2">
+                        width="290"
+                        height="5"
+                        cornerRadiusX="2.5"
+                        cornerRadiusY="2.5">
                         <Transform
                             target="width"
-                            value="8 + 270 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
-                        <Fill color="#FFFACC15" />
+                            value="14 + 276 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
+                        <Fill color="#FFF5C438" />
                     </RoundRectangle>
                 </PartDraw>
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartText x="212" y="1" width="66" height="22">
+                <PartText x="214" y="3" width="76" height="24">
                     <Text align="END" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="13.5"
+                            size="15.0"
                             weight="BOLD"
                             color="#FF67E8F9">
                             <Template><![CDATA[%s]]>
@@ -328,15 +324,20 @@
                         </Font>
                     </Text>
                 </PartText>
+                <PartDraw x="0" y="29" width="290" height="5">
+                    <RoundRectangle x="0" y="0" width="290" height="5" cornerRadiusX="2.5" cornerRadiusY="2.5">
+                        <Fill color="#FF252E3A" />
+                    </RoundRectangle>
+                </PartDraw>
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 2: Próximo Evento #2 (x=86, y=166, w=278, h=26 — Colunas x=0 e x=50 idênticas à Linha 1!) -->
+        <!-- SLOT 2: Próximo Evento #2 (19sp BOLD — Hora em x=0, Título em x=58) -->
         <ComplicationSlot
-            x="86"
-            y="166"
-            width="278"
-            height="26"
+            x="80"
+            y="186"
+            width="290"
+            height="28"
             slotId="2"
             displayName="slot_event_2_label"
             supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
@@ -350,17 +351,17 @@
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="278"
-                height="26"
-                outlinePadding="1.0"
+                width="290"
+                height="28"
+                outlinePadding="0.0"
                 cornerRadius="6" />
 
             <Complication type="LONG_TEXT">
-                <PartText x="0" y="1" width="46" height="22">
+                <PartText x="0" y="1" width="54" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
                             color="#FFFFFFFF">
                             <Template><![CDATA[%s]]>
@@ -369,13 +370,13 @@
                         </Font>
                     </Text>
                 </PartText>
-                <PartText x="50" y="1" width="228" height="22">
+                <PartText x="58" y="1" width="232" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
-                            color="#FFFACC15">
+                            color="#FFF5C438">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -385,14 +386,14 @@
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartText x="0" y="1" width="278" height="22">
+                <PartText x="0" y="1" width="290" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
-                            color="#FFFACC15">
-                            <Template><![CDATA[%s  %s]]>
+                            color="#FFF5C438">
+                            <Template><![CDATA[%s %s]]>
                                 <Parameter expression="[COMPLICATION.TITLE]" />
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -402,12 +403,12 @@
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 3: Próximo Evento #3 (x=86, y=196, w=278, h=26 — Colunas x=0 e x=50 idênticas às Linhas 1 e 2!) -->
+        <!-- SLOT 3: Próximo Evento #3 (19sp BOLD — Hora em x=0, Título em x=58) -->
         <ComplicationSlot
-            x="86"
-            y="196"
-            width="278"
-            height="26"
+            x="80"
+            y="216"
+            width="290"
+            height="28"
             slotId="3"
             displayName="slot_event_3_label"
             supportedTypes="LONG_TEXT SHORT_TEXT EMPTY">
@@ -421,17 +422,17 @@
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="278"
-                height="26"
-                outlinePadding="1.0"
+                width="290"
+                height="28"
+                outlinePadding="0.0"
                 cornerRadius="6" />
 
             <Complication type="LONG_TEXT">
-                <PartText x="0" y="1" width="46" height="22">
+                <PartText x="0" y="1" width="54" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
                             color="#FFFFFFFF">
                             <Template><![CDATA[%s]]>
@@ -440,13 +441,13 @@
                         </Font>
                     </Text>
                 </PartText>
-                <PartText x="50" y="1" width="228" height="22">
+                <PartText x="58" y="1" width="232" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
-                            color="#FFFACC15">
+                            color="#FFF5C438">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -456,14 +457,14 @@
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartText x="0" y="1" width="278" height="22">
+                <PartText x="0" y="1" width="290" height="26">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="15.0"
+                            size="19.0"
                             weight="BOLD"
-                            color="#FFFACC15">
-                            <Template><![CDATA[%s  %s]]>
+                            color="#FFF5C438">
+                            <Template><![CDATA[%s %s]]>
                                 <Parameter expression="[COMPLICATION.TITLE]" />
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -474,16 +475,15 @@
         </ComplicationSlot>
 
         <!-- ================================================================= -->
-        <!-- 3. TRÊS CÍRCULOS DISTRIBUÍDOS EM CURVA REDONDA (y=246, 266, 246)  -->
-        <!-- Com suporte a Ícone (MONOCHROMATIC_IMAGE), Título ou Centralizado -->
+        <!-- 3. CÍRCULOS DE COMPLICATION NO DPI DA SAMSUNG (84x84px, 20sp)     -->
         <!-- ================================================================= -->
 
-        <!-- SLOT 4: Círculo Esquerdo na Curva (x=66, y=246, w=78, h=78) -->
+        <!-- SLOT 4: Círculo Esquerdo (x=58, y=258, w=84, h=84) -->
         <ComplicationSlot
-            x="66"
-            y="246"
-            width="78"
-            height="78"
+            x="58"
+            y="258"
+            width="84"
+            height="84"
             slotId="4"
             displayName="slot_circle_left_label"
             supportedTypes="SHORT_TEXT RANGED_VALUE MONOCHROMATIC_IMAGE SMALL_IMAGE EMPTY">
@@ -495,14 +495,14 @@
             <BoundingOval
                 x="0"
                 y="0"
-                width="78"
-                height="78"
-                outlinePadding="2.0" />
+                width="84"
+                height="84"
+                outlinePadding="0.0" />
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78">
-                        <Fill color="#FF191C20" />
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84">
+                        <Fill color="#FF1B1E22" />
                     </Ellipse>
                 </PartDraw>
                 <Condition>
@@ -511,37 +511,37 @@
                         <Expression name="has_title">[COMPLICATION.TITLE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_icon">
-                        <PartImage x="27" y="10" width="24" height="24" tintColor="#FF67E8F9">
+                        <PartImage x="28" y="11" width="28" height="28">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
-                        <PartText x="6" y="38" width="66" height="26">
+                        <PartText x="6" y="42" width="72" height="28">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Compare expression="has_title">
-                        <PartText x="6" y="15" width="66" height="20">
+                        <PartText x="6" y="16" width="72" height="22">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="13.0" weight="BOLD" color="#FF67E8F9">
+                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FF88D4DC">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
-                        <PartText x="6" y="38" width="66" height="24">
+                        <PartText x="6" y="42" width="72" height="28">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="18.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Default>
-                        <PartText x="6" y="25" width="66" height="28">
+                        <PartText x="6" y="28" width="72" height="28">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="18.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="21.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
@@ -551,17 +551,17 @@
             </Complication>
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78">
-                        <Fill color="#FF191C20" />
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84">
+                        <Fill color="#FF1B1E22" />
                     </Ellipse>
-                    <Arc centerX="39" centerY="39" width="72" height="72" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
-                        <Stroke color="#FF67E8F9" thickness="3" cap="ROUND" />
+                    <Arc centerX="42" centerY="42" width="78" height="78" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                        <Stroke color="#FF88D4DC" thickness="3.5" cap="ROUND" />
                     </Arc>
                 </PartDraw>
-                <PartText x="6" y="26" width="66" height="26">
+                <PartText x="6" y="28" width="72" height="28">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                        <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFFFFFFF">
+                        <Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFFFFFF">
                             <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                         </Font>
                     </Text>
@@ -569,30 +569,30 @@
             </Complication>
 
             <Complication type="MONOCHROMATIC_IMAGE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78"><Fill color="#FF191C20" /></Ellipse>
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84"><Fill color="#FF1B1E22" /></Ellipse>
                 </PartDraw>
-                <PartImage x="23" y="23" width="32" height="32" tintColor="#FF67E8F9">
+                <PartImage x="26" y="26" width="32" height="32">
                     <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="SMALL_IMAGE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78"><Fill color="#FF191C20" /></Ellipse>
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84"><Fill color="#FF1B1E22" /></Ellipse>
                 </PartDraw>
-                <PartImage x="19" y="19" width="40" height="40">
+                <PartImage x="22" y="22" width="40" height="40">
                     <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                 </PartImage>
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 5: Círculo Central na Curva (x=186, y=266, w=78, h=78) -->
+        <!-- SLOT 5: Círculo Central (x=183, y=270, w=84, h=84) -->
         <ComplicationSlot
-            x="186"
-            y="266"
-            width="78"
-            height="78"
+            x="183"
+            y="270"
+            width="84"
+            height="84"
             slotId="5"
             displayName="slot_circle_center_label"
             supportedTypes="SHORT_TEXT RANGED_VALUE MONOCHROMATIC_IMAGE SMALL_IMAGE EMPTY">
@@ -604,14 +604,14 @@
             <BoundingOval
                 x="0"
                 y="0"
-                width="78"
-                height="78"
-                outlinePadding="2.0" />
+                width="84"
+                height="84"
+                outlinePadding="0.0" />
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78">
-                        <Fill color="#FF191C20" />
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84">
+                        <Fill color="#FF1B1E22" />
                     </Ellipse>
                 </PartDraw>
                 <Condition>
@@ -620,37 +620,37 @@
                         <Expression name="has_title">[COMPLICATION.TITLE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_icon">
-                        <PartImage x="27" y="10" width="24" height="24" tintColor="#FFFACC15">
+                        <PartImage x="28" y="11" width="28" height="28">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
-                        <PartText x="6" y="38" width="66" height="26">
+                        <PartText x="6" y="42" width="72" height="28">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Compare expression="has_title">
-                        <PartText x="6" y="15" width="66" height="20">
+                        <PartText x="6" y="16" width="72" height="22">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="13.0" weight="BOLD" color="#FFFACC15">
+                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FFF5C438">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
-                        <PartText x="6" y="38" width="66" height="24">
+                        <PartText x="6" y="42" width="72" height="28">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="18.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Default>
-                        <PartText x="6" y="25" width="66" height="28">
+                        <PartText x="6" y="28" width="72" height="28">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="18.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="21.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
@@ -660,17 +660,17 @@
             </Complication>
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78">
-                        <Fill color="#FF191C20" />
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84">
+                        <Fill color="#FF1B1E22" />
                     </Ellipse>
-                    <Arc centerX="39" centerY="39" width="72" height="72" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
-                        <Stroke color="#FFFACC15" thickness="3" cap="ROUND" />
+                    <Arc centerX="42" centerY="42" width="78" height="78" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                        <Stroke color="#FFF5C438" thickness="3.5" cap="ROUND" />
                     </Arc>
                 </PartDraw>
-                <PartText x="6" y="26" width="66" height="26">
+                <PartText x="6" y="28" width="72" height="28">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                        <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFFFFFFF">
+                        <Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFFFFFF">
                             <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                         </Font>
                     </Text>
@@ -678,30 +678,30 @@
             </Complication>
 
             <Complication type="MONOCHROMATIC_IMAGE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78"><Fill color="#FF191C20" /></Ellipse>
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84"><Fill color="#FF1B1E22" /></Ellipse>
                 </PartDraw>
-                <PartImage x="23" y="23" width="32" height="32" tintColor="#FFFACC15">
+                <PartImage x="26" y="26" width="32" height="32">
                     <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="SMALL_IMAGE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78"><Fill color="#FF191C20" /></Ellipse>
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84"><Fill color="#FF1B1E22" /></Ellipse>
                 </PartDraw>
-                <PartImage x="19" y="19" width="40" height="40">
+                <PartImage x="22" y="22" width="40" height="40">
                     <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                 </PartImage>
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 6: Círculo Direito na Curva (x=306, y=246, w=78, h=78) -->
+        <!-- SLOT 6: Círculo Direito (x=308, y=258, w=84, h=84) -->
         <ComplicationSlot
-            x="306"
-            y="246"
-            width="78"
-            height="78"
+            x="308"
+            y="258"
+            width="84"
+            height="84"
             slotId="6"
             displayName="slot_circle_right_label"
             supportedTypes="SHORT_TEXT RANGED_VALUE MONOCHROMATIC_IMAGE SMALL_IMAGE EMPTY">
@@ -713,14 +713,14 @@
             <BoundingOval
                 x="0"
                 y="0"
-                width="78"
-                height="78"
-                outlinePadding="2.0" />
+                width="84"
+                height="84"
+                outlinePadding="0.0" />
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78">
-                        <Fill color="#FF191C20" />
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84">
+                        <Fill color="#FF1B1E22" />
                     </Ellipse>
                 </PartDraw>
                 <Condition>
@@ -729,37 +729,37 @@
                         <Expression name="has_title">[COMPLICATION.TITLE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_icon">
-                        <PartImage x="27" y="10" width="24" height="24" tintColor="#FF67E8F9">
+                        <PartImage x="28" y="11" width="28" height="28">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
-                        <PartText x="6" y="38" width="66" height="26">
+                        <PartText x="6" y="42" width="72" height="30">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="18.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="22.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Compare expression="has_title">
-                        <PartText x="6" y="15" width="66" height="20">
+                        <PartText x="6" y="16" width="72" height="22">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="13.0" weight="BOLD" color="#FF67E8F9">
+                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FF88D4DC">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
-                        <PartText x="6" y="38" width="66" height="26">
+                        <PartText x="6" y="42" width="72" height="30">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="20.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Default>
-                        <PartText x="6" y="25" width="66" height="28">
+                        <PartText x="6" y="28" width="72" height="30">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="19.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="23.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
@@ -769,17 +769,17 @@
             </Complication>
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78">
-                        <Fill color="#FF191C20" />
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84">
+                        <Fill color="#FF1B1E22" />
                     </Ellipse>
-                    <Arc centerX="39" centerY="39" width="72" height="72" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
-                        <Stroke color="#FF67E8F9" thickness="3" cap="ROUND" />
+                    <Arc centerX="42" centerY="42" width="78" height="78" startAngle="0" endAngle="360 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                        <Stroke color="#FF88D4DC" thickness="3.5" cap="ROUND" />
                     </Arc>
                 </PartDraw>
-                <PartText x="6" y="26" width="66" height="26">
+                <PartText x="6" y="28" width="72" height="30">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                        <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFFFFFFF">
+                        <Font family="SYNC_TO_DEVICE" size="21.0" weight="BOLD" color="#FFFFFFFF">
                             <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                         </Font>
                     </Text>
@@ -787,35 +787,36 @@
             </Complication>
 
             <Complication type="MONOCHROMATIC_IMAGE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78"><Fill color="#FF191C20" /></Ellipse>
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84"><Fill color="#FF1B1E22" /></Ellipse>
                 </PartDraw>
-                <PartImage x="23" y="23" width="32" height="32" tintColor="#FF67E8F9">
+                <PartImage x="26" y="26" width="32" height="32">
                     <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="SMALL_IMAGE">
-                <PartDraw x="0" y="0" width="78" height="78">
-                    <Ellipse x="0" y="0" width="78" height="78"><Fill color="#FF191C20" /></Ellipse>
+                <PartDraw x="0" y="0" width="84" height="84">
+                    <Ellipse x="0" y="0" width="84" height="84"><Fill color="#FF1B1E22" /></Ellipse>
                 </PartDraw>
-                <PartImage x="19" y="19" width="40" height="40">
+                <PartImage x="22" y="22" width="40" height="40">
                     <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                 </PartImage>
             </Complication>
         </ComplicationSlot>
 
         <!-- ================================================================= -->
-        <!-- 4. ARCOS LATERAIS E INFERIOR CURVOS ACOMPANHANDO A TELA REDONDA   -->
-        <!-- Usando <Arc> real inscrito no círculo 450x450 (zero linhas retas) -->
+        <!-- 4. ARCOS LATERAIS E INFERIOR COM BOUNDINGBOX 100% COMPLETO!       -->
+        <!-- Ícones e textos posicionados na circunferência R=198px para       -->
+        <!-- NUNCA serem cortados pelo BoundingRoundBox nem pela borda redonda!-->
         <!-- ================================================================= -->
 
-        <!-- SLOT 7: Arco Lateral Esquerdo (x=4, y=96, w=62, h=208) -->
+        <!-- SLOT 7: Arco Lateral Esquerdo (x=0, y=94, w=86, h=242) -->
         <ComplicationSlot
-            x="4"
-            y="96"
-            width="62"
-            height="208"
+            x="0"
+            y="94"
+            width="86"
+            height="242"
             slotId="7"
             displayName="slot_side_left_label"
             supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY">
@@ -824,34 +825,45 @@
                 defaultSystemProvider="UNREAD_NOTIFICATION_COUNT"
                 defaultSystemProviderType="SHORT_TEXT" />
 
+            <!-- Cobre 100% do slot (86x242) para jamais cortar o ícone superior nem o texto inferior -->
             <BoundingRoundBox
-                x="4"
-                y="20"
-                width="52"
-                height="168"
-                outlinePadding="2.0"
-                cornerRadius="26" />
+                x="0"
+                y="0"
+                width="86"
+                height="242"
+                outlinePadding="0.0"
+                cornerRadius="8" />
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="62" height="208">
-                    <!-- Arco curvo acompanhando o bisel esquerdo (centro do relógio em 221, 129) -->
+                <PartDraw x="0" y="0" width="86" height="242">
+                    <!-- Trilho curvo esquerdo (250°..290°, centro do relógio em 225, 131) -->
                     <Arc
-                        centerX="221"
-                        centerY="129"
-                        width="416"
-                        height="416"
+                        centerX="225"
+                        centerY="131"
+                        width="412"
+                        height="412"
                         startAngle="250"
                         endAngle="290">
-                        <Stroke color="#FF333627" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF3B361F" thickness="16" cap="ROUND" />
                     </Arc>
                     <Arc
-                        centerX="221"
-                        centerY="129"
-                        width="416"
-                        height="416"
+                        centerX="225"
+                        centerY="131"
+                        width="412"
+                        height="412"
                         startAngle="250"
                         endAngle="252 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
-                        <Stroke color="#FFFACC15" thickness="14" cap="ROUND" />
+                        <Stroke color="#FFF5C438" thickness="16" cap="ROUND" />
+                    </Arc>
+                    <!-- Bolinha laranja que desliza ao longo do arco curvo -->
+                    <Arc
+                        centerX="225"
+                        centerY="131"
+                        width="412"
+                        height="412"
+                        startAngle="250 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))"
+                        endAngle="251 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
+                        <Stroke color="#FFF97316" thickness="16" cap="ROUND" />
                     </Arc>
                 </PartDraw>
                 <Condition>
@@ -859,19 +871,20 @@
                         <Expression name="has_left_icon">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_left_icon">
-                        <PartImage x="24" y="8" width="20" height="20" tintColor="#FFFACC15">
+                        <!-- Posição na curva (300°): global x=36..62, y=110..136 (100% dentro da tela redonda!) -->
+                        <PartImage x="36" y="16" width="26" height="26" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
-                <!-- Texto posicionado em x=18..60 (dentro da corda circular, sem cortar no bisel) -->
-                <PartText x="18" y="176" width="42" height="22">
+                <!-- Posição na curva (240°): global x=28..82, y=298..324 (100% dentro da tela redonda!) -->
+                <PartText x="28" y="204" width="54" height="26">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="13.0"
+                            size="16.0"
                             weight="BOLD"
-                            color="#FF67E8F9">
+                            color="#FF88D4DC">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -881,15 +894,24 @@
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="62" height="208">
+                <PartDraw x="0" y="0" width="86" height="242">
                     <Arc
-                        centerX="221"
-                        centerY="129"
-                        width="416"
-                        height="416"
+                        centerX="225"
+                        centerY="131"
+                        width="412"
+                        height="412"
                         startAngle="250"
                         endAngle="290">
-                        <Stroke color="#FF333627" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF3B361F" thickness="16" cap="ROUND" />
+                    </Arc>
+                    <Arc
+                        centerX="225"
+                        centerY="131"
+                        width="412"
+                        height="412"
+                        startAngle="269"
+                        endAngle="270">
+                        <Stroke color="#FFF97316" thickness="16" cap="ROUND" />
                     </Arc>
                 </PartDraw>
                 <Condition>
@@ -897,18 +919,18 @@
                         <Expression name="has_left_short_icon">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_left_short_icon">
-                        <PartImage x="24" y="8" width="20" height="20" tintColor="#FFFACC15">
+                        <PartImage x="36" y="16" width="26" height="26" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
-                <PartText x="18" y="176" width="42" height="22">
+                <PartText x="28" y="204" width="54" height="26">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="13.0"
+                            size="16.0"
                             weight="BOLD"
-                            color="#FF67E8F9">
+                            color="#FF88D4DC">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -918,48 +940,49 @@
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 8: Arco Lateral Direito (x=384, y=96, w=62, h=208) -->
+        <!-- SLOT 8: Arco Lateral Direito (x=364, y=94, w=86, h=242) -->
         <ComplicationSlot
-            x="384"
-            y="96"
-            width="62"
-            height="208"
+            x="364"
+            y="94"
+            width="86"
+            height="242"
             slotId="8"
             displayName="slot_side_right_label"
             supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY">
 
             <DefaultProviderPolicy
-                defaultSystemProvider="WATCH_BATTERY"
-                defaultSystemProviderType="RANGED_VALUE" />
+                defaultSystemProvider="UNREAD_NOTIFICATION_COUNT"
+                defaultSystemProviderType="SHORT_TEXT" />
 
+            <!-- Cobre 100% do slot (86x242) para jamais cortar o ícone superior nem o texto inferior -->
             <BoundingRoundBox
-                x="6"
-                y="20"
-                width="52"
-                height="168"
-                outlinePadding="2.0"
-                cornerRadius="26" />
+                x="0"
+                y="0"
+                width="86"
+                height="242"
+                outlinePadding="0.0"
+                cornerRadius="8" />
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="62" height="208">
-                    <!-- Arco curvo acompanhando o bisel direito (centro do relógio em -159, 129) -->
+                <PartDraw x="0" y="0" width="86" height="242">
+                    <!-- Trilho curvo direito (70°..110°, centro do relógio em -139, 131) -->
                     <Arc
-                        centerX="-159"
-                        centerY="129"
-                        width="416"
-                        height="416"
+                        centerX="-139"
+                        centerY="131"
+                        width="412"
+                        height="412"
                         startAngle="70"
                         endAngle="110">
-                        <Stroke color="#FF25302B" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF25302B" thickness="16" cap="ROUND" />
                     </Arc>
                     <Arc
-                        centerX="-159"
-                        centerY="129"
-                        width="416"
-                        height="416"
+                        centerX="-139"
+                        centerY="131"
+                        width="412"
+                        height="412"
                         startAngle="70"
                         endAngle="72 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))">
-                        <Stroke color="#FF86EFAC" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF86EFAC" thickness="16" cap="ROUND" />
                     </Arc>
                 </PartDraw>
                 <Condition>
@@ -967,17 +990,18 @@
                         <Expression name="has_right_icon">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_right_icon">
-                        <PartImage x="18" y="8" width="20" height="20" tintColor="#FFFACC15">
+                        <!-- Posição na curva (60°): global x=388..414, y=110..136 (100% dentro da tela redonda!) -->
+                        <PartImage x="24" y="16" width="26" height="26" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
-                <!-- Texto recuado para x=0..42 (384..426 global), nunca cortando o "%" no aro redondo! -->
-                <PartText x="0" y="176" width="42" height="22">
+                <!-- Posição na curva (120°): global x=368..422, y=298..324 (100% dentro da tela redonda!) -->
+                <PartText x="4" y="204" width="54" height="26">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="13.0"
+                            size="16.0"
                             weight="BOLD"
                             color="#FFE2E8F0">
                             <Template><![CDATA[%s]]>
@@ -989,15 +1013,15 @@
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="62" height="208">
+                <PartDraw x="0" y="0" width="86" height="242">
                     <Arc
-                        centerX="-159"
-                        centerY="129"
-                        width="416"
-                        height="416"
+                        centerX="-139"
+                        centerY="131"
+                        width="412"
+                        height="412"
                         startAngle="70"
                         endAngle="110">
-                        <Stroke color="#FF25302B" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF25302B" thickness="16" cap="ROUND" />
                     </Arc>
                 </PartDraw>
                 <Condition>
@@ -1005,16 +1029,16 @@
                         <Expression name="has_right_short_icon">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_right_short_icon">
-                        <PartImage x="18" y="8" width="20" height="20" tintColor="#FFFACC15">
+                        <PartImage x="24" y="16" width="26" height="26" tintColor="#FFF5C438">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
                     </Compare>
                 </Condition>
-                <PartText x="0" y="176" width="42" height="22">
+                <PartText x="4" y="204" width="54" height="26">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="13.0"
+                            size="16.0"
                             weight="BOLD"
                             color="#FFE2E8F0">
                             <Template><![CDATA[%s]]>
@@ -1026,12 +1050,12 @@
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 9: Arco Inferior Curvo (Bateria / Range / Texto — x=90, y=352, w=270, h=92) -->
+        <!-- SLOT 9: Arco Inferior Curvo (Bateria / Range / Texto — x=75, y=348, w=300, h=102) -->
         <ComplicationSlot
-            x="90"
-            y="352"
-            width="270"
-            height="92"
+            x="75"
+            y="348"
+            width="300"
+            height="102"
             slotId="9"
             displayName="slot_bottom_bar_label"
             supportedTypes="RANGED_VALUE SHORT_TEXT LONG_TEXT EMPTY">
@@ -1040,65 +1064,66 @@
                 defaultSystemProvider="WATCH_BATTERY"
                 defaultSystemProviderType="RANGED_VALUE" />
 
+            <!-- Cobre 100% do slot (300x102) para NUNCA cortar o arco inferior em y=80! -->
             <BoundingRoundBox
-                x="15"
-                y="24"
-                width="240"
-                height="58"
-                outlinePadding="2.0"
-                cornerRadius="26" />
+                x="0"
+                y="0"
+                width="300"
+                height="102"
+                outlinePadding="0.0"
+                cornerRadius="8" />
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="270" height="92">
-                    <!-- Ícone de Bateria Dourado à esquerda do arco inferior (com polo positivo) -->
+                <PartDraw x="0" y="0" width="300" height="102">
+                    <!-- Ícone de Bateria Dourado à esquerda do arco inferior (global x=122, y=396) -->
                     <RoundRectangle
-                        x="32"
-                        y="36"
-                        width="6"
-                        height="3"
-                        cornerRadiusX="1"
-                        cornerRadiusY="1">
-                        <Fill color="#FFFACC15" />
+                        x="51"
+                        y="44"
+                        width="8"
+                        height="4"
+                        cornerRadiusX="1.5"
+                        cornerRadiusY="1.5">
+                        <Fill color="#FFF5C438" />
                     </RoundRectangle>
                     <RoundRectangle
-                        x="29"
-                        y="39"
-                        width="12"
-                        height="19"
-                        cornerRadiusX="3"
-                        cornerRadiusY="3">
-                        <Fill color="#FFFACC15" />
+                        x="47"
+                        y="48"
+                        width="16"
+                        height="24"
+                        cornerRadiusX="3.5"
+                        cornerRadiusY="3.5">
+                        <Fill color="#FFF5C438" />
                     </RoundRectangle>
 
-                    <!-- Arco Inferior Curvo acompanhando a borda redonda (centro do relógio em 135, -127) -->
+                    <!-- Arco Inferior Curvo acompanhando a borda redonda (centro do relógio em 150, -123) -->
                     <Arc
-                        centerX="135"
-                        centerY="-127"
-                        width="416"
-                        height="416"
+                        centerX="150"
+                        centerY="-123"
+                        width="412"
+                        height="412"
                         startAngle="162"
                         endAngle="198">
-                        <Stroke color="#FF2B3024" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF2B3024" thickness="16" cap="ROUND" />
                     </Arc>
                     <Arc
-                        centerX="135"
-                        centerY="-127"
-                        width="416"
-                        height="416"
+                        centerX="150"
+                        centerY="-123"
+                        width="412"
+                        height="412"
                         startAngle="198 - 36 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))"
                         endAngle="198">
-                        <Stroke color="#FF86EFAC" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF88D4DC" thickness="16" cap="ROUND" />
                     </Arc>
                 </PartDraw>
 
-                <!-- Percentual / Texto à direita do arco inferior (ex: 62%) em Ciano -->
-                <PartText x="208" y="34" width="58" height="26">
+                <!-- Percentual / Texto à direita do arco inferior no DPI Samsung (22sp BOLD Ciano) -->
+                <PartText x="220" y="42" width="72" height="32">
                     <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="18.0"
+                            size="22.0"
                             weight="BOLD"
-                            color="#FF67E8F9">
+                            color="#FF88D4DC">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
@@ -1108,26 +1133,52 @@
             </Complication>
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="270" height="92">
+                <PartDraw x="0" y="0" width="300" height="102">
+                    <RoundRectangle
+                        x="51"
+                        y="44"
+                        width="8"
+                        height="4"
+                        cornerRadiusX="1.5"
+                        cornerRadiusY="1.5">
+                        <Fill color="#FFF5C438" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="47"
+                        y="48"
+                        width="16"
+                        height="24"
+                        cornerRadiusX="3.5"
+                        cornerRadiusY="3.5">
+                        <Fill color="#FFF5C438" />
+                    </RoundRectangle>
                     <Arc
-                        centerX="135"
-                        centerY="-127"
-                        width="416"
-                        height="416"
+                        centerX="150"
+                        centerY="-123"
+                        width="412"
+                        height="412"
                         startAngle="162"
                         endAngle="198">
-                        <Stroke color="#FF2B3024" thickness="14" cap="ROUND" />
+                        <Stroke color="#FF2B3024" thickness="16" cap="ROUND" />
+                    </Arc>
+                    <Arc
+                        centerX="150"
+                        centerY="-123"
+                        width="412"
+                        height="412"
+                        startAngle="176"
+                        endAngle="198">
+                        <Stroke color="#FF88D4DC" thickness="16" cap="ROUND" />
                     </Arc>
                 </PartDraw>
-                <PartText x="45" y="34" width="180" height="26">
-                    <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                <PartText x="220" y="42" width="72" height="32">
+                    <Text align="START" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="16.0"
+                            size="22.0"
                             weight="BOLD"
-                            color="#FF67E8F9">
-                            <Template><![CDATA[%s %s]]>
-                                <Parameter expression="[COMPLICATION.TITLE]" />
+                            color="#FF88D4DC">
+                            <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
                         </Font>
@@ -1136,13 +1187,24 @@
             </Complication>
 
             <Complication type="LONG_TEXT">
-                <PartText x="35" y="34" width="200" height="26">
+                <PartDraw x="0" y="0" width="300" height="102">
+                    <Arc
+                        centerX="150"
+                        centerY="-123"
+                        width="412"
+                        height="412"
+                        startAngle="162"
+                        endAngle="198">
+                        <Stroke color="#FF2B3024" thickness="16" cap="ROUND" />
+                    </Arc>
+                </PartDraw>
+                <PartText x="50" y="42" width="200" height="32">
                     <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                         <Font
                             family="SYNC_TO_DEVICE"
-                            size="16.0"
+                            size="18.0"
                             weight="BOLD"
-                            color="#FF67E8F9">
+                            color="#FF88D4DC">
                             <Template><![CDATA[%s]]>
                                 <Parameter expression="[COMPLICATION.TEXT]" />
                             </Template>
