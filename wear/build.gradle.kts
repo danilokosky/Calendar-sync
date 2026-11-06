@@ -11,8 +11,8 @@ android {
         applicationId = "com.chronowear.sync"
         minSdk = 30
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 1001
+        versionName = "1.0.0-wear"
     }
 
     compileOptions {
@@ -27,6 +27,7 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.wear:wear:1.3.0")
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
     implementation("androidx.wear.tiles:tiles:1.4.0")

@@ -40,6 +40,13 @@
                     android:host="*"
                     android:pathPrefix="/chronowear/request_sync_from_watch" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/chronowear/pong_watch_app" />
+            </intent-filter>
         </service>
 
         <receiver

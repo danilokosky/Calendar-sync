@@ -12,7 +12,6 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -35,10 +34,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.text.SimpleDateFormat
-import java.util.Date
+import kotlinx.coroutines.withContext
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 class WearMainActivity : Activity() {
 
@@ -46,26 +43,23 @@ class WearMainActivity : Activity() {
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var tickerJob: Job? = null
 
-    private lateinit var modeStatusText: TextView
-    private lateinit var countdownHeaderText: TextView
-    private lateinit var countdownTimerText: TextView
-    private lateinit var progressTrackView: LinearLayout
-    private lateinit var progressFillView: View
-    private lateinit var progressLabelText: TextView
-    private lateinit var topThreeEventsContainer: LinearLayout
+    private lateinit var connectionStatusText: TextView
+    private lateinit var nextEventTitleText: TextView
+    private lateinit var nextEventCountdownText: TextView
+    private lateinit var complicationStatusText: TextView
 
     private var upcomingThree: List<CachedWearEvent> = emptyList()
 
     private val cacheUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            reloadFromLocalCache()
+            reloadEssentialState()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repo = WatchAutonomousRepository.getInstance(this)
-        buildWatchUi()
+        buildEssentialWatchUi()
     }
 
     override fun onResume() {
@@ -76,9 +70,9 @@ class WearMainActivity : Activity() {
         } else {
             registerReceiver(cacheUpdateReceiver, filter)
         }
-        reloadFromLocalCache()
-        startSecondBySecondTicker()
-        requestSyncFromPhoneSilently()
+        reloadEssentialState()
+        startTicker()
+        announcePresenceAndRequestSync()
     }
 
     override fun onPause() {
@@ -97,7 +91,7 @@ class WearMainActivity : Activity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-    private fun roundedBg(fillHex: String, strokeHex: String, radiusDp: Int): GradientDrawable {
+    private fun pillBg(fillHex: String, strokeHex: String, radiusDp: Int): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(radiusDp).toFloat()
@@ -106,193 +100,131 @@ class WearMainActivity : Activity() {
         }
     }
 
-    private fun buildWatchUi() {
+    /**
+     * Interface enxuta e essencial para Wear OS:
+     * Mostra apenas o status de conexão com o telefone, o próximo evento com contagem regressiva
+     * e o botão para atualizar as Complications.
+     */
+    private fun buildEssentialWatchUi() {
         val scrollView = ScrollView(this).apply {
-            setBackgroundColor(Color.parseColor("#070A12"))
+            setBackgroundColor(Color.parseColor("#000000"))
             isFillViewport = true
         }
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(18), dp(26), dp(18), dp(36))
-        }
-
-        modeStatusText = TextView(this).apply {
-            text = "CHRONOWEAR • CACHE AUTÔNOMO"
-            textSize = 10f
-            setTextColor(Color.parseColor("#38BDF8"))
-            typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
-        }
-        container.addView(modeStatusText)
-
-        // Bloco de Contagem Regressiva e Barra de Progresso
-        val topCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = roundedBg("#111827", "#1E293B", 16)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dp(8)
-                bottomMargin = dp(10)
-            }
-            layoutParams = lp
+            setPadding(dp(20), dp(24), dp(20), dp(28))
         }
 
-        countdownHeaderText = TextView(this).apply {
-            text = "Próximo Evento"
-            textSize = 11f
-            setTextColor(Color.parseColor("#CBD5E1"))
-            gravity = Gravity.CENTER
-        }
-        topCard.addView(countdownHeaderText)
-
-        countdownTimerText = TextView(this).apply {
-            text = "--:--:--"
-            textSize = 18f
-            setTextColor(Color.parseColor("#F59E0B"))
-            typeface = Typeface.MONOSPACE
+        val appTitle = TextView(this).apply {
+            text = "ChronoWear"
+            textSize = 15f
+            setTextColor(Color.parseColor("#FFFFFF"))
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setPadding(0, dp(2), 0, dp(6))
         }
-        topCard.addView(countdownTimerText)
+        container.addView(appTitle)
 
-        progressTrackView = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = roundedBg("#1E293B", "#334155", 6)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(8)
-            )
-        }
-        progressFillView = View(this).apply {
-            background = roundedBg("#F59E0B", "#F59E0B", 6)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT)
-        }
-        progressTrackView.addView(progressFillView)
-        topCard.addView(progressTrackView)
-
-        progressLabelText = TextView(this).apply {
-            text = "Barra: 0%"
-            textSize = 10f
-            setTextColor(Color.parseColor("#94A3B8"))
-            typeface = Typeface.MONOSPACE
-            gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, 0)
-        }
-        topCard.addView(progressLabelText)
-        container.addView(topCard)
-
-        // Janela dos Próximos 3 Eventos
-        val sectionTitle = TextView(this).apply {
-            text = "PRÓXIMOS 3 EVENTOS"
-            textSize = 10f
-            setTextColor(Color.parseColor("#F59E0B"))
-            typeface = Typeface.MONOSPACE
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(6))
-        }
-        container.addView(sectionTitle)
-
-        topThreeEventsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        container.addView(topThreeEventsContainer)
-
-        // Botão para solicitar sincronização ao smartphone ou atualizar Complications
-        val syncButton = Button(this).apply {
-            text = "Sincronizar / Atualizar"
+        connectionStatusText = TextView(this).apply {
+            text = "Verificando conexão..."
             textSize = 11f
-            setTextColor(Color.parseColor("#090D16"))
-            background = roundedBg("#F59E0B", "#F59E0B", 14)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            val lp = LinearLayout.LayoutParams(
+            setTextColor(Color.parseColor("#4ADE80"))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(2), 0, dp(10))
+        }
+        container.addView(connectionStatusText)
+
+        // Card único e essencial do Próximo Evento
+        val eventCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = pillBg("#141917", "#26312C", 18)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) }
-            layoutParams = lp
+            ).apply { bottomMargin = dp(10) }
+        }
+
+        nextEventTitleText = TextView(this).apply {
+            text = "Sem eventos sincronizados"
+            textSize = 12f
+            setTextColor(Color.parseColor("#F8FAFC"))
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            maxLines = 2
+        }
+        eventCard.addView(nextEventTitleText)
+
+        nextEventCountdownText = TextView(this).apply {
+            text = "--:--"
+            textSize = 15f
+            setTextColor(Color.parseColor("#BAE6FD"))
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, dp(2))
+        }
+        eventCard.addView(nextEventCountdownText)
+
+        complicationStatusText = TextView(this).apply {
+            text = "Complications ativas"
+            textSize = 10f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            gravity = Gravity.CENTER
+        }
+        eventCard.addView(complicationStatusText)
+
+        container.addView(eventCard)
+
+        val syncBtn = Button(this).apply {
+            text = "Sincronizar"
+            isAllCaps = false
+            textSize = 12f
+            setTextColor(Color.parseColor("#0B191E"))
+            setTypeface(typeface, Typeface.BOLD)
+            background = pillBg("#BAE6FD", "#7DD3FC", 20)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(36)
+            )
+            setPadding(dp(20), 0, dp(20), 0)
             setOnClickListener {
-                Toast.makeText(
-                    this@WearMainActivity,
-                    "Solicitando agenda ao smartphone...",
-                    Toast.LENGTH_SHORT
-                ).show()
-                requestSyncFromPhoneSilently()
+                Toast.makeText(this@WearMainActivity, "Sincronizando...", Toast.LENGTH_SHORT).show()
+                announcePresenceAndRequestSync()
                 forceUpdateComplicationsAndTile()
             }
         }
-        container.addView(syncButton)
+        container.addView(syncBtn)
 
         scrollView.addView(container)
         setContentView(scrollView)
     }
 
-    private fun reloadFromLocalCache() {
+    private fun reloadEssentialState() {
         val nowMs = System.currentTimeMillis()
         upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
-        val lastSyncMs = repo.getLastSyncTimestampMs()
-        val syncTimeStr = if (lastSyncMs > 0L) {
-            SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(lastSyncMs))
-        } else {
-            "Aguardando 1º sync"
-        }
-
-        modeStatusText.text = "CACHE ${repo.getHorizonDays()}D • SYNC $syncTimeStr"
-
-        topThreeEventsContainer.removeAllViews()
-        if (upcomingThree.isEmpty()) {
-            val emptyTv = TextView(this).apply {
-                text = "Sem eventos futuros no cache local.\nAbra o app no Smartphone e toque em Sincronizar."
-                textSize = 11f
-                setTextColor(Color.parseColor("#94A3B8"))
-                gravity = Gravity.CENTER
-                setPadding(dp(6), dp(8), dp(6), dp(8))
-            }
-            topThreeEventsContainer.addView(emptyTv)
-        } else {
-            upcomingThree.forEachIndexed { idx, ev ->
-                val card = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    background = roundedBg("#111827", "#1E293B", 12)
-                    setPadding(dp(10), dp(8), dp(10), dp(8))
-                    val lp = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = dp(6) }
-                    layoutParams = lp
-                }
-
-                val timeLine = TextView(this).apply {
-                    text = "#${idx + 1} • ${ev.formatStartHHMM()}"
-                    textSize = 10f
-                    setTextColor(Color.parseColor("#38BDF8"))
-                    typeface = Typeface.MONOSPACE
-                }
-                val titleLine = TextView(this).apply {
-                    text = ev.title
-                    textSize = 12f
-                    setTextColor(Color.parseColor("#F8FAFC"))
-                    setTypeface(typeface, Typeface.BOLD)
-                    maxLines = 2
-                }
-                card.addView(timeLine)
-                card.addView(titleLine)
-                topThreeEventsContainer.addView(card)
-            }
-        }
-
         updateCountdownTick()
+
+        uiScope.launch {
+            val nodes = withContext(Dispatchers.IO) {
+                try {
+                    Wearable.getNodeClient(this@WearMainActivity).connectedNodes.await()
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            if (nodes.isNotEmpty()) {
+                connectionStatusText.text = "ᛒ Conectado • ${nodes.first().displayName}"
+                connectionStatusText.setTextColor(Color.parseColor("#4ADE80"))
+            } else {
+                connectionStatusText.text = "Offline • Cache (${repo.getHorizonDays()}d)"
+                connectionStatusText.setTextColor(Color.parseColor("#FBBF24"))
+            }
+        }
     }
 
-    private fun startSecondBySecondTicker() {
+    private fun startTicker() {
         tickerJob?.cancel()
         tickerJob = uiScope.launch {
             while (isActive) {
@@ -306,10 +238,9 @@ class WearMainActivity : Activity() {
         val nowMs = System.currentTimeMillis()
         val first = upcomingThree.firstOrNull { it.startEpochMs > nowMs }
         if (first == null) {
-            countdownHeaderText.text = "Agenda livre"
-            countdownTimerText.text = "--:--:--"
-            progressLabelText.text = "Janela ${repo.getProgressWindowMinutes()}m • 0%"
-            progressFillView.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT)
+            nextEventTitleText.text = "Agenda livre"
+            nextEventCountdownText.text = "Sem próximo evento"
+            complicationStatusText.text = "Complication pronta (${repo.getHorizonDays()}d)"
             return
         }
 
@@ -319,33 +250,31 @@ class WearMainActivity : Activity() {
         val mins = (totalSec % 3600L) / 60L
         val secs = totalSec % 60L
 
-        countdownHeaderText.text = "Início às ${first.formatStartHHMM()}"
-        countdownTimerText.text = String.format(Locale.getDefault(), "%02dh %02dm %02ds", hours, mins, secs)
-
-        val windowMs = TimeUnit.MINUTES.toMillis(repo.getProgressWindowMinutes().toLong()).toFloat()
-        val ratio = if (remainingMs >= windowMs) {
-            0f
+        nextEventTitleText.text = "${first.formatStartHHMM()} • ${first.title}"
+        nextEventCountdownText.text = if (hours > 0) {
+            String.format(Locale.getDefault(), "Em %02dh %02dm", hours, mins)
         } else {
-            (1f - (remainingMs.toFloat() / windowMs)).coerceIn(0f, 1f)
+            String.format(Locale.getDefault(), "Em %02dm %02ds", mins, secs)
         }
-        val pct = (ratio * 100f).toInt()
-        progressLabelText.text = "Janela ${repo.getProgressWindowMinutes()}m • $pct%"
-
-        val trackW = progressTrackView.width
-        if (trackW > 0) {
-            val fillW = (trackW * ratio).toInt().coerceAtLeast(if (ratio > 0f) dp(4) else 0)
-            progressFillView.layoutParams = LinearLayout.LayoutParams(
-                fillW,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-        }
+        complicationStatusText.text = "${upcomingThree.size} próx. evento(s) na Complication"
     }
 
-    private fun requestSyncFromPhoneSilently() {
+    private fun announcePresenceAndRequestSync() {
         uiScope.launch(Dispatchers.IO) {
+            try {
+                Wearable.getCapabilityClient(this@WearMainActivity)
+                    .addLocalCapability(PhoneDataListenerService.CAPABILITY_WATCH_APP_INSTALLED)
+                    .await()
+            } catch (_: Exception) {
+            }
             try {
                 val nodes = Wearable.getNodeClient(this@WearMainActivity).connectedNodes.await()
                 for (node in nodes) {
+                    Wearable.getMessageClient(this@WearMainActivity).sendMessage(
+                        node.id,
+                        "/chronowear/pong_watch_app",
+                        "installed:1.0.0-wear".toByteArray(Charsets.UTF_8)
+                    ).await()
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,
                         "/chronowear/request_sync_from_watch",

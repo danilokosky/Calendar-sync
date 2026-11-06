@@ -28,9 +28,9 @@ import com.chronowear.mobile.sync.CalendarSyncEngine
 import com.chronowear.mobile.sync.CalendarSyncForegroundService
 import com.chronowear.mobile.sync.CalendarSyncWorker
 import com.chronowear.mobile.sync.LocalCalendarEvent
-import com.chronowear.mobile.sync.LocalCalendarItem
 import com.chronowear.mobile.sync.SyncPreferences
-import com.google.android.gms.wearable.Wearable
+import com.chronowear.mobile.sync.WearConnectionReport
+import com.chronowear.mobile.sync.WearConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,49 +39,41 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 class MobileSyncConfigActivity : Activity() {
 
     private enum class BottomTab {
-        INICIO,
-        CONFIGURACOES,
-        SOBRE
+        HOME,
+        SETTINGS,
+        ABOUT
     }
 
     private lateinit var prefs: SyncPreferences
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var tickerJob: Job? = null
-    private var activeTab: BottomTab = BottomTab.INICIO
+    private var activeTab: BottomTab = BottomTab.HOME
     private var suppressSwitchEvents = false
 
-    // Containers principais das 3 telas (Início, Configurações, Sobre)
-    private lateinit var screenInicio: LinearLayout
-    private lateinit var screenConfiguracoes: LinearLayout
-    private lateinit var screenSobre: LinearLayout
+    // Containers das 3 abas únicas do rodapé (Home, Settings, About)
+    private lateinit var screenHome: LinearLayout
+    private lateinit var screenSettings: LinearLayout
+    private lateinit var screenAbout: LinearLayout
 
-    // Pílulas de filtro no topo (estilo Samsung Health)
-    private lateinit var topCategoryPillsRow: LinearLayout
+    // Indicador de conexão Bluetooth + App instalado no relógio
+    private lateinit var btStatusBannerHome: TextView
+    private lateinit var btStatusBannerSettings: TextView
 
-    // Cabeçalho Bluetooth (estilo Amoled Watchfaces: 蓝牙 Connected • Galaxy Watch Ultra)
-    private lateinit var btConnectedBannerInicio: TextView
-    private lateinit var btConnectedBannerConfig: TextView
+    // Elementos essenciais da tela Home
+    private lateinit var watchBezelSubtext: TextView
+    private lateinit var welcomeDeviceStatusTitle: TextView
+    private lateinit var welcomeDeviceStatusDetail: TextView
+    private lateinit var nextEventSummaryText: TextView
 
-    // Elementos da Tela Início
-    private lateinit var watchBezelPreviewSubtext: TextView
-    private lateinit var installedWearDeviceNameText: TextView
-    private lateinit var energyCountdownBigNumber: TextView
-    private lateinit var energyEventSubtitle: TextView
-    private lateinit var energyProgressFillView: View
-    private lateinit var energyProgressCaption: TextView
-    private lateinit var upcomingThreeListContainer: LinearLayout
-
-    // Elementos da Tela Configurações (estilo Amoled Watchfaces)
+    // Elementos da tela Settings (padrão Amoled Watchfaces)
     private lateinit var switchBackgroundService: Switch
     private lateinit var subtitleBackgroundService: TextView
     private lateinit var switchNotificationsSync: Switch
@@ -94,16 +86,18 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var rowProgressWindowChips: LinearLayout
     private lateinit var rowHorizonDaysChips: LinearLayout
 
-    // Botões da Dock Flutuante Inferior (estilo Samsung Health)
-    private lateinit var navTabInicio: LinearLayout
-    private lateinit var navTabConfig: LinearLayout
-    private lateinit var navTabSobre: LinearLayout
-    private lateinit var navLabelInicio: TextView
-    private lateinit var navLabelConfig: TextView
-    private lateinit var navLabelSobre: TextView
+    // Rodapé único com exatamente 3 opções (Home, Settings, About) — sem botão de relógio extra
+    private lateinit var navTabHome: LinearLayout
+    private lateinit var navTabSettings: LinearLayout
+    private lateinit var navTabAbout: LinearLayout
+    private lateinit var navIconHome: TextView
+    private lateinit var navIconSettings: TextView
+    private lateinit var navIconAbout: TextView
+    private lateinit var navLabelHome: TextView
+    private lateinit var navLabelSettings: TextView
+    private lateinit var navLabelAbout: TextView
 
     private var cachedHorizonEvents: List<LocalCalendarEvent> = emptyList()
-    private var cachedDeviceCalendars: List<LocalCalendarItem> = emptyList()
 
     private val syncCompletedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -114,12 +108,11 @@ class MobileSyncConfigActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = SyncPreferences(this)
-        window.statusBarColor = Color.parseColor("#182218")
-        window.navigationBarColor = Color.parseColor("#0B0E0C")
+        window.statusBarColor = Color.parseColor("#111315")
+        window.navigationBarColor = Color.parseColor("#181C1F")
 
-        buildSamsungHealthAndAmoledWatchfacesUi()
-        // Nenhuma permissão é disparada automaticamente no onCreate.
-        // O usuário concede cada permissão ao acionar os Switches em Settings.
+        buildCleanUi()
+        // Nenhuma permissão é solicitada automaticamente na abertura.
     }
 
     override fun onResume() {
@@ -131,7 +124,7 @@ class MobileSyncConfigActivity : Activity() {
             registerReceiver(syncCompletedReceiver, filter)
         }
         refreshUiState()
-        startLiveCountdownTicker()
+        startLiveTicker()
     }
 
     override fun onPause() {
@@ -153,7 +146,7 @@ class MobileSyncConfigActivity : Activity() {
     private fun pillDrawable(
         fillHex: String,
         strokeHex: String = fillHex,
-        radiusDp: Int = 28,
+        radiusDp: Int = 26,
         strokeWidthDp: Int = 1
     ): GradientDrawable {
         return GradientDrawable().apply {
@@ -164,20 +157,9 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
-    private fun headerGradientDrawable(): GradientDrawable {
-        return GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(
-                Color.parseColor("#3E351B"), // Tom dourado/oliva suave do topo do Samsung Health
-                Color.parseColor("#16231B"), // Verde profundo
-                Color.parseColor("#0B0E0C")  // Preto carbono One UI
-            )
-        )
-    }
-
-    private fun buildSamsungHealthAndAmoledWatchfacesUi() {
+    private fun buildCleanUi() {
         val rootFrame = FrameLayout(this).apply {
-            background = headerGradientDrawable()
+            setBackgroundColor(Color.parseColor("#111315"))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -194,158 +176,66 @@ class MobileSyncConfigActivity : Activity() {
 
         val mainColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(22), dp(18), dp(116)) // Espaço inferior para a pílula flutuante
+            setPadding(dp(18), dp(20), dp(18), dp(96))
         }
 
-        // TOPO ESTILO SAMSUNG HEALTH: Título + Barra de Pílulas de Categoria
-        val topHeaderRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(4), dp(14))
-        }
+        // Sem barra redundante de categorias no topo — apenas as 3 telas controladas pelo rodapé
+        screenHome = buildScreenHome()
+        screenSettings = buildScreenSettings()
+        screenAbout = buildScreenAbout()
 
-        val appTitleText = TextView(this).apply {
-            text = "ChronoWear Health & Sync"
-            textSize = 23f
-            setTextColor(Color.parseColor("#F8FAFC"))
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        topHeaderRow.addView(appTitleText)
-
-        val quickSyncBadge = TextView(this).apply {
-            text = "Wear OS"
-            textSize = 11f
-            setTextColor(Color.parseColor("#A7F3D0"))
-            setTypeface(typeface, Typeface.BOLD)
-            background = pillDrawable("#1E3A2F", "#34D399", 20)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            setOnClickListener { triggerManualSyncFromFab() }
-        }
-        topHeaderRow.addView(quickSyncBadge)
-        mainColumn.addView(topHeaderRow)
-
-        // Pílula de ícones/atalhos horizontal (igual à barra abaixo de "Samsung Health" no print 1)
-        topCategoryPillsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = pillDrawable("#262D26", "#384238", 30)
-            setPadding(dp(6), dp(6), dp(6), dp(6))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(18) }
-        }
-        mainColumn.addView(topCategoryPillsRow)
-
-        // 3 Telas Principais
-        screenInicio = buildScreenInicio()
-        screenConfiguracoes = buildScreenConfiguracoes()
-        screenSobre = buildScreenSobre()
-
-        mainColumn.addView(screenInicio)
-        mainColumn.addView(screenConfiguracoes)
-        mainColumn.addView(screenSobre)
+        mainColumn.addView(screenHome)
+        mainColumn.addView(screenSettings)
+        mainColumn.addView(screenAbout)
 
         scrollView.addView(mainColumn)
         rootFrame.addView(scrollView)
 
-        // DOCK FLUTUANTE INFERIOR ESTILO SAMSUNG HEALTH (Pílula arredondada + Botão Circular lateral)
-        val floatingBottomWrapper = LinearLayout(this).apply {
+        // RODAPÉ ÚNICO COM APENAS AS 3 OPÇÕES: Home, Settings, About (sem ícone de relógio)
+        val bottomNavBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(8), dp(18), dp(18))
+            setBackgroundColor(Color.parseColor("#181C1F"))
+            setPadding(dp(12), dp(8), dp(12), dp(10))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
+                dp(72),
                 Gravity.BOTTOM
             )
         }
 
-        val pillNavBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = pillDrawable("#232A25", "#37413A", 34)
-            setPadding(dp(6), dp(6), dp(6), dp(6))
-            layoutParams = LinearLayout.LayoutParams(0, dp(64), 1f).apply {
-                rightMargin = dp(12)
-            }
+        navTabHome = createBottomNavTab("⌂", "Home") {
+            switchTab(BottomTab.HOME)
+        }.also {
+            navIconHome = it.getChildAt(0) as TextView
+            navLabelHome = it.getChildAt(1) as TextView
         }
 
-        navTabInicio = createFloatingNavItem("⌂", "Início") {
-            switchTab(BottomTab.INICIO)
-        }.also { navLabelInicio = it.getChildAt(1) as TextView }
-
-        navTabConfig = createFloatingNavItem("⚙", "Settings") {
-            switchTab(BottomTab.CONFIGURACOES)
-        }.also { navLabelConfig = it.getChildAt(1) as TextView }
-
-        navTabSobre = createFloatingNavItem("ⓘ", "About") {
-            switchTab(BottomTab.SOBRE)
-        }.also { navLabelSobre = it.getChildAt(1) as TextView }
-
-        pillNavBar.addView(navTabInicio)
-        pillNavBar.addView(navTabConfig)
-        pillNavBar.addView(navTabSobre)
-        floatingBottomWrapper.addView(pillNavBar)
-
-        // Botão circular de ação rápida à direita (como no Samsung Health e no Amoled Watchfaces)
-        val roundSyncFab = Button(this).apply {
-            text = "⌚"
-            textSize = 18f
-            setTextColor(Color.parseColor("#0B191E"))
-            background = pillDrawable("#BAE6FD", "#7DD3FC", 32)
-            layoutParams = LinearLayout.LayoutParams(dp(60), dp(60))
-            setOnClickListener {
-                triggerManualSyncFromFab()
-            }
+        navTabSettings = createBottomNavTab("⚙", "Settings") {
+            switchTab(BottomTab.SETTINGS)
+        }.also {
+            navIconSettings = it.getChildAt(0) as TextView
+            navLabelSettings = it.getChildAt(1) as TextView
         }
-        floatingBottomWrapper.addView(roundSyncFab)
 
-        rootFrame.addView(floatingBottomWrapper)
+        navTabAbout = createBottomNavTab("ⓘ", "About") {
+            switchTab(BottomTab.ABOUT)
+        }.also {
+            navIconAbout = it.getChildAt(0) as TextView
+            navLabelAbout = it.getChildAt(1) as TextView
+        }
+
+        bottomNavBar.addView(navTabHome)
+        bottomNavBar.addView(navTabSettings)
+        bottomNavBar.addView(navTabAbout)
+
+        rootFrame.addView(bottomNavBar)
         setContentView(rootFrame)
 
-        switchTab(BottomTab.INICIO)
+        switchTab(BottomTab.HOME)
     }
 
-    private fun renderTopCategoryStrip() {
-        topCategoryPillsRow.removeAllViews()
-        val items = listOf(
-            Triple("⊞ Visão", BottomTab.INICIO, activeTab == BottomTab.INICIO),
-            Triple("⚙ Settings", BottomTab.CONFIGURACOES, activeTab == BottomTab.CONFIGURACOES),
-            Triple("📅 Agendas", BottomTab.CONFIGURACOES, false),
-            Triple("⌚ Relógio", BottomTab.SOBRE, activeTab == BottomTab.SOBRE)
-        )
-
-        items.forEachIndexed { idx, (label, targetTab, isHighlighted) ->
-            val pillBtn = TextView(this).apply {
-                text = label
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTextColor(
-                    if (isHighlighted) Color.parseColor("#FFFFFF") else Color.parseColor("#9CA3AF")
-                )
-                setTypeface(typeface, if (isHighlighted) Typeface.BOLD else Typeface.NORMAL)
-                background = if (isHighlighted) {
-                    pillDrawable("#525B52", "#6B7280", 24)
-                } else {
-                    pillDrawable("#00000000", "#00000000", 24)
-                }
-                setPadding(dp(10), dp(8), dp(10), dp(8))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                setOnClickListener {
-                    if (idx == 2) {
-                        openSyncedCalendarsDialog()
-                    } else {
-                        switchTab(targetTab)
-                    }
-                }
-            }
-            topCategoryPillsRow.addView(pillBtn)
-        }
-    }
-
-    private fun createFloatingNavItem(
+    private fun createBottomNavTab(
         iconSymbol: String,
         title: String,
         onClick: () -> Unit
@@ -360,13 +250,15 @@ class MobileSyncConfigActivity : Activity() {
                 text = iconSymbol
                 textSize = 16f
                 gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#F8FAFC"))
+                setPadding(dp(20), dp(4), dp(20), dp(4))
+                setTextColor(Color.parseColor("#E2E8F0"))
             }
             val labelTv = TextView(this@MobileSyncConfigActivity).apply {
                 text = title
-                textSize = 11f
+                textSize = 12f
                 gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#CBD5E1"))
+                setPadding(0, dp(2), 0, 0)
+                setTextColor(Color.parseColor("#94A3B8"))
             }
             addView(iconTv)
             addView(labelTv)
@@ -375,55 +267,67 @@ class MobileSyncConfigActivity : Activity() {
 
     private fun switchTab(tab: BottomTab) {
         activeTab = tab
-        screenInicio.visibility = if (tab == BottomTab.INICIO) View.VISIBLE else View.GONE
-        screenConfiguracoes.visibility = if (tab == BottomTab.CONFIGURACOES) View.VISIBLE else View.GONE
-        screenSobre.visibility = if (tab == BottomTab.SOBRE) View.VISIBLE else View.GONE
+        screenHome.visibility = if (tab == BottomTab.HOME) View.VISIBLE else View.GONE
+        screenSettings.visibility = if (tab == BottomTab.SETTINGS) View.VISIBLE else View.GONE
+        screenAbout.visibility = if (tab == BottomTab.ABOUT) View.VISIBLE else View.GONE
 
-        styleBottomNavItem(navTabInicio, navLabelInicio, tab == BottomTab.INICIO)
-        styleBottomNavItem(navTabConfig, navLabelConfig, tab == BottomTab.CONFIGURACOES)
-        styleBottomNavItem(navTabSobre, navLabelSobre, tab == BottomTab.SOBRE)
+        styleBottomTab(navIconHome, navLabelHome, tab == BottomTab.HOME)
+        styleBottomTab(navIconSettings, navLabelSettings, tab == BottomTab.SETTINGS)
+        styleBottomTab(navIconAbout, navLabelAbout, tab == BottomTab.ABOUT)
 
-        renderTopCategoryStrip()
         refreshUiState()
     }
 
-    private fun styleBottomNavItem(container: LinearLayout, label: TextView, selected: Boolean) {
-        container.background = if (selected) {
-            pillDrawable("#3F4A41", "#526054", 26)
+    private fun styleBottomTab(iconView: TextView, labelView: TextView, selected: Boolean) {
+        iconView.background = if (selected) {
+            pillDrawable("#153843", "#1E4E5D", 18)
         } else {
-            pillDrawable("#00000000", "#00000000", 26)
+            pillDrawable("#00000000", "#00000000", 18)
         }
-        label.setTextColor(
-            if (selected) Color.parseColor("#FFFFFF") else Color.parseColor("#94A3B8")
+        iconView.setTextColor(
+            if (selected) Color.parseColor("#BAE6FD") else Color.parseColor("#CBD5E1")
         )
-        label.setTypeface(label.typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+        labelView.setTextColor(
+            if (selected) Color.parseColor("#FFFFFF") else Color.parseColor("#9CA3AF")
+        )
+        labelView.setTypeface(labelView.typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
     }
 
     // =========================================================================
-    // TELA 1: INÍCIO (Mockup Circular do Relógio + Welcome Card + Card estilo "Pontuação Energia")
+    // ABA 1: HOME (Essencial e Informativa, estilo Amoled Watchfaces)
     // =========================================================================
-    private fun buildScreenInicio(): LinearLayout {
+    private fun buildScreenHome(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
 
-            // 1. Mockup Circular do Smartwatch (como na print 2: Phone Battery Complication)
-            val watchOuterBezel = LinearLayout(this@MobileSyncConfigActivity).apply {
+            val titleTv = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Calendar Sync Complication"
+                textSize = 22f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(4), 0, dp(18))
+            }
+            addView(titleTv)
+
+            // Mockup Circular do Relógio no topo
+            val watchBezel = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#111513"))
-                    setStroke(dp(10), Color.parseColor("#2A322D"))
+                    setColor(Color.parseColor("#141718"))
+                    setStroke(dp(10), Color.parseColor("#2A2F33"))
                 }
                 setPadding(dp(26), dp(24), dp(26), dp(24))
-                layoutParams = LinearLayout.LayoutParams(dp(248), dp(248)).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(236), dp(236)).apply {
                     bottomMargin = dp(14)
                 }
 
-                val pill1 = LinearLayout(this@MobileSyncConfigActivity).apply {
+                val slot1 = LinearLayout(this@MobileSyncConfigActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    background = pillDrawable("#26312A", "#3B493F", 18)
+                    background = pillDrawable("#2B3330", "#3D4844", 18)
                     setPadding(dp(14), dp(8), dp(14), dp(8))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
@@ -431,24 +335,24 @@ class MobileSyncConfigActivity : Activity() {
                     ).apply { bottomMargin = dp(8) }
 
                     val t1 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "⌚ Event Timer & Progress"
+                        text = "Upcoming Event"
                         textSize = 12f
-                        setTextColor(Color.parseColor("#F8FAFC"))
+                        setTextColor(Color.parseColor("#FFFFFF"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
                     val s1 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "RangedValue Complication (1h / 2h)"
+                        text = "Calendar Sync Complication"
                         textSize = 10f
-                        setTextColor(Color.parseColor("#A7F3D0"))
+                        setTextColor(Color.parseColor("#CBD5E1"))
                     }
                     addView(t1)
                     addView(s1)
                 }
-                addView(pill1)
+                addView(slot1)
 
-                val pill2 = LinearLayout(this@MobileSyncConfigActivity).apply {
+                val slot2 = LinearLayout(this@MobileSyncConfigActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    background = pillDrawable("#2D3831", "#47554B", 18)
+                    background = pillDrawable("#2B3330", "#3D4844", 18)
                     setPadding(dp(14), dp(10), dp(14), dp(10))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
@@ -456,208 +360,127 @@ class MobileSyncConfigActivity : Activity() {
                     )
 
                     val t2 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "📅 Next 3 Calendar Events"
+                        text = "Event Timer (1h / 2h)"
                         textSize = 12f
                         setTextColor(Color.parseColor("#FFFFFF"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
-                    watchBezelPreviewSubtext = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Upcoming Event & Autonomous Cache"
+                    watchBezelSubtext = TextView(this@MobileSyncConfigActivity).apply {
+                        text = "Calendar Sync Complication"
                         textSize = 10f
                         setTextColor(Color.parseColor("#CBD5E1"))
                     }
                     addView(t2)
-                    addView(watchBezelPreviewSubtext)
+                    addView(watchBezelSubtext)
                 }
-                addView(pill2)
+                addView(slot2)
             }
-            addView(watchOuterBezel)
+            addView(watchBezel)
 
-            // 2. Linha de Status Bluetooth (Exatamente como nas prints 2 e 3: "Connected • Galaxy Watch Ultra")
-            btConnectedBannerInicio = TextView(this@MobileSyncConfigActivity).apply {
-                text = "ᛒ  Verificando conexão com Smartwatch..."
+            // Informativo de conexão: só dá positivo se o Wearable estiver conectado E com o app instalado
+            btStatusBannerHome = TextView(this@MobileSyncConfigActivity).apply {
+                text = "ᛒ  Verificando conexão com o relógio..."
                 textSize = 14f
                 setTextColor(Color.parseColor("#E2E8F0"))
                 gravity = Gravity.CENTER
-                setPadding(0, dp(4), 0, dp(16))
+                setPadding(dp(8), dp(4), dp(8), dp(18))
             }
-            addView(btConnectedBannerInicio)
+            addView(btStatusBannerHome)
 
-            // 3. Card "Sua agenda sob controle / Welcome!" (Fusão Samsung Health + Amoled Watchfaces)
+            // Cartão Welcome! limpo e sem botões redundantes
             val welcomeCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1D2620", "#2E3B32", 26)
+                background = pillDrawable("#1B1D21", "#2A2E35", 24)
                 setPadding(dp(22), dp(20), dp(22), dp(20))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(16) }
+                )
 
                 val wTitle = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Sua agenda sob controle!"
-                    textSize = 21f
+                    text = "Welcome!"
+                    textSize = 22f
                     setTextColor(Color.parseColor("#FFFFFF"))
                     setTypeface(typeface, Typeface.BOLD)
                 }
                 addView(wTitle)
 
                 val wDesc = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Este app companion envia seus próximos compromissos, temporizador regressivo e barra de progresso (1h/2h) para o seu relógio Wear OS."
-                    textSize = 14f
+                    text = "Este app companion envia seus próximos compromissos e contagem regressiva para as Complications do seu relógio Wear OS."
+                    textSize = 15f
                     setTextColor(Color.parseColor("#D1D5DB"))
-                    setPadding(0, dp(8), 0, dp(14))
+                    setPadding(0, dp(10), 0, dp(18))
                 }
                 addView(wDesc)
 
-                val wInstalledLabel = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Dispositivo Wear conectado / Cache autônomo:"
-                    textSize = 13f
+                welcomeDeviceStatusTitle = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "Status do aplicativo no relógio:"
+                    textSize = 15f
+                    setTextColor(Color.parseColor("#E5E7EB"))
+                    setTypeface(typeface, Typeface.BOLD)
+                }
+                addView(welcomeDeviceStatusTitle)
+
+                welcomeDeviceStatusDetail = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "Verificando dispositivos Wear OS..."
+                    textSize = 15f
                     setTextColor(Color.parseColor("#9CA3AF"))
                     setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, dp(6), 0, dp(14))
                 }
-                addView(wInstalledLabel)
+                addView(welcomeDeviceStatusDetail)
 
-                installedWearDeviceNameText = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Buscando nós Wear OS..."
-                    textSize = 15f
-                    setTextColor(Color.parseColor("#BAE6FD"))
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(0, dp(4), 0, 0)
+                nextEventSummaryText = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "Próximo evento: --"
+                    textSize = 13f
+                    setTextColor(Color.parseColor("#94A3B8"))
                 }
-                addView(installedWearDeviceNameText)
+                addView(nextEventSummaryText)
             }
             addView(welcomeCard)
-
-            // 4. Card estilo "Pontuação energia" do Samsung Health para o Temporizador & Barra de Progresso
-            val energyScoreCard = LinearLayout(this@MobileSyncConfigActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#141715", "#262B28", 26)
-                setPadding(dp(22), dp(18), dp(22), dp(20))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(16) }
-
-                val eHeader = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Temporizador do Próximo Evento"
-                    textSize = 14f
-                    setTextColor(Color.parseColor("#E5E7EB"))
-                }
-                addView(eHeader)
-
-                energyCountdownBigNumber = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "--:--"
-                    textSize = 36f
-                    setTextColor(Color.parseColor("#FFFFFF"))
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(0, dp(6), 0, dp(2))
-                }
-                addView(energyCountdownBigNumber)
-
-                energyEventSubtitle = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Ative Calendar Events Sync em Settings"
-                    textSize = 14f
-                    setTextColor(Color.parseColor("#60A5FA"))
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(0, 0, 0, dp(12))
-                }
-                addView(energyEventSubtitle)
-
-                // Trilho de cápsula da barra de progresso
-                val barTrack = LinearLayout(this@MobileSyncConfigActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    background = pillDrawable("#272C29", "#37413A", 12)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(16)
-                    )
-                }
-                energyProgressFillView = View(this@MobileSyncConfigActivity).apply {
-                    background = pillDrawable("#4ADE80", "#4ADE80", 12)
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT)
-                }
-                barTrack.addView(energyProgressFillView)
-                addView(barTrack)
-
-                energyProgressCaption = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Barra RangedValue: 0%"
-                    textSize = 11f
-                    setTextColor(Color.parseColor("#9CA3AF"))
-                    setPadding(0, dp(8), 0, 0)
-                }
-                addView(energyProgressCaption)
-            }
-            addView(energyScoreCard)
-
-            // 5. Card dos Próximos 3 Eventos enviados para a Janela Grande da Watch Face
-            val topThreeCard = LinearLayout(this@MobileSyncConfigActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#141715", "#262B28", 26)
-                setPadding(dp(20), dp(18), dp(20), dp(18))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-
-                val topThreeHeader = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Próximos 3 Eventos (Janela Grande Watch Face)"
-                    textSize = 14f
-                    setTextColor(Color.parseColor("#E5E7EB"))
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(0, 0, 0, dp(10))
-                }
-                addView(topThreeHeader)
-
-                upcomingThreeListContainer = LinearLayout(this@MobileSyncConfigActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                }
-                addView(upcomingThreeListContainer)
-            }
-            addView(topThreeCard)
         }
     }
 
     // =========================================================================
-    // TELA 2: SETTINGS (Idêntica à print 3 do Amoled Watchfaces + Leitura e Frequência)
+    // ABA 2: SETTINGS (Idêntica à estrutura Amoled Watchfaces)
     // =========================================================================
-    private fun buildScreenConfiguracoes(): LinearLayout {
+    private fun buildScreenSettings(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
 
             val settingsHeaderTitle = TextView(this@MobileSyncConfigActivity).apply {
                 text = "Settings"
-                textSize = 24f
+                textSize = 23f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setPadding(0, dp(2), 0, dp(8))
+                setPadding(0, dp(4), 0, dp(10))
             }
             addView(settingsHeaderTitle)
 
-            btConnectedBannerConfig = TextView(this@MobileSyncConfigActivity).apply {
-                text = "ᛒ  Connected • Smartwatch"
+            btStatusBannerSettings = TextView(this@MobileSyncConfigActivity).apply {
+                text = "ᛒ  Verificando conexão..."
                 textSize = 14f
                 setTextColor(Color.parseColor("#E2E8F0"))
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(16))
+                setPadding(dp(8), 0, dp(8), dp(16))
             }
-            addView(btConnectedBannerConfig)
+            addView(btStatusBannerSettings)
 
-            // Container Principal Arredondado (igual ao card único de Settings da print 3)
             val mainSettingsCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1A1C1E", "#2C3034", 26)
-                setPadding(dp(20), dp(20), dp(20), dp(20))
+                background = pillDrawable("#1B1D21", "#2A2E35", 24)
+                setPadding(dp(20), dp(18), dp(20), dp(18))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(16) }
             }
 
-            // ITEM 1: Background Service (Important - Unristricted Battery & Service Permission required)
-            val bgServiceRow = createAmoledSettingToggleRow(
+            // 1. Background Service
+            val bgServiceRow = createSettingToggleRow(
                 title = "Background Service",
-                subtitle = "Important - Background & Notifications Access required",
+                subtitle = "Important - Notifications Access required",
                 onSubtitleCreated = { subtitleBackgroundService = it },
                 onSwitchCreated = { sw ->
                     switchBackgroundService = sw
@@ -669,18 +492,17 @@ class MobileSyncConfigActivity : Activity() {
             )
             mainSettingsCard.addView(bgServiceRow)
 
-            // Botão pílula para autorizar execução irrestrita em 2º plano pelo usuário
             val btnBatteryPermissionPill = createOutlineActionPillButton(
-                "⚡  Autorizar Permissão de 2º Plano (Sem Restrição)"
+                "⚡  Autorizar 2º Plano Sem Restrição"
             ) {
                 requestUnrestrictedBatteryPermissionByUser()
             }
             mainSettingsCard.addView(btnBatteryPermissionPill)
 
-            // ITEM 2: Notifications Sync
-            val notifSyncRow = createAmoledSettingToggleRow(
+            // 2. Notifications Sync
+            val notifSyncRow = createSettingToggleRow(
                 title = "Notifications Sync",
-                subtitle = "Only for Phone Notifications & Complication Alerts",
+                subtitle = "Only for Phone Notifications Complication",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchNotificationsSync = sw
@@ -692,8 +514,8 @@ class MobileSyncConfigActivity : Activity() {
             )
             mainSettingsCard.addView(notifSyncRow)
 
-            // ITEM 3: Media Playback Sync
-            val mediaSyncRow = createAmoledSettingToggleRow(
+            // 3. Media Playback Sync
+            val mediaSyncRow = createSettingToggleRow(
                 title = "Media Playback Sync",
                 subtitle = "Now Playing Complication support",
                 onSubtitleCreated = {},
@@ -707,8 +529,8 @@ class MobileSyncConfigActivity : Activity() {
             )
             mainSettingsCard.addView(mediaSyncRow)
 
-            // ITEM 4: Calendar Events Sync (Upcoming Event & Event Timer Complication) + Botão "📅 Synced calendars"
-            val calSyncRow = createAmoledSettingToggleRow(
+            // 4. Calendar Events Sync + Synced calendars
+            val calSyncRow = createSettingToggleRow(
                 title = "Calendar Events Sync",
                 subtitle = "Upcoming Event & Event Timer Complication",
                 onSubtitleCreated = { subtitleCalendarEventsSync = it },
@@ -727,10 +549,10 @@ class MobileSyncConfigActivity : Activity() {
             }
             mainSettingsCard.addView(btnSyncedCalendarsPill)
 
-            // ITEM 5: Alteração nos Compromissos (Ler automaticamente ao criar/editar/apagar)
-            val autoChangeRow = createAmoledSettingToggleRow(
+            // 5. Instant Calendar Change Sync
+            val autoChangeRow = createSettingToggleRow(
                 title = "Instant Calendar Change Sync",
-                subtitle = "Lê os compromissos automaticamente sempre que houver alteração na Agenda (ContentObserver)",
+                subtitle = "Relê a agenda automaticamente quando um compromisso é criado ou alterado",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchAutoReadOnChange = sw
@@ -753,118 +575,104 @@ class MobileSyncConfigActivity : Activity() {
 
             addView(mainSettingsCard)
 
-            // Card complementar de Frequência de Leitura, Barra de Progresso (1h/2h) e Horizonte Autônomo (2d a 7d)
-            val advancedCard = LinearLayout(this@MobileSyncConfigActivity).apply {
+            // Configurações de Frequência, Janela da Barra e Horizonte
+            val timingCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1A1C1E", "#2C3034", 26)
-                setPadding(dp(20), dp(18), dp(20), dp(20))
+                background = pillDrawable("#1B1D21", "#2A2E35", 24)
+                setPadding(dp(20), dp(18), dp(20), dp(18))
             }
 
             val freqLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Frequência de Leitura Periódica do Calendário"
+                text = "Frequência de Leitura do Calendário"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 0, 0, dp(8))
             }
-            advancedCard.addView(freqLabel)
-
-            val freqSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Intervalo do WorkManager além da leitura instantânea por alteração:"
-                textSize = 12f
-                setTextColor(Color.parseColor("#9CA3AF"))
-                setPadding(0, dp(2), 0, dp(8))
-            }
-            advancedCard.addView(freqSub)
+            timingCard.addView(freqLabel)
 
             rowFrequencyChips = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(16))
+                setPadding(0, 0, 0, dp(14))
             }
-            advancedCard.addView(rowFrequencyChips)
+            timingCard.addView(rowFrequencyChips)
 
             val progLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Janela da Barra de Progresso (Event Timer)"
+                text = "Barra de Progresso (Event Timer)"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 0, 0, dp(8))
             }
-            advancedCard.addView(progLabel)
-
-            val progSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Antecedência com que a barra da Complication começa a encher:"
-                textSize = 12f
-                setTextColor(Color.parseColor("#9CA3AF"))
-                setPadding(0, dp(2), 0, dp(8))
-            }
-            advancedCard.addView(progSub)
+            timingCard.addView(progLabel)
 
             rowProgressWindowChips = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(16))
+                setPadding(0, 0, 0, dp(14))
             }
-            advancedCard.addView(rowProgressWindowChips)
+            timingCard.addView(rowProgressWindowChips)
 
             val horLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Horizonte Autônomo Offline no Relógio"
+                text = "Horizonte de Eventos Sincronizados"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 0, 0, dp(8))
             }
-            advancedCard.addView(horLabel)
-
-            val horSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Quantidade de dias futuros salvos no relógio caso fique sem conexão:"
-                textSize = 12f
-                setTextColor(Color.parseColor("#9CA3AF"))
-                setPadding(0, dp(2), 0, dp(8))
-            }
-            advancedCard.addView(horSub)
+            timingCard.addView(horLabel)
 
             rowHorizonDaysChips = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
             }
-            advancedCard.addView(rowHorizonDaysChips)
+            timingCard.addView(rowHorizonDaysChips)
 
-            addView(advancedCard)
+            addView(timingCard)
         }
     }
 
     // =========================================================================
-    // TELA 3: SOBRE / DIAGNÓSTICO DE LEITURA DA AGENDA
+    // ABA 3: ABOUT (Informações essenciais e botão de sincronização manual)
     // =========================================================================
-    private fun buildScreenSobre(): LinearLayout {
+    private fun buildScreenAbout(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
 
+            val aboutHeaderTitle = TextView(this@MobileSyncConfigActivity).apply {
+                text = "About"
+                textSize = 23f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(4), 0, dp(16))
+            }
+            addView(aboutHeaderTitle)
+
             val card = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1A1C1E", "#2C3034", 26)
+                background = pillDrawable("#1B1D21", "#2A2E35", 24)
                 setPadding(dp(22), dp(20), dp(22), dp(20))
             }
 
-            val t = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Como Funciona a Leitura e Sincronização"
-                textSize = 18f
-                setTextColor(Color.parseColor("#FFFFFF"))
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, 0, 0, dp(10))
-            }
-            card.addView(t)
-
             val body = TextView(this@MobileSyncConfigActivity).apply {
-                text = "• Permissões 100% controladas pelo usuário: o app só solicita acesso ao Calendário ou Notificações quando você ativa a chave correspondente em Settings.\n\n" +
-                    "• Como a leitura do calendário é feita: consultamos a tabela CalendarContract.Instances dentro do horizonte configurado (2, 3, 5 ou 7 dias), expandindo eventos recorrentes automaticamente e filtrando apenas os calendários escolhidos no botão 'Synced calendars'.\n\n" +
-                    "• Se houver alteração nos compromissos: com 'Instant Calendar Change Sync' ligado, um ContentObserver e o CalendarChangeReceiver detectam qualquer novo compromisso, mudança de horário ou exclusão na agenda e disparam a leitura imediatamente.\n\n" +
-                    "• Modo Autônomo no Smartwatch: o relógio armazena o pacote de dias futuros em banco SQLite local e avança para o próximo evento sozinho usando AlarmManager mesmo desconectado do Bluetooth."
-                textSize = 13f
+                text = "ChronoWear Calendar Sync\n\n" +
+                    "• Conexão Verificada: O status só indica 'Connected' quando o relógio está conectado E o aplicativo da versão Wear OS está instalado no relógio.\n\n" +
+                    "• Leitura da Agenda: Lê CalendarContract.Instances nos calendários selecionados em 'Synced calendars' na frequência configurada e também instantaneamente quando há alterações na agenda."
+                textSize = 14f
                 setTextColor(Color.parseColor("#D1D5DB"))
+                setPadding(0, 0, 0, dp(16))
             }
             card.addView(body)
+
+            val manualSyncBtn = createOutlineActionPillButton("🔄   Sincronizar Agora com o Relógio") {
+                triggerManualSync()
+            }
+            card.addView(manualSyncBtn)
+
             addView(card)
         }
     }
 
-    private fun createAmoledSettingToggleRow(
+    private fun createSettingToggleRow(
         title: String,
         subtitle: String,
         onSubtitleCreated: (TextView) -> Unit,
@@ -915,25 +723,21 @@ class MobileSyncConfigActivity : Activity() {
             textSize = 14f
             setTextColor(Color.parseColor("#E2E8F0"))
             setTypeface(typeface, Typeface.BOLD)
-            background = pillDrawable("#1A1C1E", "#4B5563", 26, 1)
-            setPadding(dp(20), dp(10), dp(20), dp(10))
+            background = pillDrawable("#1B1D21", "#4B5563", 24, 1)
+            setPadding(dp(20), dp(8), dp(20), dp(8))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(46)
+                dp(44)
             ).apply {
                 topMargin = dp(4)
-                bottomMargin = dp(12)
+                bottomMargin = dp(10)
             }
             setOnClickListener { onClick() }
         }
     }
 
-    // =========================================================================
-    // LÓGICA DE PERMISSÕES ACIONADAS PELO USUÁRIO E SELETOR "SYNCED CALENDARS"
-    // =========================================================================
     private fun onToggleBackgroundService(enable: Boolean) {
         if (enable) {
-            // Se Android 13+, solicita permissão de notificação para o Foreground Service se ainda não tiver
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 !CalendarSyncEngine.hasNotificationPermission(this)
             ) {
@@ -948,12 +752,10 @@ class MobileSyncConfigActivity : Activity() {
                 CalendarSyncForegroundService.startOrUpdate(this, "Background Service Ativado")
             } catch (_: Exception) {
             }
-            Toast.makeText(this, "Background Service ativado!", Toast.LENGTH_SHORT).show()
         } else {
             prefs.setBackgroundServiceEnabled(false)
             CalendarSyncWorker.cancelPeriodicSync(this)
             CalendarSyncForegroundService.stop(this)
-            Toast.makeText(this, "Background Service desativado.", Toast.LENGTH_SHORT).show()
         }
         refreshUiState()
     }
@@ -980,7 +782,6 @@ class MobileSyncConfigActivity : Activity() {
             suppressSwitchEvents = true
             switchCalendarEventsSync.isChecked = false
             suppressSwitchEvents = false
-            // Solicita READ_CALENDAR somente porque o usuário acionou "Calendar Events Sync"
             requestPermissions(
                 arrayOf(Manifest.permission.READ_CALENDAR),
                 REQ_CALENDAR_FOR_SYNC
@@ -991,19 +792,14 @@ class MobileSyncConfigActivity : Activity() {
         prefs.setCalendarEventsSyncEnabled(enable)
         if (enable) {
             if (prefs.getSelectedCalendarIds().isEmpty()) {
-                // Abre imediatamente o seletor de calendários para o usuário escolher quais sincronizar
                 openSyncedCalendarsDialog()
             } else {
-                triggerManualSyncFromFab()
+                triggerManualSync()
             }
         }
         refreshUiState()
     }
 
-    /**
-     * Abre o diálogo nativo multi-seleção "Synced calendars" (exatamente como no Amoled Watchfaces)
-     * listando todos os calendários do aparelho para o usuário marcar quais deseja sincronizar.
-     */
     private fun openSyncedCalendarsDialog() {
         if (!CalendarSyncEngine.hasCalendarPermission(this)) {
             requestPermissions(
@@ -1017,12 +813,11 @@ class MobileSyncConfigActivity : Activity() {
             val calendars = withContext(Dispatchers.IO) {
                 CalendarSyncEngine.loadDeviceCalendars(this@MobileSyncConfigActivity)
             }
-            cachedDeviceCalendars = calendars
 
             if (calendars.isEmpty()) {
                 Toast.makeText(
                     this@MobileSyncConfigActivity,
-                    "Nenhum calendário encontrado nas contas do aparelho.",
+                    "Nenhum calendário encontrado no dispositivo.",
                     Toast.LENGTH_LONG
                 ).show()
                 return@launch
@@ -1030,7 +825,7 @@ class MobileSyncConfigActivity : Activity() {
 
             val currentSelected = prefs.getSelectedCalendarIds().toMutableSet()
             val labels = calendars.map { cal ->
-                "${cal.displayName} (${cal.accountName}) • ${cal.upcomingEventsCount} ev."
+                "${cal.displayName} (${cal.accountName})"
             }.toTypedArray()
             val checkedItems = BooleanArray(calendars.size) { idx ->
                 currentSelected.contains(calendars[idx].id)
@@ -1040,24 +835,14 @@ class MobileSyncConfigActivity : Activity() {
                 .setTitle("Synced calendars")
                 .setMultiChoiceItems(labels, checkedItems) { _, which, isChecked ->
                     val calId = calendars[which].id
-                    if (isChecked) {
-                        currentSelected.add(calId)
-                    } else {
-                        currentSelected.remove(calId)
-                    }
+                    if (isChecked) currentSelected.add(calId) else currentSelected.remove(calId)
                 }
-                .setPositiveButton("Salvar e Sincronizar") { _, _ ->
+                .setPositiveButton("Salvar") { _, _ ->
                     prefs.setSelectedCalendarIds(currentSelected)
                     if (currentSelected.isNotEmpty()) {
                         prefs.setCalendarEventsSyncEnabled(true)
                     }
-                    triggerManualSyncFromFab()
-                }
-                .setNeutralButton("Marcar Todos") { _, _ ->
-                    val allIds = calendars.map { it.id }.toSet()
-                    prefs.setSelectedCalendarIds(allIds)
-                    prefs.setCalendarEventsSyncEnabled(true)
-                    triggerManualSyncFromFab()
+                    triggerManualSync()
                 }
                 .setNegativeButton("Cancelar", null)
                 .show()
@@ -1073,11 +858,7 @@ class MobileSyncConfigActivity : Activity() {
                 )
                 startActivity(intent)
             } else {
-                Toast.makeText(
-                    this,
-                    "Execução em 2º plano sem restrição já está autorizada!",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this, "Execução sem restrição já autorizada.", Toast.LENGTH_SHORT).show()
             }
         } catch (_: Exception) {
             val intent = Intent(
@@ -1088,28 +869,20 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
-    private fun triggerManualSyncFromFab() {
+    private fun triggerManualSync() {
         if (!CalendarSyncEngine.hasCalendarPermission(this)) {
-            Toast.makeText(
-                this,
-                "Ative 'Calendar Events Sync' em Settings para autorizar a leitura do calendário.",
-                Toast.LENGTH_LONG
-            ).show()
-            switchTab(BottomTab.CONFIGURACOES)
+            switchTab(BottomTab.SETTINGS)
             return
         }
-
         if (prefs.getSelectedCalendarIds().isEmpty()) {
             openSyncedCalendarsDialog()
             return
         }
-
-        Toast.makeText(this, "Lendo compromissos e enviando ao relógio...", Toast.LENGTH_SHORT).show()
         uiScope.launch {
             withContext(Dispatchers.IO) {
                 CalendarSyncEngine.performFullSyncToWatch(
                     this@MobileSyncConfigActivity,
-                    "Sincronização Manual (Botão Relógio)"
+                    "Sincronização Manual"
                 )
             }
             refreshUiState()
@@ -1129,19 +902,13 @@ class MobileSyncConfigActivity : Activity() {
                 if (granted) {
                     prefs.setCalendarEventsSyncEnabled(true)
                     openSyncedCalendarsDialog()
-                } else {
-                    Toast.makeText(this, "Permissão de Calendário negada pelo usuário.", Toast.LENGTH_SHORT).show()
                 }
             }
             REQ_CALENDAR_FOR_DIALOG -> {
-                if (granted) {
-                    openSyncedCalendarsDialog()
-                }
+                if (granted) openSyncedCalendarsDialog()
             }
             REQ_NOTIFICATION_SYNC -> {
-                if (granted) {
-                    prefs.setNotificationsSyncEnabled(true)
-                }
+                if (granted) prefs.setNotificationsSyncEnabled(true)
             }
         }
         refreshUiState()
@@ -1161,16 +928,16 @@ class MobileSyncConfigActivity : Activity() {
         suppressSwitchEvents = false
 
         subtitleBackgroundService.text = if (prefs.isBackgroundServiceEnabled()) {
-            if (isBgUnrestricted) "Ativo em 2º plano (Sem restrição de bateria)"
-            else "Ativo • Recomendado autorizar bateria irrestrita abaixo"
+            if (isBgUnrestricted) "Ativo em 2º plano (Sem restrição)"
+            else "Ativo • Autorize bateria sem restrição abaixo"
         } else {
-            "Important - Notifications & Background Access required"
+            "Important - Notifications Access required"
         }
 
         subtitleCalendarEventsSync.text = if (hasCalPerm) {
-            "Upcoming Event & Event Timer ($selectedCalsCount calendário(s) sincronizado(s))"
+            "Upcoming Event & Event Timer ($selectedCalsCount agenda(s))"
         } else {
-            "Upcoming Event & Event Timer Complication (Requer Permissão)"
+            "Upcoming Event & Event Timer Complication"
         }
 
         btnSyncedCalendarsPill.text = if (selectedCalsCount > 0) {
@@ -1186,35 +953,52 @@ class MobileSyncConfigActivity : Activity() {
                 if (hasCalPerm) CalendarSyncEngine.queryHorizonEvents(this@MobileSyncConfigActivity)
                 else emptyList()
             }
-            val nodes = withContext(Dispatchers.IO) {
-                try {
-                    Wearable.getNodeClient(this@MobileSyncConfigActivity).connectedNodes.await()
-                } catch (_: Exception) {
-                    emptyList()
-                }
+            val connReport: WearConnectionReport = withContext(Dispatchers.IO) {
+                CalendarSyncEngine.checkWearConnectionAndAppStatus(this@MobileSyncConfigActivity)
             }
 
             cachedHorizonEvents = events
 
-            val connectedLabel = if (nodes.isNotEmpty()) {
-                "ᛒ  Connected • ${nodes.joinToString { it.displayName }}"
-            } else {
-                "ᛒ  Standby • Galaxy Watch / Wear OS (Cache Autônomo ${prefs.getHorizonDays()}d)"
+            when (connReport.state) {
+                WearConnectionState.CONNECTED_WITH_APP_INSTALLED -> {
+                    val names = connReport.installedAppNodeNames.joinToString()
+                    val positiveBanner = "ᛒ  Connected • $names"
+                    btStatusBannerHome.text = positiveBanner
+                    btStatusBannerHome.setTextColor(Color.parseColor("#E2E8F0"))
+                    btStatusBannerSettings.text = positiveBanner
+                    btStatusBannerSettings.setTextColor(Color.parseColor("#E2E8F0"))
+
+                    welcomeDeviceStatusTitle.text = "App is installed on your wear device(s):"
+                    welcomeDeviceStatusDetail.text = names
+                    welcomeDeviceStatusDetail.setTextColor(Color.parseColor("#4ADE80"))
+                }
+                WearConnectionState.WEARABLE_CONNECTED_APP_MISSING -> {
+                    val wearableNames = connReport.wearableDisplayNames.joinToString()
+                    val warnBanner = "⚠  Wearable conectado ($wearableNames) • App NÃO instalado no relógio"
+                    btStatusBannerHome.text = warnBanner
+                    btStatusBannerHome.setTextColor(Color.parseColor("#FBBF24"))
+                    btStatusBannerSettings.text = warnBanner
+                    btStatusBannerSettings.setTextColor(Color.parseColor("#FBBF24"))
+
+                    welcomeDeviceStatusTitle.text = "Há um Wearable conectado, mas o app não está instalado no relógio:"
+                    welcomeDeviceStatusDetail.text = "$wearableNames (Instale o APK da versão Wear OS no relógio)"
+                    welcomeDeviceStatusDetail.setTextColor(Color.parseColor("#FBBF24"))
+                }
+                WearConnectionState.DISCONNECTED -> {
+                    val discBanner = "ᛒ  Disconnected • Nenhum relógio Wear OS conectado"
+                    btStatusBannerHome.text = discBanner
+                    btStatusBannerHome.setTextColor(Color.parseColor("#9CA3AF"))
+                    btStatusBannerSettings.text = discBanner
+                    btStatusBannerSettings.setTextColor(Color.parseColor("#9CA3AF"))
+
+                    welcomeDeviceStatusTitle.text = "Status do dispositivo Wear OS:"
+                    welcomeDeviceStatusDetail.text = "Nenhum smartwatch conectado ao telefone."
+                    welcomeDeviceStatusDetail.setTextColor(Color.parseColor("#9CA3AF"))
+                }
             }
-            btConnectedBannerInicio.text = connectedLabel
-            btConnectedBannerConfig.text = connectedLabel
 
-            installedWearDeviceNameText.text = if (nodes.isNotEmpty()) {
-                nodes.joinToString("\n") { "${it.displayName} (${it.id.take(4).uppercase()})" }
-            } else {
-                "Aguardando conexão Bluetooth • Cache de ${prefs.getHorizonDays()} dias configurado"
-            }
-
-            watchBezelPreviewSubtext.text =
-                "${events.size} eventos no horizonte (${prefs.getHorizonDays()}d)"
-
-            populateTopThreeCards(events)
-            updateLiveCountdownAndBar()
+            watchBezelSubtext.text = "${events.size} evento(s) sincronizado(s)"
+            updateLiveEventSummary()
         }
     }
 
@@ -1222,9 +1006,8 @@ class MobileSyncConfigActivity : Activity() {
         rowFrequencyChips.removeAllViews()
         val curFreq = prefs.getSyncIntervalMinutes()
         listOf(15L to "15m", 30L to "30m", 60L to "1h", 120L to "2h").forEach { (mins, label) ->
-            val selected = (curFreq == mins)
             rowFrequencyChips.addView(
-                createSelectableChip(label, selected) {
+                createSelectableChip(label, curFreq == mins) {
                     prefs.setSyncIntervalMinutes(mins)
                     if (prefs.isBackgroundServiceEnabled()) {
                         CalendarSyncWorker.schedulePeriodicSync(this, mins)
@@ -1236,13 +1019,12 @@ class MobileSyncConfigActivity : Activity() {
 
         rowProgressWindowChips.removeAllViews()
         val curWin = prefs.getProgressWindowMinutes()
-        listOf(30 to "30m", 60 to "1 hora", 120 to "2 horas", 180 to "3 horas").forEach { (mins, label) ->
-            val selected = (curWin == mins)
+        listOf(30 to "30m", 60 to "1h", 120 to "2h", 180 to "3h").forEach { (mins, label) ->
             rowProgressWindowChips.addView(
-                createSelectableChip(label, selected) {
+                createSelectableChip(label, curWin == mins) {
                     prefs.setProgressWindowMinutes(mins)
                     if (prefs.isBackgroundServiceEnabled()) {
-                        CalendarSyncWorker.enqueueImmediateSync(this, "Janela Barra ${mins}m")
+                        CalendarSyncWorker.enqueueImmediateSync(this, "Janela ${mins}m")
                     }
                     refreshUiState()
                 }
@@ -1251,10 +1033,9 @@ class MobileSyncConfigActivity : Activity() {
 
         rowHorizonDaysChips.removeAllViews()
         val curHor = prefs.getHorizonDays()
-        listOf(2 to "2 dias", 3 to "3 dias", 5 to "5 dias", 7 to "7 dias").forEach { (days, label) ->
-            val selected = (curHor == days)
+        listOf(2 to "2d", 3 to "3d", 5 to "5d", 7 to "7d").forEach { (days, label) ->
             rowHorizonDaysChips.addView(
-                createSelectableChip(label, selected) {
+                createSelectableChip(label, curHor == days) {
                     prefs.setHorizonDays(days)
                     if (prefs.isBackgroundServiceEnabled()) {
                         CalendarSyncWorker.enqueueImmediateSync(this, "Horizonte ${days}d")
@@ -1274,130 +1055,45 @@ class MobileSyncConfigActivity : Activity() {
             text = label
             isAllCaps = false
             textSize = 12f
-            setTextColor(if (selected) Color.parseColor("#111827") else Color.parseColor("#E5E7EB"))
+            setTextColor(if (selected) Color.parseColor("#0B191E") else Color.parseColor("#E5E7EB"))
             setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
             background = pillDrawable(
-                if (selected) "#BAE6FD" else "#262B28",
-                if (selected) "#7DD3FC" else "#37413A",
-                20
+                if (selected) "#BAE6FD" else "#262A30",
+                if (selected) "#7DD3FC" else "#373D45",
+                18
             )
-            layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply {
                 rightMargin = dp(6)
             }
             setOnClickListener { onClick() }
         }
     }
 
-    private fun populateTopThreeCards(events: List<LocalCalendarEvent>) {
-        upcomingThreeListContainer.removeAllViews()
-        if (!CalendarSyncEngine.hasCalendarPermission(this) || !prefs.isCalendarEventsSyncEnabled()) {
-            val tv = TextView(this).apply {
-                text = "Vá em 'Settings' -> ative 'Calendar Events Sync' e escolha seus calendários em 'Synced calendars'."
-                textSize = 13f
-                setTextColor(Color.parseColor("#9CA3AF"))
-            }
-            upcomingThreeListContainer.addView(tv)
-            return
-        }
-
-        if (events.isEmpty()) {
-            val tv = TextView(this).apply {
-                text = "Nenhum evento encontrado nos próximos ${prefs.getHorizonDays()} dias para os calendários selecionados."
-                textSize = 13f
-                setTextColor(Color.parseColor("#9CA3AF"))
-            }
-            upcomingThreeListContainer.addView(tv)
-            return
-        }
-
-        val sdf = SimpleDateFormat("EEE dd/MM • HH:mm", Locale.getDefault())
-        events.take(3).forEachIndexed { idx, ev ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = pillDrawable("#1E2420", "#2E3832", 18)
-                setPadding(dp(14), dp(10), dp(14), dp(10))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) }
-            }
-
-            val top = TextView(this).apply {
-                text = "#${idx + 1} • ${sdf.format(Date(ev.startEpochMs))} (${ev.calendarName})"
-                textSize = 11f
-                setTextColor(Color.parseColor("#4ADE80"))
-                typeface = Typeface.MONOSPACE
-            }
-            val title = TextView(this).apply {
-                text = ev.title
-                textSize = 15f
-                setTextColor(Color.parseColor("#FFFFFF"))
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(2), 0, 0)
-            }
-            row.addView(top)
-            row.addView(title)
-            upcomingThreeListContainer.addView(row)
-        }
-    }
-
-    private fun startLiveCountdownTicker() {
+    private fun startLiveTicker() {
         tickerJob?.cancel()
         tickerJob = uiScope.launch {
             while (isActive) {
-                updateLiveCountdownAndBar()
+                updateLiveEventSummary()
                 delay(1000L)
             }
         }
     }
 
-    private fun updateLiveCountdownAndBar() {
+    private fun updateLiveEventSummary() {
         val nowMs = System.currentTimeMillis()
         val nextEv = cachedHorizonEvents.firstOrNull { it.startEpochMs > nowMs }
-
         if (nextEv == null) {
-            energyCountdownBigNumber.text = "Livre"
-            energyEventSubtitle.text = "Sem próximo compromisso no horizonte"
-            energyProgressCaption.text =
-                "Barra RangedValue: 0% • Janela configurada: ${prefs.getProgressWindowMinutes()}m antes"
-            energyProgressFillView.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT)
+            nextEventSummaryText.text = "Próximo evento: Nenhum compromisso pendente no horizonte."
             return
         }
 
-        val remainingMs = (nextEv.startEpochMs - nowMs).coerceAtLeast(0L)
-        val totalSec = remainingMs / 1000L
-        val days = totalSec / 86400L
-        val hours = (totalSec % 86400L) / 3600L
-        val mins = (totalSec % 3600L) / 60L
-        val secs = totalSec % 60L
-
-        energyCountdownBigNumber.text = when {
-            days > 0 -> String.format(Locale.getDefault(), "%dd %02dh %02dm", days, hours, mins)
-            hours > 0 -> String.format(Locale.getDefault(), "%02dh %02dm %02ds", hours, mins, secs)
-            else -> String.format(Locale.getDefault(), "%02dm %02ds", mins, secs)
-        }
-
+        val remainingSec = ((nextEv.startEpochMs - nowMs).coerceAtLeast(0L)) / 1000L
+        val hours = remainingSec / 3600L
+        val mins = (remainingSec % 3600L) / 60L
         val startHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextEv.startEpochMs))
-        energyEventSubtitle.text = "Início às $startHHMM • ${nextEv.title}"
 
-        val windowMs = TimeUnit.MINUTES.toMillis(prefs.getProgressWindowMinutes().toLong()).toFloat()
-        val ratio = if (remainingMs >= windowMs) {
-            0f
-        } else {
-            (1f - (remainingMs.toFloat() / windowMs)).coerceIn(0f, 1f)
-        }
-        val pct = (ratio * 100f).toInt()
-        energyProgressCaption.text =
-            "Barra de Progresso no Relógio: $pct% (Inicia ${prefs.getProgressWindowMinutes()} min antes)"
-
-        val parentW = (energyProgressFillView.parent as? View)?.width ?: 0
-        if (parentW > 0) {
-            val fillW = (parentW * ratio).toInt().coerceAtLeast(if (ratio > 0f) dp(8) else 0)
-            energyProgressFillView.layoutParams = LinearLayout.LayoutParams(
-                fillW,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-        }
+        nextEventSummaryText.text =
+            "Próximo evento: ${nextEv.title} às $startHHMM (em ${hours}h ${mins}m)"
     }
 
     companion object {

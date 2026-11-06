@@ -8,12 +8,25 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.CalendarContract
+import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+
+enum class WearConnectionState {
+    DISCONNECTED,
+    WEARABLE_CONNECTED_APP_MISSING,
+    CONNECTED_WITH_APP_INSTALLED
+}
+
+data class WearConnectionReport(
+    val state: WearConnectionState,
+    val wearableDisplayNames: List<String>,
+    val installedAppNodeNames: List<String>
+)
 
 data class LocalCalendarItem(
     val id: String,
@@ -40,6 +53,8 @@ object CalendarSyncEngine {
 
     const val DATA_LAYER_PATH = "/chronowear/calendar_horizon_payload"
     const val MESSAGE_FORCE_SYNC_PATH = "/chronowear/force_sync_payload"
+    const val MESSAGE_PING_WATCH_APP_PATH = "/chronowear/ping_watch_app"
+    const val CAPABILITY_WATCH_APP_INSTALLED = "chronowear_wear_app_installed"
 
     fun hasCalendarPermission(context: Context): Boolean {
         return context.checkSelfPermission(Manifest.permission.READ_CALENDAR) ==
@@ -61,9 +76,65 @@ object CalendarSyncEngine {
     }
 
     /**
-     * Lê a tabela `CalendarContract.Calendars` para listar todos os calendários do dispositivo.
-     * Não marca nenhum calendário sem ação explícita do usuário.
+     * Verifica se há um relógio Wear OS conectado ao smartphone E se o aplicativo ChronoWear
+     * está efetivamente instalado no relógio (via CapabilityClient + handshake ping/pong).
      */
+    suspend fun checkWearConnectionAndAppStatus(context: Context): WearConnectionReport {
+        val prefs = SyncPreferences(context)
+        val connectedNodes = try {
+            Wearable.getNodeClient(context).connectedNodes.await()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        if (connectedNodes.isEmpty()) {
+            return WearConnectionReport(
+                state = WearConnectionState.DISCONNECTED,
+                wearableDisplayNames = emptyList(),
+                installedAppNodeNames = emptyList()
+            )
+        }
+
+        val capableNodeIds = try {
+            val capInfo = Wearable.getCapabilityClient(context)
+                .getCapability(CAPABILITY_WATCH_APP_INSTALLED, CapabilityClient.FILTER_REACHABLE)
+                .await()
+            capInfo.nodes.map { it.id }.toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+
+        // Dispara ping leve para cada nó conectado para confirmar presença do app no relógio
+        for (node in connectedNodes) {
+            try {
+                Wearable.getMessageClient(context).sendMessage(
+                    node.id,
+                    MESSAGE_PING_WATCH_APP_PATH,
+                    ByteArray(0)
+                ).await()
+            } catch (_: Exception) {
+            }
+        }
+
+        val installedNodes = connectedNodes.filter { node ->
+            capableNodeIds.contains(node.id) || prefs.isWatchAppVerifiedOnNode(node.id)
+        }
+
+        return if (installedNodes.isNotEmpty()) {
+            WearConnectionReport(
+                state = WearConnectionState.CONNECTED_WITH_APP_INSTALLED,
+                wearableDisplayNames = connectedNodes.map { it.displayName },
+                installedAppNodeNames = installedNodes.map { it.displayName }
+            )
+        } else {
+            WearConnectionReport(
+                state = WearConnectionState.WEARABLE_CONNECTED_APP_MISSING,
+                wearableDisplayNames = connectedNodes.map { it.displayName },
+                installedAppNodeNames = emptyList()
+            )
+        }
+    }
+
     fun loadDeviceCalendars(context: Context): List<LocalCalendarItem> {
         if (!hasCalendarPermission(context)) return emptyList()
 
@@ -133,12 +204,6 @@ object CalendarSyncEngine {
         return count
     }
 
-    /**
-     * Como é feita a leitura do calendário:
-     * Utiliza `CalendarContract.Instances.CONTENT_URI` com o intervalo exato `[nowMs, nowMs + horizonDays]`.
-     * Isso expande automaticamente eventos recorrentes (diários, semanais, mensais), filtra compromissos
-     * cancelados (`STATUS_CANCELED`) e retorna apenas os calendários escolhidos pelo usuário, ordenados por `BEGIN ASC`.
-     */
     fun queryHorizonEvents(context: Context): List<LocalCalendarEvent> {
         if (!hasCalendarPermission(context)) return emptyList()
 
@@ -205,9 +270,6 @@ object CalendarSyncEngine {
         return events.sortedBy { it.startEpochMs }
     }
 
-    /**
-     * Lê os compromissos dos calendários selecionados e transmite ao relógio via DataClient + MessageClient.
-     */
     suspend fun performFullSyncToWatch(
         context: Context,
         triggerSource: String = "Sincronização Manual"
@@ -233,7 +295,7 @@ object CalendarSyncEngine {
                 0,
                 0,
                 triggerSource,
-                "Nenhum calendário selecionado na aba Calendários"
+                "Nenhum calendário selecionado em Synced calendars"
             )
             context.sendBroadcast(
                 Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(context.packageName)
@@ -268,6 +330,7 @@ object CalendarSyncEngine {
         }.toString()
 
         try {
+            val connReport = checkWearConnectionAndAppStatus(context)
             val nodes = Wearable.getNodeClient(context).connectedNodes.await()
 
             val putDataMapReq = PutDataMapRequest.create(DATA_LAYER_PATH).apply {
@@ -288,10 +351,13 @@ object CalendarSyncEngine {
                 ).await()
             }
 
-            val nodeStatus = if (nodes.isNotEmpty()) {
-                "Enviado para ${nodes.size} relógio(s) (${nodes.joinToString { it.displayName }})"
-            } else {
-                "Gravado no Data Layer (Relógio desconectado)"
+            val nodeStatus = when (connReport.state) {
+                WearConnectionState.CONNECTED_WITH_APP_INSTALLED ->
+                    "Sincronizado com ${connReport.installedAppNodeNames.joinToString()}"
+                WearConnectionState.WEARABLE_CONNECTED_APP_MISSING ->
+                    "Wearable conectado (${connReport.wearableDisplayNames.joinToString()}), mas o app não está instalado no relógio"
+                WearConnectionState.DISCONNECTED ->
+                    "Nenhum relógio conectado"
             }
             prefs.recordLastSync(nowMs, events.size, selectedCalendarsCount, triggerSource, nodeStatus)
         } catch (_: Exception) {

@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-feature android:name="android.hardware.type.watch" />
+    <!-- Garante compilação estrita apenas para Wear OS (não híbrido), exigindo hardware de relógio -->
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="true"
+        tools:replace="android:required" />
+
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
@@ -13,9 +18,13 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
 
+        <uses-library
+            android:name="com.google.android.wearable"
+            android:required="true" />
+
         <meta-data
             android:name="com.google.android.wearable.standalone"
-            android:value="false" />
+            android:value="true" />
 
         <activity
             android:name=".ui.WearMainActivity"
@@ -27,7 +36,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Data Layer & Message Listener do Smartphone -->
+        <!-- Data Layer & Message Listener (recebe agenda e responde ao handshake de app instalado) -->
         <service
             android:name=".data.PhoneDataListenerService"
             android:exported="true">
@@ -45,14 +54,21 @@
                     android:host="*"
                     android:pathPrefix="/chronowear/force_sync_payload" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/chronowear/ping_watch_app" />
+            </intent-filter>
         </service>
 
-        <!-- Complication Service Oficial (RANGED_VALUE + LONG_TEXT) -->
+        <!-- Complication Service Oficial (RANGED_VALUE + LONG_TEXT + SHORT_TEXT) -->
         <service
             android:name=".complication.NextEventComplicationService"
             android:exported="true"
             android:icon="@android:drawable/ic_menu_my_calendar"
-            android:label="ChronoWear Próximos 3 Eventos &amp; Barra"
+            android:label="ChronoWear Event Timer &amp; Upcoming"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
                 <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
@@ -65,22 +81,22 @@
                 android:value="60" />
         </service>
 
-        <!-- Wear OS Tile Nativo para os Próximos 3 Eventos -->
+        <!-- Wear OS Tile para os Próximos 3 Eventos -->
         <service
             android:name=".tile.UpNextThreeEventsTileService"
             android:exported="true"
             android:icon="@android:drawable/ic_menu_today"
-            android:label="Próximos 3 Eventos (ChronoWear)"
+            android:label="Próximos 3 Eventos"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
             <intent-filter>
                 <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
             </intent-filter>
         </service>
 
-        <!-- Receiver para atualizar Complications e Tile quando cada evento começa ou termina (Modo Autônomo Offline) -->
+        <!-- Receiver para transição autônoma de eventos no relógio -->
         <receiver
             android:name=".data.AutonomousTransitionReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

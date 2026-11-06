@@ -10,16 +10,30 @@ import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageEvent
+import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 
 class PhoneDataListenerService : WearableListenerService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun onCreate() {
+        super.onCreate()
+        serviceScope.launch {
+            try {
+                Wearable.getCapabilityClient(applicationContext)
+                    .addLocalCapability(CAPABILITY_WATCH_APP_INSTALLED)
+                    .await()
+            } catch (_: Exception) {
+            }
+        }
+    }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         for (event in dataEvents) {
@@ -44,22 +58,42 @@ class PhoneDataListenerService : WearableListenerService() {
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
         super.onMessageReceived(messageEvent)
-        if (messageEvent.path == "/chronowear/force_sync_payload") {
-            try {
-                val payloadStr = String(messageEvent.data, Charsets.UTF_8)
-                val json = JSONObject(payloadStr)
-                val eventsArray = json.optJSONArray("events")?.toString() ?: "[]"
-                val syncTimestampMs = json.optLong("sync_timestamp_ms", System.currentTimeMillis())
-                val horizonDays = json.optInt("horizon_days", 5)
-                val progressWindowMinutes = json.optInt("progress_window_minutes", 60)
+        when (messageEvent.path) {
+            "/chronowear/ping_watch_app" -> {
+                serviceScope.launch {
+                    try {
+                        Wearable.getCapabilityClient(applicationContext)
+                            .addLocalCapability(CAPABILITY_WATCH_APP_INSTALLED)
+                            .await()
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        Wearable.getMessageClient(applicationContext).sendMessage(
+                            messageEvent.sourceNodeId,
+                            "/chronowear/pong_watch_app",
+                            "installed:1.0.0-wear".toByteArray(Charsets.UTF_8)
+                        ).await()
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            "/chronowear/force_sync_payload" -> {
+                try {
+                    val payloadStr = String(messageEvent.data, Charsets.UTF_8)
+                    val json = JSONObject(payloadStr)
+                    val eventsArray = json.optJSONArray("events")?.toString() ?: "[]"
+                    val syncTimestampMs = json.optLong("sync_timestamp_ms", System.currentTimeMillis())
+                    val horizonDays = json.optInt("horizon_days", 5)
+                    val progressWindowMinutes = json.optInt("progress_window_minutes", 60)
 
-                persistAndNotify(
-                    eventsJson = eventsArray,
-                    syncTimestampMs = syncTimestampMs,
-                    horizonDays = horizonDays,
-                    progressWindowMinutes = progressWindowMinutes
-                )
-            } catch (_: Exception) {
+                    persistAndNotify(
+                        eventsJson = eventsArray,
+                        syncTimestampMs = syncTimestampMs,
+                        horizonDays = horizonDays,
+                        progressWindowMinutes = progressWindowMinutes
+                    )
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -97,5 +131,6 @@ class PhoneDataListenerService : WearableListenerService() {
 
     companion object {
         const val ACTION_WEAR_CACHE_UPDATED = "com.chronowear.wear.ACTION_WEAR_CACHE_UPDATED"
+        const val CAPABILITY_WATCH_APP_INSTALLED = "chronowear_wear_app_installed"
     }
 }
