@@ -96,6 +96,30 @@ class SyncPreferences(context: Context) {
         prefs.edit().putInt(KEY_CHANGE_DEBOUNCE_SEC, seconds).apply()
     }
 
+    fun getContextWindowMode(): String {
+        return prefs.getString(KEY_CONTEXT_WINDOW_MODE, "DYNAMIC") ?: "DYNAMIC"
+    }
+
+    fun setContextWindowMode(mode: String) {
+        prefs.edit().putString(KEY_CONTEXT_WINDOW_MODE, mode).apply()
+    }
+
+    fun isHighFreq15MinRuleEnabled(): Boolean {
+        return prefs.getBoolean(KEY_HIGH_FREQ_15MIN_RULE, true)
+    }
+
+    fun setHighFreq15MinRuleEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_HIGH_FREQ_15MIN_RULE, enabled).apply()
+    }
+
+    fun isUpdateOnScreenWakeEnabled(): Boolean {
+        return prefs.getBoolean(KEY_UPDATE_ON_SCREEN_WAKE, true)
+    }
+
+    fun setUpdateOnScreenWakeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_UPDATE_ON_SCREEN_WAKE, enabled).apply()
+    }
+
     fun markWatchAppInstalledOnNode(nodeId: String) {
         val current = (prefs.getStringSet(KEY_VERIFIED_WATCH_APP_NODES, emptySet()) ?: emptySet()).toMutableSet()
         current.add(nodeId)
@@ -151,6 +175,9 @@ class SyncPreferences(context: Context) {
         private const val KEY_SYNC_INTERVAL_MIN = "sync_interval_minutes"
         private const val KEY_AUTO_SYNC_ON_CHANGE = "auto_sync_on_calendar_change"
         private const val KEY_CHANGE_DEBOUNCE_SEC = "change_debounce_seconds"
+        private const val KEY_CONTEXT_WINDOW_MODE = "context_window_mode"
+        private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"
+        private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"
         private const val KEY_VERIFIED_WATCH_APP_NODES = "verified_watch_app_nodes"
         private const val KEY_LAST_SYNC_MS = "last_sync_ms"
         private const val KEY_LAST_SYNC_COUNT = "last_sync_count"

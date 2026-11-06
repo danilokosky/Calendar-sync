@@ -63,76 +63,35 @@
             </intent-filter>
         </service>
 
-        <!-- SLOT 1: Painel Central dos 3 Eventos + Barra (Imagem Renderizada SMALL_IMAGE/PHOTO_IMAGE + RANGED_VALUE) -->
+        <!-- COMPLICATION ÚNICA: Janela de Contexto Inteligente (Canvas Bitmap SMALL_IMAGE / PHOTO_IMAGE) -->
+        <!-- O conteúdo (Eventos, Clima, Passos ou Dinâmico) é escolhido no App, sem poluir o seletor! -->
         <service
             android:name=".complication.NextEventComplicationService"
             android:exported="true"
             android:icon="@android:drawable/ic_menu_my_calendar"
-            android:label="ChronoWear • Painel 3 Eventos (Imagem)"
+            android:label="ChronoWear • Janela de Contexto (Canvas)"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
                 <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
             </intent-filter>
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="SMALL_IMAGE,PHOTO_IMAGE,RANGED_VALUE,LONG_TEXT,SHORT_TEXT" />
+                android:value="SMALL_IMAGE,PHOTO_IMAGE" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="60" />
+                android:value="300" />
         </service>
 
-        <!-- SLOT 2: Compromisso #1 Individual -->
+        <!-- Leitor de Notificações Exclusivo do Relógio (Clima, Mudança de Temperatura, Saúde) -->
+        <!-- Permite que a Janela de Contexto mude dinamicamente quando chega um alerta no relógio -->
         <service
-            android:name=".complication.FirstEventComplicationService"
+            android:name=".data.WearContextNotificationListenerService"
             android:exported="true"
-            android:icon="@android:drawable/ic_menu_today"
-            android:label="ChronoWear • Evento #1"
-            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            android:label="ChronoWear • Contexto por Notificações do Relógio"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
-                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+                <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
-            <meta-data
-                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="LONG_TEXT,SHORT_TEXT" />
-            <meta-data
-                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="60" />
-        </service>
-
-        <!-- SLOT 3: Compromisso #2 Individual -->
-        <service
-            android:name=".complication.SecondEventComplicationService"
-            android:exported="true"
-            android:icon="@android:drawable/ic_menu_today"
-            android:label="ChronoWear • Evento #2"
-            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
-            <intent-filter>
-                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
-            </intent-filter>
-            <meta-data
-                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="LONG_TEXT,SHORT_TEXT" />
-            <meta-data
-                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="60" />
-        </service>
-
-        <!-- SLOT 4: Compromisso #3 Individual -->
-        <service
-            android:name=".complication.ThirdEventComplicationService"
-            android:exported="true"
-            android:icon="@android:drawable/ic_menu_today"
-            android:label="ChronoWear • Evento #3"
-            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
-            <intent-filter>
-                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
-            </intent-filter>
-            <meta-data
-                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="LONG_TEXT,SHORT_TEXT" />
-            <meta-data
-                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="60" />
         </service>
 
         <!-- Wear OS Tile para os Próximos 3 Eventos -->
@@ -147,7 +106,7 @@
             </intent-filter>
         </service>
 
-        <!-- Receiver para transição autônoma de eventos no relógio -->
+        <!-- Receiver para transição autônoma + regra Turbo de 1 minuto quando faltam <= 15 min -->
         <receiver
             android:name=".data.AutonomousTransitionReceiver"
             android:exported="true">

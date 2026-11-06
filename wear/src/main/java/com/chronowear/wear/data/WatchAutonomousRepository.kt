@@ -37,6 +37,21 @@ data class CachedWearEvent(
     }
 }
 
+data class HourlyWeatherSnapshot(
+    val alertHeadline: String,
+    val hourlyLabels: List<String>,
+    val hourlyTempsC: List<Int>,
+    val rainProbabilityPct: Int,
+    val triggeredByWatchNotification: Boolean
+)
+
+data class WeeklyStepsSnapshot(
+    val todaySteps: Int,
+    val dailyGoal: Int,
+    val weekDaysLabels: List<String>,
+    val weekDaysSteps: List<Int>
+)
+
 class WatchAutonomousRepository private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "chronowear_autonomous.db", null, 1) {
 
@@ -70,7 +85,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
         syncTimestampMs: Long,
         horizonDays: Int,
         progressWindowMinutes: Int,
-        cardPngBase64: String? = null
+        cardPngBase64: String? = null,
+        contextMode: String? = null,
+        highFreq15MinRule: Boolean? = null,
+        updateOnScreenWake: Boolean? = null
     ) {
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
@@ -79,6 +97,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!cardPngBase64.isNullOrBlank()) {
             editor.putString("phone_rendered_card_png_b64", cardPngBase64)
             editor.putLong("phone_rendered_card_ms", syncTimestampMs)
+        }
+        if (!contextMode.isNullOrBlank()) {
+            editor.putString("context_window_mode", contextMode)
+        }
+        if (highFreq15MinRule != null) {
+            editor.putBoolean("high_freq_15min_rule", highFreq15MinRule)
+        }
+        if (updateOnScreenWake != null) {
+            editor.putBoolean("update_on_screen_wake", updateOnScreenWake)
         }
         editor.apply()
 
@@ -109,6 +136,129 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val renderedMs = prefs.getLong("phone_rendered_card_ms", 0L)
         if (renderedMs <= 0L || (nowMs - renderedMs) > maxAgeMs) return null
         return prefs.getString("phone_rendered_card_png_b64", null)
+    }
+
+    /**
+     * Modo da Janela de Contexto escolhido no App (Smartphone ou Relógio):
+     * - "DYNAMIC": Muda sozinho (Agenda por padrão, Clima quando chega notificação de mudança climática, Turbo Agenda nos 15m finais)
+     * - "EVENTS": Sempre mostra os Próximos 3 Eventos + Barra
+     * - "WEATHER": Sempre mostra o Gráfico de Mudança de Temperatura nas Próximas Horas
+     * - "STEPS": Sempre mostra o Gráfico de Passos Semanais & Meta Diária
+     */
+    fun getContextWindowMode(): String {
+        return prefs.getString("context_window_mode", MODE_DYNAMIC) ?: MODE_DYNAMIC
+    }
+
+    fun setContextWindowMode(mode: String) {
+        prefs.edit().putString("context_window_mode", mode).apply()
+    }
+
+    /**
+     * Regra de atualização de alta frequência: atualiza o Canvas a cada 1 minuto
+     * quando faltar 15 minutos ou menos para o próximo evento iniciar.
+     */
+    fun isHighFreq15MinRuleEnabled(): Boolean {
+        return prefs.getBoolean("high_freq_15min_rule", true)
+    }
+
+    fun setHighFreq15MinRuleEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("high_freq_15min_rule", enabled).apply()
+    }
+
+    /**
+     * Atualiza o Canvas sempre que o usuário acorda a tela do relógio (ACTION_SCREEN_ON).
+     */
+    fun isUpdateOnScreenWakeEnabled(): Boolean {
+        return prefs.getBoolean("update_on_screen_wake", true)
+    }
+
+    fun setUpdateOnScreenWakeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("update_on_screen_wake", enabled).apply()
+    }
+
+    /**
+     * Registra uma mudança climática / alerta meteorológico interceptado diretamente
+     * nas notificações do relógio pelo `WearContextNotificationListenerService`.
+     */
+    fun recordWatchWeatherNotificationAlert(
+        headline: String,
+        tempsCsv: String = "28,26,22,19,18",
+        hoursCsv: String = "Agora,+1h,+2h,+4h,+6h",
+        rainProbPct: Int = 75,
+        nowMs: Long = System.currentTimeMillis()
+    ) {
+        prefs.edit()
+            .putString("weather_alert_headline", headline)
+            .putString("weather_temps_csv", tempsCsv)
+            .putString("weather_hours_csv", hoursCsv)
+            .putInt("weather_rain_prob", rainProbPct.coerceIn(0, 100))
+            .putLong("weather_alert_timestamp_ms", nowMs)
+            .apply()
+    }
+
+    fun hasActiveWeatherNotificationOverride(nowMs: Long, windowMinutes: Long = 25L): Boolean {
+        val alertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
+        if (alertTs <= 0L) return false
+        return (nowMs - alertTs) in 0..TimeUnit.MINUTES.toMillis(windowMinutes)
+    }
+
+    fun getHourlyWeatherSnapshot(nowMs: Long): HourlyWeatherSnapshot {
+        val headline = prefs.getString("weather_alert_headline", "Queda térmica • Chuva em 40m")
+            ?: "Queda térmica • Chuva em 40m"
+        val tempsStr = prefs.getString("weather_temps_csv", "28,26,22,19,18") ?: "28,26,22,19,18"
+        val hoursStr = prefs.getString("weather_hours_csv", "Agora,16h,18h,20h,22h") ?: "Agora,16h,18h,20h,22h"
+        val rainProb = prefs.getInt("weather_rain_prob", 75)
+
+        val temps = tempsStr.split(",").mapNotNull { it.trim().toIntOrNull() }
+            .ifEmpty { listOf(28, 26, 22, 19, 18) }
+        val labels = hoursStr.split(",").map { it.trim() }
+            .ifEmpty { listOf("Agora", "16h", "18h", "20h", "22h") }
+
+        return HourlyWeatherSnapshot(
+            alertHeadline = headline,
+            hourlyLabels = labels,
+            hourlyTempsC = temps,
+            rainProbabilityPct = rainProb,
+            triggeredByWatchNotification = hasActiveWeatherNotificationOverride(nowMs)
+        )
+    }
+
+    fun getWeeklyStepsSnapshot(): WeeklyStepsSnapshot {
+        val today = prefs.getInt("steps_today", 7840)
+        val goal = prefs.getInt("steps_goal", 10000)
+        val csv = prefs.getString("steps_week_csv", "6400,8200,7100,9500,7840,5300,4900")
+            ?: "6400,8200,7100,9500,7840,5300,4900"
+        val stepsList = csv.split(",").mapNotNull { it.trim().toIntOrNull() }
+            .ifEmpty { listOf(6400, 8200, 7100, 9500, 7840, 5300, 4900) }
+        return WeeklyStepsSnapshot(
+            todaySteps = today,
+            dailyGoal = goal,
+            weekDaysLabels = listOf("S", "T", "Q", "Q", "S", "S", "D"),
+            weekDaysSteps = stepsList
+        )
+    }
+
+    /**
+     * Resolve qual contexto deve ser desenhado no Canvas agora:
+     * - Se o usuário fixou EVENTS, WEATHER ou STEPS, respeita a escolha.
+     * - Se escolheu DYNAMIC:
+     *   1. Faltando <= 15 min para um compromisso -> prioriza EVENTS (com atualização a cada 1 min!)
+     *   2. Se o relógio recebeu uma notificação recente de Mudança Climática -> exibe WEATHER temporariamente!
+     *   3. Caso contrário -> exibe EVENTS (ou WEATHER se a agenda estiver vazia).
+     */
+    fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
+        val configured = getContextWindowMode()
+        if (configured != MODE_DYNAMIC) return configured
+
+        val nextEvent = upcomingThree.firstOrNull()
+        val fifteenMinMs = TimeUnit.MINUTES.toMillis(15L)
+        if (nextEvent != null && (nextEvent.startEpochMs - nowMs) in 1..fifteenMinMs) {
+            return MODE_EVENTS
+        }
+        if (hasActiveWeatherNotificationOverride(nowMs)) {
+            return MODE_WEATHER
+        }
+        return if (upcomingThree.isNotEmpty()) MODE_EVENTS else MODE_WEATHER
     }
 
     /**
@@ -157,6 +307,11 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     companion object {
+        const val MODE_DYNAMIC = "DYNAMIC"
+        const val MODE_EVENTS = "EVENTS"
+        const val MODE_WEATHER = "WEATHER"
+        const val MODE_STEPS = "STEPS"
+
         @Volatile
         private var INSTANCE: WatchAutonomousRepository? = null
 

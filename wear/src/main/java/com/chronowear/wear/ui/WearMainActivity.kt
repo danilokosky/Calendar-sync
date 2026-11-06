@@ -10,6 +10,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
@@ -18,6 +19,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.wear.tiles.TileService
 import com.chronowear.wear.complication.ChronoWearComplicationUpdater
+import com.chronowear.wear.data.AutonomousCountdownScheduler
 import com.chronowear.wear.data.CachedWearEvent
 import com.chronowear.wear.data.PhoneDataListenerService
 import com.chronowear.wear.data.WatchAutonomousRepository
@@ -45,6 +47,8 @@ class WearMainActivity : Activity() {
     private lateinit var nextEventTitleText: TextView
     private lateinit var nextEventCountdownText: TextView
     private lateinit var complicationStatusText: TextView
+    private lateinit var contextModeButton: Button
+    private lateinit var turboRuleButton: Button
 
     private var upcomingThree: List<CachedWearEvent> = emptyList()
 
@@ -57,6 +61,7 @@ class WearMainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repo = WatchAutonomousRepository.getInstance(this)
+        AutonomousCountdownScheduler.ensureScreenWakeListenerRegistered(this)
         buildEssentialWatchUi()
     }
 
@@ -98,6 +103,30 @@ class WearMainActivity : Activity() {
         }
     }
 
+    private fun formatContextModeLabel(mode: String): String {
+        return when (mode) {
+            WatchAutonomousRepository.MODE_DYNAMIC -> "Contexto: Dinâmico (Auto)"
+            WatchAutonomousRepository.MODE_EVENTS -> "Contexto: Próximos Eventos"
+            WatchAutonomousRepository.MODE_WEATHER -> "Contexto: Curva de Clima"
+            WatchAutonomousRepository.MODE_STEPS -> "Contexto: Passos Semanais"
+            else -> "Contexto: Dinâmico (Auto)"
+        }
+    }
+
+    private fun cycleContextWindowMode() {
+        val order = listOf(
+            WatchAutonomousRepository.MODE_DYNAMIC,
+            WatchAutonomousRepository.MODE_EVENTS,
+            WatchAutonomousRepository.MODE_WEATHER,
+            WatchAutonomousRepository.MODE_STEPS
+        )
+        val cur = repo.getContextWindowMode()
+        val next = order[(order.indexOf(cur) + 1) % order.size]
+        repo.setContextWindowMode(next)
+        contextModeButton.text = formatContextModeLabel(next)
+        forceUpdateComplicationsAndTile()
+    }
+
     private fun buildEssentialWatchUi() {
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor("#000000"))
@@ -107,12 +136,12 @@ class WearMainActivity : Activity() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(20), dp(24), dp(20), dp(28))
+            setPadding(dp(18), dp(22), dp(18), dp(28))
         }
 
         val appTitle = TextView(this).apply {
-            text = "ChronoWear"
-            textSize = 15f
+            text = "ChronoWear Canvas"
+            textSize = 14.5f
             setTextColor(Color.parseColor("#FFFFFF"))
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -124,7 +153,7 @@ class WearMainActivity : Activity() {
             textSize = 11f
             setTextColor(Color.parseColor("#4ADE80"))
             gravity = Gravity.CENTER
-            setPadding(0, dp(2), 0, dp(10))
+            setPadding(0, dp(2), 0, dp(8))
         }
         container.addView(connectionStatusText)
 
@@ -132,11 +161,11 @@ class WearMainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             background = pillBg("#141917", "#26312C", 18)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
+            ).apply { bottomMargin = dp(8) }
         }
 
         nextEventTitleText = TextView(this).apply {
@@ -151,16 +180,16 @@ class WearMainActivity : Activity() {
 
         nextEventCountdownText = TextView(this).apply {
             text = "--:--"
-            textSize = 15f
+            textSize = 14.5f
             setTextColor(Color.parseColor("#BAE6FD"))
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(2))
+            setPadding(0, dp(3), 0, dp(2))
         }
         eventCard.addView(nextEventCountdownText)
 
         complicationStatusText = TextView(this).apply {
-            text = "Complications ativas"
+            text = "Janela de Contexto ativa"
             textSize = 10f
             setTextColor(Color.parseColor("#9CA3AF"))
             gravity = Gravity.CENTER
@@ -169,20 +198,84 @@ class WearMainActivity : Activity() {
 
         container.addView(eventCard)
 
-        val syncBtn = Button(this).apply {
-            text = "Sincronizar"
+        // Seletor rápido de modo da Janela de Contexto direto no relógio
+        contextModeButton = Button(this).apply {
+            text = formatContextModeLabel(repo.getContextWindowMode())
             isAllCaps = false
-            textSize = 12f
+            textSize = 11f
+            setTextColor(Color.parseColor("#F5C438"))
+            setTypeface(typeface, Typeface.BOLD)
+            background = pillBg("#1C2420", "#384942", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(34)
+            ).apply { bottomMargin = dp(6) }
+            setOnClickListener {
+                cycleContextWindowMode()
+            }
+        }
+        container.addView(contextModeButton)
+
+        // Botão da Regra Turbo 1m (quando faltam <= 15 minutos)
+        turboRuleButton = Button(this).apply {
+            text = if (repo.isHighFreq15MinRuleEnabled()) "⚡ Turbo 1m (≤15m): ATIVO" else "⚡ Turbo 1m (≤15m): OFF"
+            isAllCaps = false
+            textSize = 10.5f
+            setTextColor(Color.parseColor("#E2E8F0"))
+            background = pillBg("#161D1B", "#2B3935", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(32)
+            ).apply { bottomMargin = dp(6) }
+            setOnClickListener {
+                val next = !repo.isHighFreq15MinRuleEnabled()
+                repo.setHighFreq15MinRuleEnabled(next)
+                text = if (next) "⚡ Turbo 1m (≤15m): ATIVO" else "⚡ Turbo 1m (≤15m): OFF"
+                AutonomousCountdownScheduler.scheduleNextTransition(this@WearMainActivity)
+                forceUpdateComplicationsAndTile()
+            }
+        }
+        container.addView(turboRuleButton)
+
+        // Permissão para Ler Notificações do Relógio (Clima / Alertas Contextuais)
+        val notifAccessBtn = Button(this).apply {
+            text = "🔔 Acesso Notificações (Clima)"
+            isAllCaps = false
+            textSize = 10.5f
+            setTextColor(Color.parseColor("#BAE6FD"))
+            background = pillBg("#141C22", "#283844", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(32)
+            ).apply { bottomMargin = dp(8) }
+            setOnClickListener {
+                try {
+                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                } catch (_: Exception) {
+                    Toast.makeText(
+                        this@WearMainActivity,
+                        "Ative em Config. > Apps > Acesso Especial > Acesso a Notificações",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+        container.addView(notifAccessBtn)
+
+        val syncBtn = Button(this).apply {
+            text = "Atualizar Canvas"
+            isAllCaps = false
+            textSize = 11.5f
             setTextColor(Color.parseColor("#0B191E"))
             setTypeface(typeface, Typeface.BOLD)
             background = pillBg("#BAE6FD", "#7DD3FC", 20)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(36)
+                dp(34)
             )
-            setPadding(dp(20), 0, dp(20), 0)
+            setPadding(dp(18), 0, dp(18), 0)
             setOnClickListener {
-                Toast.makeText(this@WearMainActivity, "Sincronizando...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@WearMainActivity, "Atualizando Janela de Contexto...", Toast.LENGTH_SHORT).show()
                 announcePresenceAndRequestSync()
                 forceUpdateComplicationsAndTile()
             }
@@ -196,6 +289,12 @@ class WearMainActivity : Activity() {
     private fun reloadEssentialState() {
         val nowMs = System.currentTimeMillis()
         upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
+        contextModeButton.text = formatContextModeLabel(repo.getContextWindowMode())
+        turboRuleButton.text = if (repo.isHighFreq15MinRuleEnabled()) {
+            "⚡ Turbo 1m (≤15m): ATIVO"
+        } else {
+            "⚡ Turbo 1m (≤15m): OFF"
+        }
         updateCountdownTick()
 
         uiScope.launch {
@@ -229,10 +328,11 @@ class WearMainActivity : Activity() {
     private fun updateCountdownTick() {
         val nowMs = System.currentTimeMillis()
         val first = upcomingThree.firstOrNull { it.startEpochMs > nowMs }
+        val effectiveContext = repo.resolveEffectiveContextMode(nowMs, upcomingThree)
         if (first == null) {
             nextEventTitleText.text = "Agenda livre"
             nextEventCountdownText.text = "Sem próximo evento"
-            complicationStatusText.text = "Complication pronta (${repo.getHorizonDays()}d)"
+            complicationStatusText.text = "Canvas ativo: $effectiveContext"
             return
         }
 
@@ -248,7 +348,7 @@ class WearMainActivity : Activity() {
         } else {
             String.format(Locale.getDefault(), "Em %02dm %02ds", mins, secs)
         }
-        complicationStatusText.text = "${upcomingThree.size} próx. evento(s) na Complication"
+        complicationStatusText.text = "Canvas: $effectiveContext (${upcomingThree.size} ev)"
     }
 
     private fun announcePresenceAndRequestSync() {
@@ -265,7 +365,7 @@ class WearMainActivity : Activity() {
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,
                         "/chronowear/pong_watch_app",
-                        "installed:1.0.0-wear".toByteArray(Charsets.UTF_8)
+                        "installed:1.1.0-wear".toByteArray(Charsets.UTF_8)
                     ).await()
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,

@@ -105,9 +105,9 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     path: 'wear/src/main/AndroidManifest.xml',
     module: 'wear',
     language: 'xml',
-    title: 'Manifesto Exclusivo Wear OS (:wear)',
+    title: 'Manifesto Exclusivo Wear OS (:wear) — Única Complication Canvas + NotificationListener',
     description:
-      'Exige android.hardware.type.watch (required="true" com tools:replace) e biblioteca com.google.android.wearable para ser reconhecido como APK puramente Wear OS.',
+      'Expõe apenas 1 Complication (ChronoWear • Janela de Contexto (Canvas), SMALL_IMAGE/PHOTO_IMAGE) e registra o WearContextNotificationListenerService para ler notificações no próprio relógio.',
     content: wearManifestRaw,
   },
   {
@@ -123,27 +123,27 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     path: 'wear/src/main/java/com/chronowear/wear/ui/WearMainActivity.kt',
     module: 'wear',
     language: 'kotlin',
-    title: 'WearMainActivity.kt (Interface Essencial no Relógio)',
+    title: 'WearMainActivity.kt (Seletor de Contexto + Regra ≤15m + Permissão de Notificações)',
     description:
-      'Tela enxuta e direta para o smartwatch: mostra apenas o status de conexão, o próximo evento com contagem regressiva e o botão de sincronizar.',
+      'Permite alternar no próprio relógio o modo da Janela de Contexto (Dinâmico, Eventos, Clima, Passos), ativar o Turbo de 1 min (≤15m) e abrir a permissão de leitura de notificações.',
     content: wearMainActivityRaw,
   },
   {
     path: 'wear/src/main/java/com/chronowear/wear/data/PhoneDataListenerService.kt',
     module: 'wear',
     language: 'kotlin',
-    title: 'PhoneDataListenerService.kt (Handshake de Instalação + Cache)',
+    title: 'PhoneDataListenerService.kt + WearContextNotificationListenerService',
     description:
-      'Responde ao ping do smartphone confirmando que o app está instalado no relógio e grava os eventos recebidos para as Complications.',
+      'Sincroniza configurações/eventos com o smartphone e intercepta notificações diretamente no relógio (ex: alerta de chuva ou mudança brusca de temperatura) para alternar o Canvas.',
     content: wearPhoneDataListenerRaw,
   },
   {
     path: 'wear/src/main/java/com/chronowear/wear/complication/NextEventComplicationService.kt',
     module: 'wear',
     language: 'kotlin',
-    title: 'NextEventComplicationService.kt (Complications RangedValue + LongText)',
+    title: 'NextEventComplicationService.kt (Renderizador Canvas Bitmap 604×272px Multi-Contexto)',
     description:
-      'Fornece a Complication de contagem regressiva, barra de progresso (1h/2h) e próximos eventos.',
+      'Desenha em Bitmap ARGB_8888 transparente o contexto ativo: Próximos 3 Eventos com barra de 5px, Curva Bezier de Temperatura nas Próximas Horas ou Gráfico de Passos Semanais.',
     content: wearComplicationServiceRaw,
   },
   {

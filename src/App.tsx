@@ -111,12 +111,16 @@ export default function App() {
     progressWindowMinutes: 60, // 1 hora antes por padrão
     syncIntervalMinutes: 15,
     autoSyncOnCalendarChange: true,
+    contextWindowMode: 'DYNAMIC',
+    highFreq15MinRule: true,
+    updateOnScreenWake: true,
   });
 
   // Watch clock can be fast-forwarded to test autonomous offline behavior
   const [currentWatchTimeMs, setCurrentWatchTimeMs] = useState<number>(INITIAL_BASE_TIME_MS);
   const [isBluetoothConnected, setIsBluetoothConnected] = useState<boolean>(true);
   const [lastSyncTimeMs, setLastSyncTimeMs] = useState<number>(INITIAL_BASE_TIME_MS);
+  const [hasActiveWatchWeatherAlert, setHasActiveWatchWeatherAlert] = useState<boolean>(false);
 
   // Snapshot stored on the Watch Room DB when Bluetooth was last synced
   const [offlineFrozenCache, setOfflineFrozenCache] = useState<CalendarEventItem[]>(() =>
@@ -140,6 +144,10 @@ export default function App() {
         syncedHorizonDays: config.horizonDays,
         progressWindowMinutes: config.progressWindowMinutes,
         isBluetoothConnected: true,
+        contextWindowMode: config.contextWindowMode,
+        highFreq15MinRule: config.highFreq15MinRule,
+        updateOnScreenWake: config.updateOnScreenWake,
+        hasActiveWatchWeatherAlert,
       };
     }
     return {
@@ -148,6 +156,10 @@ export default function App() {
       syncedHorizonDays: offlineFrozenHorizonDays,
       progressWindowMinutes: offlineFrozenProgressWindow,
       isBluetoothConnected: false,
+      contextWindowMode: config.contextWindowMode,
+      highFreq15MinRule: config.highFreq15MinRule,
+      updateOnScreenWake: config.updateOnScreenWake,
+      hasActiveWatchWeatherAlert,
     };
   }, [
     isBluetoothConnected,
@@ -155,6 +167,10 @@ export default function App() {
     lastSyncTimeMs,
     config.horizonDays,
     config.progressWindowMinutes,
+    config.contextWindowMode,
+    config.highFreq15MinRule,
+    config.updateOnScreenWake,
+    hasActiveWatchWeatherAlert,
     offlineFrozenCache,
     offlineFrozenHorizonDays,
     offlineFrozenProgressWindow,
@@ -340,8 +356,14 @@ export default function App() {
             <WearOsSmartwatchSimulator
               watchState={watchState}
               watchCache={watchCache}
+              config={config}
               calendars={calendars}
               currentWatchTimeMs={currentWatchTimeMs}
+              hasActiveWatchWeatherAlert={hasActiveWatchWeatherAlert}
+              onToggleWatchWeatherAlert={() =>
+                setHasActiveWatchWeatherAlert((prev) => !prev)
+              }
+              onUpdateConfig={handleUpdateConfig}
               onToggleBluetooth={handleToggleBluetooth}
               onAdvanceTimeMinutes={handleAdvanceTimeMinutes}
               onResetTime={handleResetTime}

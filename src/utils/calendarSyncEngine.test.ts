@@ -114,3 +114,30 @@ test('evaluateWatchAutonomousState works autonomously offline 2 days later using
   assert.equal(autonomousState.progressRatio, 0.5);
   assert.equal(formatCountdownText(autonomousState.remainingMs), '1h 00m');
 });
+
+test('evaluateWatchAutonomousState enables 1-minute turbo rule at <= 15m and switches DYNAMIC context on watch weather notification', () => {
+  const syncedEvents = buildSyncPayload(mockEvents, mockCalendars, baseTime, 7);
+  const dynamicWeatherCache: WatchCacheState = {
+    cachedEvents: syncedEvents,
+    lastSyncEpochMs: baseTime,
+    syncedHorizonDays: 7,
+    progressWindowMinutes: 60,
+    isBluetoothConnected: true,
+    contextWindowMode: 'DYNAMIC',
+    highFreq15MinRule: true,
+    hasActiveWatchWeatherAlert: true,
+  };
+
+  // At baseTime (+45m to event), weather alert overrides DYNAMIC to WEATHER
+  const stateAt45m = evaluateWatchAutonomousState(dynamicWeatherCache, baseTime);
+  assert.equal(stateAt45m.isWithinTurbo15MinWindow, false);
+  assert.equal(stateAt45m.effectiveContextMode, 'WEATHER');
+
+  // At baseTime + 35m (10m remaining before ev-1 -> inside <=15m window), DYNAMIC prioritizes EVENTS and enables 1-min turbo
+  const stateAt10mRemaining = evaluateWatchAutonomousState(
+    dynamicWeatherCache,
+    baseTime + 35 * 60 * 1000
+  );
+  assert.equal(stateAt10mRemaining.isWithinTurbo15MinWindow, true);
+  assert.equal(stateAt10mRemaining.effectiveContextMode, 'EVENTS');
+});

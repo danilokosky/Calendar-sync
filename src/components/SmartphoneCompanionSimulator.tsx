@@ -222,16 +222,52 @@ export const SmartphoneCompanionSimulator: React.FC<
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="text-sm font-bold text-white leading-snug">
-                    Sua agenda sincronizada sob controle
+                    Janela de Contexto em Canvas Bitmap
                   </div>
                   <p className="text-[11px] text-[#C8D3CC] leading-relaxed">
-                    4 slots nativos WFF no relógio: timer regressivo com barra +
-                    3 compromissos individuais alinhados ao aro circular.
+                    1 única Complication no relógio: escolha abaixo qual função o Canvas desenha (Eventos, Clima, Passos ou Dinâmico por notificação).
                   </p>
                 </div>
               </div>
 
-              <div className="mt-3 pt-2.5 border-t border-white/10">
+              {/* Seletor rápido da Janela de Contexto direto na Home do Smartphone */}
+              <div className="mt-3 pt-2.5 border-t border-white/10 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-emerald-300">
+                    Contexto no Relógio:
+                  </span>
+                  <span className="font-mono text-[10px] text-amber-300">
+                    {config.highFreq15MinRule ? '⚡ Turbo 1m (≤15m) Ativo' : 'Padrão Screen-On'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      { id: 'DYNAMIC', label: 'Auto' },
+                      { id: 'EVENTS', label: 'Eventos' },
+                      { id: 'WEATHER', label: 'Clima' },
+                      { id: 'STEPS', label: 'Passos' },
+                    ] as const
+                  ).map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({ contextWindowMode: mode.id })
+                      }
+                      className={`py-1.5 px-2 rounded-full text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
+                        config.contextWindowMode === mode.id
+                          ? 'bg-[#BAE6FD] text-slate-950 font-bold shadow-xs'
+                          : 'bg-[#141D18] text-slate-300 border border-[#2D3E34] hover:bg-[#1C2821]'
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-2.5 pt-2 border-t border-white/10">
                 {renderConnectionBanner()}
               </div>
             </div>
@@ -317,7 +353,7 @@ export const SmartphoneCompanionSimulator: React.FC<
           >
             {renderConnectionBanner()}
 
-            <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-4 shadow-lg">
+            <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-3.5 shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
 
               {/* 1. Background Service */}
@@ -352,21 +388,21 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </button>
               </div>
 
-              {/* 2. Notifications Sync */}
+              {/* 2. Watch Notifications Context Listener */}
               <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
                 <div>
                   <div className="text-sm font-bold text-slate-100">
-                    Notifications Sync
+                    Watch Notifications Context
                   </div>
                   <div className="text-xs text-slate-400">
-                    Only for Phone Notifications Complication
+                    Lê alertas de clima/saúde no relógio p/ modo Dinâmico
                   </div>
                 </div>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={notificationsSyncEnabled}
-                  aria-label="Notifications Sync"
+                  aria-label="Watch Notifications Context"
                   onClick={() => setNotificationsSyncEnabled((v) => !v)}
                   className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
                     notificationsSyncEnabled
@@ -384,31 +420,35 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </button>
               </div>
 
-              {/* 3. Media Playback Sync */}
+              {/* 3. Regra Turbo 15 min (Atualizar a cada 1 min) */}
               <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
                 <div>
-                  <div className="text-sm font-bold text-slate-100">
-                    Media Playback Sync
+                  <div className="text-sm font-bold text-amber-300">
+                    Regra Turbo 15 min (1 min)
                   </div>
                   <div className="text-xs text-slate-400">
-                    Now Playing Complication support
+                    Atualiza o Canvas a cada 1 min quando faltar ≤ 15 min
                   </div>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={mediaPlaybackSyncEnabled}
-                  aria-label="Media Playback Sync"
-                  onClick={() => setMediaPlaybackSyncEnabled((v) => !v)}
+                  aria-checked={config.highFreq15MinRule}
+                  aria-label="Regra Turbo 15 min"
+                  onClick={() =>
+                    onUpdateConfig({
+                      highFreq15MinRule: !config.highFreq15MinRule,
+                    })
+                  }
                   className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                    mediaPlaybackSyncEnabled
+                    config.highFreq15MinRule
                       ? 'bg-[#BAE6FD]'
                       : 'bg-[#36393F]'
                   }`}
                 >
                   <span
                     className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                      mediaPlaybackSyncEnabled
+                      config.highFreq15MinRule
                         ? 'translate-x-5 bg-[#311B92]'
                         : 'translate-x-0 bg-[#8E9297]'
                     }`}
@@ -416,7 +456,43 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </button>
               </div>
 
-              {/* 4. Calendar Events Sync + Synced calendars */}
+              {/* 4. Atualizar Canvas ao Ligar a Tela (Screen-On) */}
+              <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
+                <div>
+                  <div className="text-sm font-bold text-slate-100">
+                    Atualizar ao Acordar a Tela
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    Redesenha o Canvas ao ligar a tela do relógio (Screen-On)
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={config.updateOnScreenWake}
+                  aria-label="Atualizar ao Acordar a Tela"
+                  onClick={() =>
+                    onUpdateConfig({
+                      updateOnScreenWake: !config.updateOnScreenWake,
+                    })
+                  }
+                  className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
+                    config.updateOnScreenWake
+                      ? 'bg-[#BAE6FD]'
+                      : 'bg-[#36393F]'
+                  }`}
+                >
+                  <span
+                    className={`w-5 h-5 rounded-full transition-all duration-200 ${
+                      config.updateOnScreenWake
+                        ? 'translate-x-5 bg-[#311B92]'
+                        : 'translate-x-0 bg-[#8E9297]'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* 5. Calendar Events Sync + Synced calendars */}
               <div className="space-y-3 pt-2 border-t border-[#232925]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -424,7 +500,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                       Calendar Events Sync
                     </div>
                     <div className="text-xs text-slate-400">
-                      Upcoming Event &amp; Event Timer Complication
+                      Janela de Contexto (Canvas Bitmap)
                     </div>
                   </div>
                   <button
@@ -449,58 +525,53 @@ export const SmartphoneCompanionSimulator: React.FC<
                   </button>
                 </div>
 
-                <div>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsSyncedCalendarsDialogOpen(true)}
-                    className="px-5 py-2.5 rounded-full border border-[#4B5850] bg-[#1E2420] hover:bg-[#28312B] active:scale-95 text-xs font-semibold text-slate-100 inline-flex items-center gap-2.5 transition-all duration-150 cursor-pointer"
+                    className="px-4 py-2 rounded-full border border-[#4B5850] bg-[#1E2420] hover:bg-[#28312B] active:scale-95 text-xs font-semibold text-slate-100 inline-flex items-center gap-2 transition-all duration-150 cursor-pointer"
                   >
                     <Calendar className="w-4 h-4 text-emerald-300" />
                     <span>Synced calendars ({selectedCalendarsCount})</span>
                   </button>
                 </div>
               </div>
-
-              {/* 5. Instant Calendar Change Sync */}
-              <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
-                <div>
-                  <div className="text-sm font-bold text-slate-100">
-                    Instant Calendar Change Sync
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Relê automaticamente se houver alteração nos compromissos
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={config.autoSyncOnCalendarChange}
-                  aria-label="Instant Calendar Change Sync"
-                  onClick={() =>
-                    onUpdateConfig({
-                      autoSyncOnCalendarChange: !config.autoSyncOnCalendarChange,
-                    })
-                  }
-                  className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                    config.autoSyncOnCalendarChange
-                      ? 'bg-[#BAE6FD]'
-                      : 'bg-[#36393F]'
-                  }`}
-                >
-                  <span
-                    className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                      config.autoSyncOnCalendarChange
-                        ? 'translate-x-5 bg-[#311B92]'
-                        : 'translate-x-0 bg-[#8E9297]'
-                    }`}
-                  />
-                </button>
-              </div>
             </div>
 
-            {/* Frequência de Leitura e Janela da Barra com seleção animada */}
+            {/* Função da Janela de Contexto + Frequência e Barra */}
             <div className="rounded-[26px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
-              <div className="flex items-center justify-between gap-2">
+              <div className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Função da Janela de Contexto (Canvas):
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      { id: 'DYNAMIC', label: 'Auto' },
+                      { id: 'EVENTS', label: 'Eventos' },
+                      { id: 'WEATHER', label: 'Clima' },
+                      { id: 'STEPS', label: 'Passos' },
+                    ] as const
+                  ).map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({ contextWindowMode: m.id })
+                      }
+                      className={`py-1.5 px-2 rounded-full text-[11px] font-semibold transition-all duration-200 active:scale-90 cursor-pointer ${
+                        config.contextWindowMode === m.id
+                          ? 'bg-[#BAE6FD] text-slate-950 font-bold'
+                          : 'bg-[#222824] text-slate-300 hover:bg-[#2C342F]'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#232925]">
                 <span className="text-xs font-bold text-slate-200">
                   Frequência de Leitura:
                 </span>
@@ -562,19 +633,22 @@ export const SmartphoneCompanionSimulator: React.FC<
             <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-3 text-xs text-slate-300 leading-relaxed shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
               <div className="text-sm font-bold text-white">
-                Arquitetura Wear OS &amp; Watch Face Format
+                Janela de Contexto em Canvas Bitmap (v1.1.0)
               </div>
               <p>
-                • <strong>4 Slots WFF Individuais</strong>: A Watch Face usa 4
-                ComplicationSlots independentes (Timer + Eventos #1, #2 e #3),
-                evitando que o Wear OS junte os compromissos na mesma linha e
-                ajustando a largura de cada cartão à curvatura redonda da tela.
+                • <strong>Complication Única no Seletor</strong>: Removemos as
+                complications de texto. No relógio aparece apenas{' '}
+                <code className="text-amber-300">
+                  ChronoWear • Janela de Contexto (Canvas)
+                </code>
+                , e o conteúdo que ela renderiza (Eventos, Curva de Clima,
+                Passos Semanais ou Dinâmico) é escolhido aqui no App.
               </p>
               <p>
-                • <strong>Conexão Positiva Verificada</strong>: O status só
-                exibe <code className="text-emerald-300">Connected</code> se o
-                relógio estiver conectado via Bluetooth <strong>e</strong> com o
-                APK <code className="text-sky-300">:wear</code> instalado.
+                • <strong>Regra Turbo 15 min + Screen-On</strong>: O Canvas
+                atualiza quando o usuário liga a tela e, quando faltar{' '}
+                <strong>≤ 15 minutos</strong> para o evento iniciar, passa a
+                atualizar automaticamente <strong>a cada 1 minuto</strong>.
               </p>
             </div>
 

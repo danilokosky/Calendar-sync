@@ -89,6 +89,9 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var subtitleCalendarEventsSync: TextView
     private lateinit var btnSyncedCalendarsPill: Button
     private lateinit var switchAutoReadOnChange: Switch
+    private lateinit var switchHighFreq15MinRule: Switch
+    private lateinit var switchUpdateOnScreenWake: Switch
+    private lateinit var rowContextModeChips: LinearLayout
     private lateinit var rowFrequencyChips: LinearLayout
     private lateinit var rowProgressWindowChips: LinearLayout
     private lateinit var rowHorizonDaysChips: LinearLayout
@@ -458,13 +461,13 @@ class MobileSyncConfigActivity : Activity() {
                     ).apply { bottomMargin = dp(6) }
 
                     val t1 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "⏱ Temporizador & Barra"
+                        text = "🖼 Janela de Contexto (Canvas)"
                         textSize = 11f
                         setTextColor(Color.parseColor("#FBBF24"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
                     watchBezelSubtext = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Slot #1 RangedValue"
+                        text = "Complication Única SMALL_IMAGE"
                         textSize = 9.5f
                         setTextColor(Color.parseColor("#CBD5E1"))
                     }
@@ -483,13 +486,13 @@ class MobileSyncConfigActivity : Activity() {
                     )
 
                     val t2 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "📅 Slots #2, #3 e #4"
-                        textSize = 11f
+                        text = "⚡ Dinâmico • Eventos • Clima • Passos"
+                        textSize = 10.5f
                         setTextColor(Color.parseColor("#FFFFFF"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
                     val s2 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "3 Cartões Individuais na Watch Face"
+                        text = "Turbo 1m nos 15 min finais + Alerta Clima"
                         textSize = 9.5f
                         setTextColor(Color.parseColor("#A7F3D0"))
                     }
@@ -756,6 +759,38 @@ class MobileSyncConfigActivity : Activity() {
             )
             mainSettingsCard.addView(autoChangeRow)
 
+            val turbo15mRow = createSettingToggleRow(
+                title = "Regra Turbo 15 min (Atualizar a cada 1 min)",
+                subtitle = "Quando faltar ≤ 15 min para iniciar o evento, atualiza o Canvas minuto a minuto",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchHighFreq15MinRule = sw
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
+                        prefs.setHighFreq15MinRuleEnabled(isChecked)
+                        triggerManualSync()
+                    }
+                }
+            )
+            mainSettingsCard.addView(turbo15mRow)
+
+            val screenWakeRow = createSettingToggleRow(
+                title = "Atualizar Canvas ao Acordar a Tela",
+                subtitle = "Redesenha o quadro ao ligar a tela do relógio (com proteção de 25s)",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchUpdateOnScreenWake = sw
+                    sw.setOnCheckedChangeListener { buttonView, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        animatePressFeedback(buttonView)
+                        prefs.setUpdateOnScreenWakeEnabled(isChecked)
+                        triggerManualSync()
+                    }
+                }
+            )
+            mainSettingsCard.addView(screenWakeRow)
+
             addView(mainSettingsCard)
 
             val timingCard = LinearLayout(this@MobileSyncConfigActivity).apply {
@@ -763,6 +798,21 @@ class MobileSyncConfigActivity : Activity() {
                 background = pillDrawable("#141816", "#262E29", 26)
                 setPadding(dp(20), dp(18), dp(20), dp(18))
             }
+
+            val ctxLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Função da Janela de Contexto (Canvas Bitmap)"
+                textSize = 15f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 0, 0, dp(8))
+            }
+            timingCard.addView(ctxLabel)
+
+            rowContextModeChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(14))
+            }
+            timingCard.addView(rowContextModeChips)
 
             val freqLabel = TextView(this@MobileSyncConfigActivity).apply {
                 text = "Frequência de Leitura do Calendário"
@@ -836,10 +886,10 @@ class MobileSyncConfigActivity : Activity() {
             }
 
             val body = TextView(this@MobileSyncConfigActivity).apply {
-                text = "ChronoWear Health & Calendar Sync\n\n" +
-                    "• Watch Face com 4 Slots Dedicados: O Slot #1 exibe o temporizador regressivo e barra de progresso (1h/2h), enquanto os Slots #2, #3 e #4 exibem os próximos 3 compromissos em cartões separados que acompanham a curvatura redonda do relógio.\n\n" +
-                    "• Conexão Verificada: O status só fica positivo quando o relógio está conectado E com o aplicativo da versão Wear OS instalado.\n\n" +
-                    "• Sincronização Inteligente: Lê CalendarContract.Instances na frequência escolhida e também instantaneamente sempre que você cria, edita ou apaga um compromisso."
+                text = "ChronoWear Health & Calendar Sync (v1.1.0)\n\n" +
+                    "• Complication Única em Canvas Bitmap: No menu de personalização da Watch Face aparece apenas 'ChronoWear • Janela de Contexto (Canvas)'. O conteúdo renderizado (Próximos Eventos, Curva de Clima nas Próximas Horas, Passos Semanais ou Dinâmico) é escolhido diretamente aqui no App!\n\n" +
+                    "• Regra Turbo 15 min (1 min): Quando faltar 15 minutos ou menos para iniciar o próximo evento, o relógio atualiza o Canvas a cada 1 minuto. Fora dessa janela, atualiza ao acordar a tela (Screen-On) ou nas transições.\n\n" +
+                    "• Leitura de Notificações no Relógio: O serviço WearContextNotificationListenerService escuta notificações diretamente no Wear OS (ex: alertas de mudança climática/chuva) para alternar temporariamente a Janela de Contexto no modo Dinâmico."
                 textSize = 14f
                 setTextColor(Color.parseColor("#D1D5DB"))
                 setPadding(0, 0, 0, dp(16))
@@ -1110,6 +1160,8 @@ class MobileSyncConfigActivity : Activity() {
         switchMediaPlaybackSync.isChecked = prefs.isMediaPlaybackSyncEnabled()
         switchCalendarEventsSync.isChecked = prefs.isCalendarEventsSyncEnabled() && hasCalPerm
         switchAutoReadOnChange.isChecked = prefs.isAutoSyncOnCalendarChangeEnabled()
+        switchHighFreq15MinRule.isChecked = prefs.isHighFreq15MinRuleEnabled()
+        switchUpdateOnScreenWake.isChecked = prefs.isUpdateOnScreenWakeEnabled()
         suppressSwitchEvents = false
 
         subtitleBackgroundService.text = if (prefs.isBackgroundServiceEnabled()) {
@@ -1120,9 +1172,9 @@ class MobileSyncConfigActivity : Activity() {
         }
 
         subtitleCalendarEventsSync.text = if (hasCalPerm) {
-            "Upcoming Event & Event Timer ($selectedCalsCount agenda(s))"
+            "Janela de Contexto (Canvas) • $selectedCalsCount agenda(s)"
         } else {
-            "Upcoming Event & Event Timer Complication"
+            "Janela de Contexto (Canvas Bitmap)"
         }
 
         btnSyncedCalendarsPill.text = if (selectedCalsCount > 0) {
@@ -1182,12 +1234,28 @@ class MobileSyncConfigActivity : Activity() {
                 }
             }
 
-            watchBezelSubtext.text = "${events.size} evento(s) sincronizado(s)"
+            watchBezelSubtext.text = "Modo ${prefs.getContextWindowMode()} • ${events.size} evento(s)"
             updateLiveEventSummary()
         }
     }
 
     private fun renderChipsRows() {
+        rowContextModeChips.removeAllViews()
+        val curCtx = prefs.getContextWindowMode()
+        listOf(
+            "DYNAMIC" to "Auto",
+            "EVENTS" to "Agenda",
+            "WEATHER" to "Clima",
+            "STEPS" to "Passos"
+        ).forEach { (mode, label) ->
+            rowContextModeChips.addView(
+                createSelectableChip(label, curCtx == mode) {
+                    prefs.setContextWindowMode(mode)
+                    triggerManualSync()
+                }
+            )
+        }
+
         rowFrequencyChips.removeAllViews()
         val curFreq = prefs.getSyncIntervalMinutes()
         listOf(15L to "15m", 30L to "30m", 60L to "1h", 120L to "2h").forEach { (mins, label) ->

@@ -19,12 +19,16 @@ export interface CalendarEventItem {
 export type SyncHorizonDays = 2 | 3 | 5 | 7;
 export type ProgressWindowMinutes = 30 | 60 | 120 | 180;
 export type SyncIntervalMinutes = 15 | 30 | 60;
+export type ContextWindowMode = 'DYNAMIC' | 'EVENTS' | 'WEATHER' | 'STEPS';
 
 export interface SyncConfiguration {
   horizonDays: SyncHorizonDays;
   progressWindowMinutes: ProgressWindowMinutes;
   syncIntervalMinutes: SyncIntervalMinutes;
   autoSyncOnCalendarChange: boolean;
+  contextWindowMode: ContextWindowMode;
+  highFreq15MinRule: boolean;
+  updateOnScreenWake: boolean;
 }
 
 export interface WatchCacheState {
@@ -33,6 +37,10 @@ export interface WatchCacheState {
   syncedHorizonDays: SyncHorizonDays;
   progressWindowMinutes: ProgressWindowMinutes;
   isBluetoothConnected: boolean;
+  contextWindowMode?: ContextWindowMode;
+  highFreq15MinRule?: boolean;
+  updateOnScreenWake?: boolean;
+  hasActiveWatchWeatherAlert?: boolean;
 }
 
 export interface ComplicationProgressState {
@@ -44,9 +52,30 @@ export interface ComplicationProgressState {
   formattedStartTime: string;
   progressRatio: number; // 0.0 to 1.0
   isWithinProgressWindow: boolean;
+  isWithinTurbo15MinWindow: boolean;
+  effectiveContextMode: 'EVENTS' | 'WEATHER' | 'STEPS';
   isOngoing: boolean;
   autonomousCacheValidUntilMs: number;
   isOperatingAutonomously: boolean;
+}
+
+export function resolveEffectiveWatchContextMode(
+  configuredMode: ContextWindowMode,
+  hasUpcomingEvent: boolean,
+  remainingMs: number,
+  hasActiveWatchWeatherAlert: boolean
+): 'EVENTS' | 'WEATHER' | 'STEPS' {
+  if (configuredMode !== 'DYNAMIC') {
+    return configuredMode;
+  }
+  const fifteenMinMs = 15 * 60 * 1000;
+  if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= fifteenMinMs) {
+    return 'EVENTS';
+  }
+  if (hasActiveWatchWeatherAlert) {
+    return 'WEATHER';
+  }
+  return hasUpcomingEvent ? 'EVENTS' : 'WEATHER';
 }
 
 /**
@@ -99,6 +128,10 @@ export function evaluateWatchAutonomousState(
   const autonomousCacheValidUntilMs =
     cache.lastSyncEpochMs + cache.syncedHorizonDays * 24 * 60 * 60 * 1000;
 
+  const configuredMode: ContextWindowMode = cache.contextWindowMode ?? 'DYNAMIC';
+  const highFreq15MinRule = cache.highFreq15MinRule ?? true;
+  const hasWeatherAlert = cache.hasActiveWatchWeatherAlert ?? false;
+
   if (!nextEvent) {
     return {
       hasUpcomingEvent: false,
@@ -109,6 +142,13 @@ export function evaluateWatchAutonomousState(
       formattedStartTime: '--:--',
       progressRatio: 0,
       isWithinProgressWindow: false,
+      isWithinTurbo15MinWindow: false,
+      effectiveContextMode: resolveEffectiveWatchContextMode(
+        configuredMode,
+        false,
+        0,
+        hasWeatherAlert
+      ),
       isOngoing: false,
       autonomousCacheValidUntilMs,
       isOperatingAutonomously: !cache.isBluetoothConnected,
@@ -117,6 +157,7 @@ export function evaluateWatchAutonomousState(
 
   const remainingMs = Math.max(0, nextEvent.startEpochMs - currentWatchTimeMs);
   const windowMs = cache.progressWindowMinutes * 60 * 1000;
+  const fifteenMinMs = 15 * 60 * 1000;
 
   // Progress bar calculation:
   // If remainingMs > windowMs, progress is 0 (or minimal lead-in) and isWithinProgressWindow = false.
@@ -129,6 +170,9 @@ export function evaluateWatchAutonomousState(
     progressRatio = Math.min(1, Math.max(0, 1 - remainingMs / windowMs));
   }
 
+  const isWithinTurbo15MinWindow =
+    highFreq15MinRule && remainingMs > 0 && remainingMs <= fifteenMinMs;
+
   return {
     hasUpcomingEvent: true,
     nextEvent,
@@ -138,6 +182,13 @@ export function evaluateWatchAutonomousState(
     formattedStartTime: formatTimeHHMM(nextEvent.startEpochMs),
     progressRatio: Number(progressRatio.toFixed(4)),
     isWithinProgressWindow,
+    isWithinTurbo15MinWindow,
+    effectiveContextMode: resolveEffectiveWatchContextMode(
+      configuredMode,
+      true,
+      remainingMs,
+      hasWeatherAlert
+    ),
     isOngoing: false,
     autonomousCacheValidUntilMs,
     isOperatingAutonomously: !cache.isBluetoothConnected,

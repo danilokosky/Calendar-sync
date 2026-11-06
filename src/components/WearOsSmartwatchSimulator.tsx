@@ -3,6 +3,8 @@ import {
   ComplicationProgressState,
   WatchCacheState,
   CalendarSource,
+  SyncConfiguration,
+  ContextWindowMode,
   formatTimeHHMM,
   formatDayRelative,
 } from '../utils/calendarSyncEngine';
@@ -17,6 +19,10 @@ import {
   Calendar,
   Footprints,
   Sun,
+  CloudRain,
+  Sparkles,
+  BellRing,
+  Zap,
 } from 'lucide-react';
 
 interface WearOsSmartwatchSimulatorProps {
@@ -24,6 +30,10 @@ interface WearOsSmartwatchSimulatorProps {
   watchCache: WatchCacheState;
   calendars: CalendarSource[];
   currentWatchTimeMs: number;
+  config: SyncConfiguration;
+  hasActiveWatchWeatherAlert: boolean;
+  onToggleWatchWeatherAlert: () => void;
+  onUpdateConfig: (partial: Partial<SyncConfiguration>) => void;
   onToggleBluetooth: () => void;
   onAdvanceTimeMinutes: (minutes: number) => void;
   onResetTime: () => void;
@@ -33,6 +43,10 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   watchState,
   watchCache,
   currentWatchTimeMs,
+  config,
+  hasActiveWatchWeatherAlert,
+  onToggleWatchWeatherAlert,
+  onUpdateConfig,
   onToggleBluetooth,
   onAdvanceTimeMinutes,
   onResetTime,
@@ -49,19 +63,38 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   const dayOfMonth = String(watchDate.getDate()).padStart(2, '0');
   const timeHHMMSS = `${formatTimeHHMM(currentWatchTimeMs)}:06`;
 
+  const effectiveMode = watchState.effectiveContextMode;
+
+  const contextModes: { id: ContextWindowMode; label: string }[] = [
+    { id: 'DYNAMIC', label: 'Auto' },
+    { id: 'EVENTS', label: 'Eventos' },
+    { id: 'WEATHER', label: 'Clima' },
+    { id: 'STEPS', label: 'Passos' },
+  ];
+
+  const weeklyStepsData = [
+    { day: 'Seg', steps: 6420, isToday: false },
+    { day: 'Ter', steps: 8190, isToday: false },
+    { day: 'Qua', steps: 7310, isToday: false },
+    { day: 'Qui', steps: 9120, isToday: false },
+    { day: 'Sex', steps: 8435, isToday: true },
+    { day: 'Sáb', steps: 5840, isToday: false },
+    { day: 'Dom', steps: 5140, isToday: false },
+  ];
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col h-full justify-between">
       {/* Top Header & Autonomous Mode Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · SAMSUNG ONE UI REPLICA (v1.0.9)
+            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.0)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Dock em cartucho duplo com contorno forte + bateria tubo de ensaio (cortes ao fundo + líquido 80% opaco)
+            Única Complication de Imagem (604×272px) · Turbo 1 min (≤15m) + Leitor de Notificações do Relógio
           </p>
         </div>
 
@@ -89,48 +122,92 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
         </button>
       </div>
 
-      {/* Watch Mode Switcher */}
-      <div className="grid grid-cols-3 gap-1 p-1 bg-slate-950 rounded-xl my-4 border border-slate-800/80">
-        <button
-          type="button"
-          onClick={() => setWatchScreenMode('wff')}
-          className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-            watchScreenMode === 'wff'
-              ? 'bg-slate-800 text-amber-400'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Watch className="w-3.5 h-3.5" />
-          <span>Watch Face v1.0.9</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setWatchScreenMode('tile')}
-          className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-            watchScreenMode === 'tile'
-              ? 'bg-slate-800 text-amber-400'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>Tile Top 3</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setWatchScreenMode('cache')}
-          className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-            watchScreenMode === 'cache'
-              ? 'bg-slate-800 text-amber-400'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span>Cache Room ({watchCache.cachedEvents.length})</span>
-        </button>
+      {/* Watch Mode Switcher & Quick Context Bar */}
+      <div className="space-y-2 my-3">
+        <div className="grid grid-cols-3 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800/80">
+          <button
+            type="button"
+            onClick={() => setWatchScreenMode('wff')}
+            className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              watchScreenMode === 'wff'
+                ? 'bg-slate-800 text-amber-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Watch className="w-3.5 h-3.5" />
+            <span>Watch Face v1.1.0</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setWatchScreenMode('tile')}
+            className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              watchScreenMode === 'tile'
+                ? 'bg-slate-800 text-amber-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Tile Top 3</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setWatchScreenMode('cache')}
+            className={`py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              watchScreenMode === 'cache'
+                ? 'bg-slate-800 text-amber-400'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>Cache Room ({watchCache.cachedEvents.length})</span>
+          </button>
+        </div>
+
+        {/* Seletor Rápido da Janela de Contexto + Simulador de Notificação Exclusiva do Relógio */}
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/90 border border-slate-800/80 rounded-xl px-3 py-2">
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-mono text-slate-400 mr-1">Janela:</span>
+            {contextModes.map((m) => {
+              const active = config.contextWindowMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onUpdateConfig({ contextWindowMode: m.id })}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-amber-400 text-slate-950'
+                      : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggleWatchWeatherAlert}
+            title="Simula o WearContextNotificationListenerService interceptando uma notificação de mudança climática no relógio"
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
+              hasActiveWatchWeatherAlert
+                ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            <BellRing className="w-3 h-3 text-sky-400" />
+            <span>
+              {hasActiveWatchWeatherAlert
+                ? 'Notif. Clima no Relógio: ATIVA'
+                : 'Simular Notif. Clima (Relógio)'}
+            </span>
+          </button>
+        </div>
       </div>
 
-      {/* Center Circular Watch Bezel (450x450 logical representation matching Samsung 14:04:06) */}
-      <div className="flex flex-col items-center justify-center my-2">
+      {/* Center Circular Watch Bezel (450x450 logical representation matching Samsung 16:22:13) */}
+      <div className="flex flex-col items-center justify-center my-1">
         <div
           data-testid="wear-watch-face"
           className="relative w-[376px] h-[376px] sm:w-[396px] sm:h-[396px] rounded-full bg-black border-[8px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-2.5 px-7 select-none overflow-hidden"
@@ -234,7 +311,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             </svg>
           )}
 
-          {/* TOPO NO DPI SAMSUNG: SEX. 06 (25sp BOLD) + Relógio 14:04:06 (70sp NORMAL) */}
+          {/* TOPO NO DPI SAMSUNG: SEX. 06 (25sp BOLD) + Relógio (70sp NORMAL) */}
           <div className="text-center w-full z-10 pt-0.5">
             <div className="text-[18px] font-bold tracking-wide flex items-center justify-center gap-2 leading-none">
               <span className="text-[#F5C438]">{weekdayUpper}</span>
@@ -245,7 +322,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             </div>
           </div>
 
-          {/* VIEW 1: Official Watch Face Format (WFF) — Samsung 16:22:13 + v1.0.9 Cartridge Dock */}
+          {/* VIEW 1: Official Watch Face Format (WFF) — Janela de Contexto Dinâmica (Slot 1 SMALL_IMAGE) */}
           {watchScreenMode === 'wff' && (
             <>
               {/* Ícones e textos dos arcos laterais INCLINADOS (rotate +-28deg) seguindo a curvatura da tela */}
@@ -262,62 +339,201 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 0
               </span>
 
-              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — Renderizado via Bitmap Transparente no Slot 1 */}
-              <div className="w-[80%] rounded-[16px] bg-[#080A0E] border border-[#1B2430] px-3 py-1.5 space-y-0.5 z-10 -mt-1.5">
-                {/* Cabeçalho Hoje (18sp BOLD Dourado) */}
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-[#F5C438] shrink-0" />
-                  <span className="text-[14px] font-bold text-[#F5C438] leading-none">
-                    Hoje
-                  </span>
-                </div>
+              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — Renderizado 100% pelo Bitmap Transparente */}
+              <div
+                data-testid="watch-context-canvas"
+                className="w-[80%] h-[112px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
+              >
+                {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS) */}
+                {effectiveMode === 'EVENTS' && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-[#F5C438] shrink-0" />
+                        <span className="text-[13px] font-bold text-[#F5C438] leading-none">
+                          Hoje
+                        </span>
+                      </div>
+                      {watchState.isWithinTurbo15MinWindow && (
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 flex items-center gap-0.5">
+                          <Zap className="w-2.5 h-2.5" />
+                          1m Turbo
+                        </span>
+                      )}
+                    </div>
 
-                {/* LINHA 1: Hora Branca + Nome Dourado + Timer Ciano + Barra 5px */}
-                <div className="w-full space-y-0.5">
-                  <div className="flex items-center justify-between gap-1 text-[14px] leading-tight">
-                    <div className="flex items-center min-w-0">
-                      <span className="w-[44px] font-mono font-bold text-white shrink-0">
-                        {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
+                    {/* LINHA 1: Hora Branca + Nome Dourado + Timer Ciano + Barra 5px */}
+                    <div className="w-full space-y-0.5">
+                      <div className="flex items-center justify-between gap-1 text-[13px] leading-tight">
+                        <div className="flex items-center min-w-0">
+                          <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                            {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
+                          </span>
+                          <span className="font-bold text-[#F5C438] truncate">
+                            {ev1 ? ev1.title : 'Sem eventos'}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-[11px] text-[#67E8F9] shrink-0 ml-1">
+                          {watchState.hasUpcomingEvent
+                            ? watchState.formattedCountdown
+                            : '--'}
+                        </span>
+                      </div>
+                      <div className="w-full h-[4px] bg-[#252E3A] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#F5C438] rounded-full transition-all duration-200"
+                          style={{
+                            width: `${Math.max(10, Math.round(watchState.progressRatio * 100))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* LINHA 2: Hora Branca + Título Dourado */}
+                    <div className="w-full flex items-center text-[13px] leading-tight">
+                      <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                        {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
                       </span>
                       <span className="font-bold text-[#F5C438] truncate">
-                        {ev1 ? ev1.title : 'Sem eventos'}
+                        {ev2 ? ev2.title : 'Livre'}
                       </span>
                     </div>
-                    <span className="font-mono font-bold text-[11px] text-[#67E8F9] shrink-0 ml-1">
-                      {watchState.hasUpcomingEvent
-                        ? watchState.formattedCountdown
-                        : '--'}
-                    </span>
-                  </div>
-                  <div className="w-full h-[4px] bg-[#252E3A] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#F5C438] rounded-full transition-all duration-200"
-                      style={{
-                        width: `${Math.max(10, Math.round(watchState.progressRatio * 100))}%`,
-                      }}
-                    />
-                  </div>
-                </div>
 
-                {/* LINHA 2: Hora Branca + Título Dourado */}
-                <div className="w-full flex items-center text-[14px] leading-tight pt-0.5">
-                  <span className="w-[44px] font-mono font-bold text-white shrink-0">
-                    {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
-                  </span>
-                  <span className="font-bold text-[#F5C438] truncate">
-                    {ev2 ? ev2.title : 'Livre'}
-                  </span>
-                </div>
+                    {/* LINHA 3: Hora Branca + Título Dourado */}
+                    <div className="w-full flex items-center text-[13px] leading-tight">
+                      <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                        {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
+                      </span>
+                      <span className="font-bold text-[#F5C438] truncate">
+                        {ev3 ? ev3.title : 'Livre'}
+                      </span>
+                    </div>
+                  </>
+                )}
 
-                {/* LINHA 3: Hora Branca + Título Dourado */}
-                <div className="w-full flex items-center text-[14px] leading-tight">
-                  <span className="w-[44px] font-mono font-bold text-white shrink-0">
-                    {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
-                  </span>
-                  <span className="font-bold text-[#F5C438] truncate">
-                    {ev3 ? ev3.title : 'Livre'}
-                  </span>
-                </div>
+                {/* MODO 2: CURVA DE TEMPERATURA NAS PRÓXIMAS HORAS (WEATHER) */}
+                {effectiveMode === 'WEATHER' && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <CloudRain className="w-3.5 h-3.5 text-[#67E8F9] shrink-0" />
+                        <span className="text-[12px] font-bold text-[#F5C438] leading-none truncate">
+                          Clima • Próximas Horas
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-[#67E8F9] shrink-0">
+                        {hasActiveWatchWeatherAlert ? '🔔 Chuva 18h' : '29° → 23°'}
+                      </span>
+                    </div>
+
+                    {/* Curva Bezier de Temperatura no Canvas 604x272 */}
+                    <div className="relative w-full h-[54px] flex items-center">
+                      <svg viewBox="0 0 240 54" className="w-full h-full overflow-visible">
+                        <defs>
+                          <linearGradient id="tempFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#67E8F9" stopOpacity="0.32" />
+                            <stop offset="100%" stopColor="#67E8F9" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        <path
+                          d="M 18 16 C 42 16, 50 22, 74 22 C 98 22, 106 36, 130 36 C 154 36, 162 42, 186 42 C 202 42, 212 31, 224 31 L 224 50 L 18 50 Z"
+                          fill="url(#tempFill)"
+                        />
+                        <path
+                          d="M 18 16 C 42 16, 50 22, 74 22 C 98 22, 106 36, 130 36 C 154 36, 162 42, 186 42 C 202 42, 212 31, 224 31"
+                          fill="none"
+                          stroke="#67E8F9"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                        {[
+                          { x: 18, y: 16, t: '29°', h: '14h' },
+                          { x: 74, y: 22, t: '27°', h: '16h' },
+                          { x: 130, y: 36, t: '24°', h: '18h' },
+                          { x: 186, y: 42, t: '23°', h: '20h' },
+                          { x: 224, y: 31, t: '25°', h: '22h' },
+                        ].map((pt) => (
+                          <g key={pt.h}>
+                            <circle cx={pt.x} cy={pt.y} r="3" fill="#F5C438" />
+                            <text
+                              x={pt.x}
+                              y={pt.y - 5}
+                              textAnchor="middle"
+                              fill="#FFFFFF"
+                              fontSize="9"
+                              fontWeight="bold"
+                              fontFamily="monospace"
+                            >
+                              {pt.t}
+                            </text>
+                          </g>
+                        ))}
+                      </svg>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-400 px-1 leading-none">
+                      <span>14h</span>
+                      <span>16h</span>
+                      <span className="text-sky-300 font-bold">18h 🌧</span>
+                      <span>20h</span>
+                      <span>22h</span>
+                    </div>
+                  </>
+                )}
+
+                {/* MODO 3: PASSOS SEMANAIS (STEPS) */}
+                {effectiveMode === 'STEPS' && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Footprints className="w-3.5 h-3.5 text-[#22C55E] shrink-0" />
+                        <span className="text-[12px] font-bold text-[#F5C438] leading-none">
+                          Passos Semanais
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-[#67E8F9]">
+                        50.455 total
+                      </span>
+                    </div>
+
+                    <div className="flex items-end justify-between gap-1.5 h-[56px] pt-2 px-1">
+                      {weeklyStepsData.map((d) => {
+                        const heightPct = Math.round((d.steps / 9500) * 100);
+                        return (
+                          <div
+                            key={d.day}
+                            className="flex-1 flex flex-col items-center justify-end h-full"
+                          >
+                            <span className="text-[8px] font-mono text-slate-300 mb-0.5 leading-none">
+                              {(d.steps / 1000).toFixed(1)}k
+                            </span>
+                            <div className="w-full h-[32px] bg-[#1C2632] rounded-sm flex items-end overflow-hidden">
+                              <div
+                                className={`w-full rounded-sm ${
+                                  d.isToday ? 'bg-[#F5C438]' : 'bg-[#22C55E]'
+                                }`}
+                                style={{ height: `${heightPct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[9px] font-mono px-1 leading-none">
+                      {weeklyStepsData.map((d) => (
+                        <span
+                          key={d.day}
+                          className={
+                            d.isToday ? 'text-[#F5C438] font-bold' : 'text-slate-400'
+                          }
+                        >
+                          {d.day}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* DOCK EM CARTUCHO ENVOLVENTE (x=84, y=268, w=282, h=92) COM APENAS 2 COMPLICATIONS MAIORES E CONTORNO FORTE */}
@@ -391,8 +607,10 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 <div>
                   Status BT: {watchCache.isBluetoothConnected ? 'ONLINE' : 'OFFLINE (CACHE)'}
                 </div>
-                <div>Total no cache: {watchCache.cachedEvents.length} eventos</div>
-                <div>Restantes futuros: {watchState.upcomingThree.length}+</div>
+                <div>Contexto Ativo: {effectiveMode}</div>
+                <div>
+                  Turbo ≤15m (1 min): {watchState.isWithinTurbo15MinWindow ? 'ATIVO ⚡' : 'Aguardando'}
+                </div>
                 <div className="text-amber-300 truncate">
                   1º: {watchState.nextEvent?.title || 'Nenhum'}
                 </div>
@@ -403,10 +621,11 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
       </div>
 
       {/* Time-Travel & Autonomous Offline Simulation Bar */}
-      <div className="pt-4 border-t border-slate-800">
+      <div className="pt-3 border-t border-slate-800">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-slate-300">
-            Simulador de Passagem de Tempo no Relógio (Teste Autônomo)
+          <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Simulador de Passagem de Tempo (Teste Regra ≤15 min = 1 min)</span>
           </span>
           <button
             type="button"
@@ -414,7 +633,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Resetar Relógio</span>
+            <span>Resetar (14:04)</span>
           </button>
         </div>
 
@@ -429,11 +648,20 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           </button>
           <button
             type="button"
-            onClick={() => onAdvanceTimeMinutes(60)}
+            onClick={() => onAdvanceTimeMinutes(135)}
+            title="Avança 2h15m (de 14:04 para 16:19, faltando 11 min para Adolescentes às 16:30)"
+            className="py-2 px-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-lg text-xs font-mono text-amber-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+          >
+            <Zap className="w-3 h-3 text-amber-400" />
+            <span>Ir p/ ≤15m</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onAdvanceTimeMinutes(1)}
             className="py-2 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
           >
-            <FastForward className="w-3 h-3 text-amber-400" />
-            <span>+1 hora</span>
+            <FastForward className="w-3 h-3 text-sky-400" />
+            <span>+1 min</span>
           </button>
           <button
             type="button"
@@ -442,14 +670,6 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           >
             <FastForward className="w-3 h-3 text-sky-400" />
             <span>+6 horas</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onAdvanceTimeMinutes(1440)}
-            className="py-2 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
-          >
-            <FastForward className="w-3 h-3 text-sky-400" />
-            <span>+1 dia</span>
           </button>
         </div>
       </div>

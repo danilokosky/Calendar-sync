@@ -341,11 +341,18 @@ object CalendarSyncEngine {
             ""
         }
 
+        val contextMode = prefs.getContextWindowMode()
+        val highFreq15Min = prefs.isHighFreq15MinRuleEnabled()
+        val updateOnWake = prefs.isUpdateOnScreenWakeEnabled()
+
         val payloadJson = JSONObject().apply {
             put("events", jsonArray)
             put("sync_timestamp_ms", nowMs)
             put("horizon_days", horizonDays)
             put("progress_window_minutes", progressWindowMinutes)
+            put("context_window_mode", contextMode)
+            put("high_freq_15min_rule", highFreq15Min)
+            put("update_on_screen_wake", updateOnWake)
             if (preRenderedCardPngB64.isNotBlank()) {
                 put("card_png_b64", preRenderedCardPngB64)
             }
@@ -360,6 +367,9 @@ object CalendarSyncEngine {
                 dataMap.putLong("sync_timestamp_ms", nowMs)
                 dataMap.putInt("horizon_days", horizonDays)
                 dataMap.putInt("progress_window_minutes", progressWindowMinutes)
+                dataMap.putString("context_window_mode", contextMode)
+                dataMap.putBoolean("high_freq_15min_rule", highFreq15Min)
+                dataMap.putBoolean("update_on_screen_wake", updateOnWake)
                 if (preRenderedCardPngB64.isNotBlank()) {
                     dataMap.putString("card_png_b64", preRenderedCardPngB64)
                 }
