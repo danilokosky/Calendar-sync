@@ -84,11 +84,17 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   const unifiedHoldMs = unifiedHoldMins * 60_000;
   const primaryCtx = config.autoPrimaryContext ?? 'EVENTS';
 
-  // Prioridade máxima: qualquer gatilho real de contexto (Clima, Agenda próxima, Nascer/Pôr do Sol, Sono/Acordar)
+  // Verifica se falta 15 minutos ou menos (<= 15m) para o próximo compromisso da Agenda
+  const isEventWithin15Min =
+    watchState.hasUpcomingEvent &&
+    watchState.remainingMs > 0 &&
+    watchState.remainingMs <= 15 * 60 * 1000;
+
+  // Prioridade máxima: qualquer gatilho real de contexto (Compromisso em <= 15m, Clima, Nascer/Pôr do Sol, Sono/Acordar)
   // tem prioridade máxima sobre o toque manual e assume o Canvas imediatamente.
   const isPriorityContextActive =
     config.contextWindowMode === 'DYNAMIC' &&
-    watchState.effectiveContextMode !== primaryCtx;
+    (watchState.effectiveContextMode !== primaryCtx || isEventWithin15Min);
 
   const isTapOverrideValid =
     !isPriorityContextActive &&
@@ -122,12 +128,19 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     SLEEP: 'Sono',
   };
 
-  // Notificação no relógio quando uma mudança real de contexto força a troca do Canvas
+  // Notificação no relógio quando uma mudança real de contexto força a troca do Canvas:
+  // - Respeita o switch geral do app do relógio (notifyWatchOnCanvasChange)
+  // - Para compromissos da Agenda faltando 15 minutos, respeita também o switch opcional dedicado (notifyAgenda15MinEnabled)
   const forcedNotifKey = isPriorityContextActive
-    ? `${watchState.effectiveContextMode}-${hasActiveWatchWeatherAlert ? 'alert' : 'auto'}`
+    ? `${watchState.effectiveContextMode}-${hasActiveWatchWeatherAlert ? 'alert' : isEventWithin15Min ? `15m-${ev1?.id ?? ''}` : 'auto'}`
     : null;
-  const showWatchForcedNotification =
+  const isNotificationAllowedForMode =
     (config.notifyWatchOnCanvasChange ?? true) &&
+    (watchState.effectiveContextMode !== 'EVENTS' ||
+      (config.notifyAgenda15MinEnabled ?? true));
+
+  const showWatchForcedNotification =
+    isNotificationAllowedForMode &&
     isPriorityContextActive &&
     forcedNotifKey !== null &&
     dismissedNotifKey !== forcedNotifKey;
@@ -136,13 +149,15 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     if (!isPriorityContextActive) return '';
     switch (watchState.effectiveContextMode) {
       case 'WEATHER':
-        return hasActiveWatchWeatherAlert
-          ? `${weatherNotifSource}: Mudança p/ Chuva e queda 29°→23°C`
-          : 'Atualização de clima detectada';
+        return `${config.weatherLocationName ?? 'São Paulo, SP'} • ${
+          hasActiveWatchWeatherAlert
+            ? `${weatherNotifSource}: Chuva e queda 29°→23°C`
+            : 'Previsão atualizada'
+        }`;
       case 'EVENTS':
         return ev1
-          ? `Compromisso próximo: ${ev1.title} às ${formatTimeHHMM(ev1.startEpochMs)}`
-          : 'Janela de evento da agenda ativa';
+          ? `Faltam ≤15m (${watchState.formattedCountdown}) para ${ev1.title} às ${formatTimeHHMM(ev1.startEpochMs)}`
+          : 'Compromisso em 15 minutos';
       case 'SUN':
         return `Janela solar (${config.solarSunriseHHMM ?? '05:27'} / ${config.solarSunsetHHMM ?? '17:40'})`;
       case 'SLEEP':
@@ -151,6 +166,22 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
         return 'Mudança prioritária de contexto';
     }
   })();
+
+  const handleForceRefreshWatchWeatherLocation = () => {
+    const locations = [
+      'São Paulo, SP',
+      'Pinheiros, São Paulo',
+      'Campinas, SP',
+      'Rio de Janeiro, RJ',
+    ];
+    const curLoc = config.weatherLocationName ?? 'São Paulo, SP';
+    const nextLoc =
+      locations[(locations.indexOf(curLoc) + 1) % locations.length];
+    onUpdateConfig({
+      weatherLocationName: nextLoc,
+      weatherUpdatedHHMM: formatTimeHHMM(currentWatchTimeMs),
+    });
+  };
 
   const handleTapCanvasToCycle = () => {
     const order: ('EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP')[] = [
@@ -243,13 +274,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.3)
+            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.2.1)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Sol Dia/Noite Abaixo do Horizonte · Progresso 0%→100% ({config.progressWindowMinutes === 30 ? '30m' : `${config.progressWindowMinutes / 60}h`}) · Modo Auto &amp; Sono
+            Localização no Clima · Notificação do Canvas (Ativar/Desativar) · Troca Agenda em ≤15m
           </p>
         </div>
 
@@ -290,7 +321,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             }`}
           >
             <Watch className="w-3.5 h-3.5" />
-            <span>Watch Face v1.1.3</span>
+            <span>Watch Face v1.2.1</span>
           </button>
           <button
             type="button"
@@ -363,6 +394,60 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           </button>
         </div>
 
+        {/* Opções Diretas do App do Relógio (:wear): Ativar/Desativar Notificação do Canvas, Notificação Agenda 15m e Atualizar Localização */}
+        <div className="flex flex-wrap items-center justify-between gap-1.5 bg-slate-950/75 border border-slate-800/80 rounded-xl px-3 py-1.5 text-[11px]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              data-testid="watch-toggle-canvas-notif"
+              onClick={() =>
+                onUpdateConfig({
+                  notifyWatchOnCanvasChange: !(
+                    config.notifyWatchOnCanvasChange ?? true
+                  ),
+                })
+              }
+              className={`px-2 py-1 rounded-lg font-semibold border transition-colors cursor-pointer ${
+                config.notifyWatchOnCanvasChange ?? true
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-400'
+              }`}
+            >
+              Notif. Canvas (Relógio):{' '}
+              {(config.notifyWatchOnCanvasChange ?? true) ? 'ATIVADA' : 'DESATIVADA'}
+            </button>
+
+            <button
+              type="button"
+              data-testid="watch-toggle-agenda-15m-notif"
+              onClick={() =>
+                onUpdateConfig({
+                  notifyAgenda15MinEnabled: !(
+                    config.notifyAgenda15MinEnabled ?? true
+                  ),
+                })
+              }
+              className={`px-2 py-1 rounded-lg font-semibold border transition-colors cursor-pointer ${
+                config.notifyAgenda15MinEnabled ?? true
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-400'
+              }`}
+            >
+              Notif. Agenda (15m):{' '}
+              {(config.notifyAgenda15MinEnabled ?? true) ? 'OPCIONAL ON' : 'OPCIONAL OFF'}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            data-testid="watch-force-refresh-weather-location"
+            onClick={handleForceRefreshWatchWeatherLocation}
+            className="px-2 py-1 rounded-lg font-mono text-[10.5px] bg-sky-500/15 border border-sky-500/40 text-sky-300 hover:bg-sky-500/25 transition-colors cursor-pointer"
+          >
+            📍 Forçar Atualiz. Local ({config.weatherLocationName ?? 'São Paulo, SP'})
+          </button>
+        </div>
+
         {/* Status do Tempo Fixo Unificado (Toque no Canvas vs Prioridade Máxima com Notificação no Relógio) */}
         {isTapOverrideValid && tapOverrideState && (
           <div
@@ -391,7 +476,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               <BellRing className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
               <span className="text-emerald-200 truncate">
                 <strong>Notificação no Relógio:</strong> Canvas alterado para{' '}
-                <strong>{contextLabels[watchState.effectiveContextMode]}</strong> ({forcedNotificationDetail}) • Fixo por {unifiedHoldMins}m (Prioridade Máxima)
+                <strong>{contextLabels[watchState.effectiveContextMode]}</strong> ({forcedNotificationDetail}) • Fixo por {watchState.effectiveContextMode === 'EVENTS' ? 15 : unifiedHoldMins}m
               </span>
             </div>
             <button
@@ -613,7 +698,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </>
                 )}
 
-                {/* MODO 2: CLIMA (WEATHER — Título apenas "Clima", condição climática e DPI ampliado) */}
+                {/* MODO 2: CLIMA (WEATHER — Título apenas "Clima", condição climática à direita e subtítulo com Localização + Hora Atualizada) */}
                 {effectiveMode === 'WEATHER' && (
                   <>
                     <div className="flex items-center justify-between">
@@ -633,10 +718,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       </span>
                     </div>
 
-                    <div className="text-[11px] font-semibold text-slate-200 truncate leading-none">
-                      {hasActiveWatchWeatherAlert
-                        ? 'Mudança p/ Chuva e queda 29°→23°C'
-                        : 'Queda 29°→23°C nas próximas horas'}
+                    <div
+                      data-testid="weather-canvas-location-subtitle"
+                      className="text-[11px] font-semibold text-slate-200 truncate leading-none"
+                    >
+                      📍 {config.weatherLocationName ?? 'São Paulo, SP'} • Atualizado{' '}
+                      {config.weatherUpdatedHHMM ??
+                        formatTimeHHMM(watchCache.lastSyncEpochMs)}
                     </div>
 
                     {/* Curva Bezier de Temperatura no Canvas 604x272 com números maiores */}

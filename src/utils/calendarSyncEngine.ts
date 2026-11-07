@@ -93,6 +93,9 @@ export interface SyncConfiguration {
   autoPrimaryContext?: PrimaryContextMode;
   unifiedCanvasHoldMinutes?: AutoExposureMinutes;
   notifyWatchOnCanvasChange?: boolean;
+  notifyAgenda15MinEnabled?: boolean;
+  weatherLocationName?: string;
+  weatherUpdatedHHMM?: string;
   autoAgendaExposureMinutes?: AutoExposureMinutes;
   autoWeatherExposureMinutes?: AutoExposureMinutes;
   autoSunExposureMinutes?: AutoExposureMinutes;
@@ -124,6 +127,9 @@ export interface WatchCacheState {
   autoPrimaryContext?: PrimaryContextMode;
   unifiedCanvasHoldMinutes?: AutoExposureMinutes;
   notifyWatchOnCanvasChange?: boolean;
+  notifyAgenda15MinEnabled?: boolean;
+  weatherLocationName?: string;
+  weatherUpdatedHHMM?: string;
   autoAgendaExposureMinutes?: AutoExposureMinutes;
   autoWeatherExposureMinutes?: AutoExposureMinutes;
   autoSunExposureMinutes?: AutoExposureMinutes;
@@ -298,14 +304,8 @@ export function resolveEffectiveWatchContextMode(
     options?.autoSleepExposureMinutes ??
     30;
 
-  const agendaExposureMs =
-    (primaryContext === 'EVENTS'
-      ? 15
-      : options?.autoAgendaExposureMinutes ?? unifiedHoldMins) *
-    60 *
-    1000;
-
-  // 1. Urgência Imediata de Compromisso (<= 15 min antes do evento)
+  // 1. Compromisso da Agenda faltando 15 minutos ou menos (<= 15m):
+  // O Canvas troca para Agenda com prioridade máxima e (se ativado) gera notificação no relógio
   if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= 15 * 60 * 1000) {
     return 'EVENTS';
   }
@@ -313,11 +313,6 @@ export function resolveEffectiveWatchContextMode(
   // 2. Prioridade Máxima: Mudança Climática / Chuva ou Alerta de Clima Ativo
   if (hasActiveWatchWeatherAlert) {
     return 'WEATHER';
-  }
-
-  // 3. Prioridade Máxima: Evento entrando na janela de exposição configurada
-  if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= agendaExposureMs) {
-    return 'EVENTS';
   }
 
   // 3. Prioridade Máxima: Nascer e Pôr do Sol (dentro da janela unificada)

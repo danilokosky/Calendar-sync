@@ -43,6 +43,8 @@ data class HourlyWeatherSnapshot(
     val alertSource: String,
     val alertHeadline: String,
     val weatherConditionLabel: String,
+    val locationName: String,
+    val updatedTimeHHMM: String,
     val hourlyLabels: List<String>,
     val hourlyTempsC: List<Int>,
     val rainProbabilityPct: Int,
@@ -110,6 +112,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         autoPrimaryContext: String? = null,
         unifiedCanvasHoldMin: Int? = null,
         notifyOnCanvasChange: Boolean? = null,
+        notifyAgenda15Min: Boolean? = null,
         autoAgendaExposureMin: Int? = null,
         autoWeatherExposureMin: Int? = null,
         autoSunExposureMin: Int? = null,
@@ -120,6 +123,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
         weatherConditionLabel: String? = null,
+        weatherLocationName: String? = null,
+        weatherUpdatedHHMM: String? = null,
         weatherAlertSource: String? = null,
         weatherAlertHeadline: String? = null,
         weatherAlertTimestampMs: Long? = null,
@@ -167,6 +172,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (notifyOnCanvasChange != null) {
             editor.putBoolean("notify_on_canvas_change", notifyOnCanvasChange)
         }
+        if (notifyAgenda15Min != null) {
+            editor.putBoolean("notify_agenda_15min", notifyAgenda15Min)
+        }
         if (highFreq15MinRule != null) {
             editor.putBoolean("high_freq_15min_rule", highFreq15MinRule)
         }
@@ -193,6 +201,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (!weatherConditionLabel.isNullOrBlank()) {
             editor.putString("weather_condition_label", weatherConditionLabel)
+        }
+        if (!weatherLocationName.isNullOrBlank()) {
+            editor.putString("weather_location_name", weatherLocationName)
+        }
+        if (!weatherUpdatedHHMM.isNullOrBlank()) {
+            editor.putString("weather_updated_hhmm", weatherUpdatedHHMM)
         }
         if (!weatherAlertSource.isNullOrBlank()) {
             editor.putString("weather_alert_source", weatherAlertSource)
@@ -328,7 +342,25 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit().putBoolean("notify_on_canvas_change", enabled).commit()
     }
 
-    fun getAutoAgendaExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
+    fun isNotifyAgenda15MinEnabled(): Boolean {
+        return prefs.getBoolean("notify_agenda_15min", true)
+    }
+
+    fun setNotifyAgenda15MinEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("notify_agenda_15min", enabled).commit()
+    }
+
+    fun getWeatherLocationName(): String {
+        return prefs.getString("weather_location_name", "São Paulo, SP") ?: "São Paulo, SP"
+    }
+
+    fun setWeatherLocationName(locationName: String) {
+        if (locationName.isNotBlank()) {
+            prefs.edit().putString("weather_location_name", locationName.trim()).apply()
+        }
+    }
+
+    fun getAutoAgendaExposureMinutes(): Int = 15
 
     fun getAutoWeatherExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
 
@@ -499,6 +531,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         pickedLabels: List<String>,
         maxRainProbPct: Int,
         weatherConditionLabel: String = "Céu limpo",
+        locationName: String? = null,
         conditionShiftDetected: Boolean = false,
         nowMs: Long = System.currentTimeMillis()
     ): Boolean {
@@ -522,12 +555,18 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
         val shiftDetected = shiftAcrossHours || shiftFromPreviousFetch || rainAlert || weatherConditionChanged
 
+        val updatedHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nowMs))
         val editor = prefs.edit()
             .putString("weather_temps_csv", tempsCsv)
             .putString("weather_hours_csv", hoursCsv)
             .putInt("weather_rain_prob", maxRainProbPct.coerceIn(0, 100))
             .putString("weather_condition_label", weatherConditionLabel)
+            .putString("weather_updated_hhmm", updatedHHMM)
             .putLong("watch_standalone_last_fetch_ms", nowMs)
+
+        if (!locationName.isNullOrBlank()) {
+            editor.putString("weather_location_name", locationName.trim())
+        }
 
         if (shiftDetected) {
             val headline = when {
@@ -561,9 +600,11 @@ class WatchAutonomousRepository private constructor(context: Context) :
         rainProbPct: Int? = null,
         nowMs: Long = System.currentTimeMillis()
     ) {
+        val updatedHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nowMs))
         val editor = prefs.edit()
             .putString("weather_alert_source", sourceAppLabel)
             .putString("weather_alert_headline", headline)
+            .putString("weather_updated_hhmm", updatedHHMM)
             .putLong("weather_alert_timestamp_ms", nowMs)
             // Prioridade máxima: cancela toque manual
             .remove("tap_override_context_mode")
@@ -595,6 +636,13 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val headline = prefs.getString("weather_alert_headline", "Previsão para as próximas horas")
             ?: "Previsão para as próximas horas"
         val conditionLabel = prefs.getString("weather_condition_label", "Céu limpo") ?: "Céu limpo"
+        val locationName = prefs.getString("weather_location_name", "São Paulo, SP") ?: "São Paulo, SP"
+        val fallbackTs = prefs.getLong("watch_standalone_last_fetch_ms", 0L)
+            .takeIf { it > 0L }
+            ?: prefs.getLong("last_sync_ms", nowMs).takeIf { it > 0L }
+            ?: nowMs
+        val fallbackHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(fallbackTs))
+        val updatedTimeHHMM = prefs.getString("weather_updated_hhmm", fallbackHHMM) ?: fallbackHHMM
         val tempsStr = prefs.getString("weather_temps_csv", "28,28,27,27,27") ?: "28,28,27,27,27"
         val hoursStr = prefs.getString("weather_hours_csv", "Agora,23h,01h,03h,05h") ?: "Agora,23h,01h,03h,05h"
         val rainProb = prefs.getInt("weather_rain_prob", 20)
@@ -608,6 +656,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
             alertSource = source,
             alertHeadline = headline,
             weatherConditionLabel = conditionLabel,
+            locationName = locationName,
+            updatedTimeHHMM = updatedTimeHHMM,
             hourlyLabels = labels,
             hourlyTempsC = temps,
             rainProbabilityPct = rainProb,
@@ -703,8 +753,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Avalia se há uma mudança de contexto de PRIORIDADE MÁXIMA ativa agora
-     * (Agenda iminente, Mudança de Clima/Chuva, Nascer/Pôr do Sol, ou Acordar/Dormir).
+     * Avalia se há uma mudança de contexto de PRIORIDADE MÁXIMA ativa agora:
+     * 1. Compromisso da Agenda faltando 15 minutos ou menos (<= 15m): o Canvas troca para Agenda
+     *    e (se ativado pelo usuário) gera notificação no relógio.
+     * 2. Mudança de Clima/Chuva: assume o Canvas pelo Tempo Fixo Unificado.
+     * 3. Nascer e Pôr do Sol: assume o Canvas na janela solar.
+     * 4. Dormir ou Acordar: assume o Canvas com o Resumo de Sono.
      * Retorna Pair(modoForcado, motivoParaNotificacao) ou null se nenhum gatilho prioritário estiver ativo.
      */
     fun evaluatePriorityContextOverride(
@@ -713,27 +767,22 @@ class WatchAutonomousRepository private constructor(context: Context) :
     ): Pair<String, String>? {
         val unifiedHoldMin = getUnifiedCanvasHoldMinutes()
         val unifiedHoldMs = TimeUnit.MINUTES.toMillis(unifiedHoldMin.toLong())
-        val primaryContext = getAutoPrimaryContext()
         val nextEvent = upcomingThree.firstOrNull()
 
-        // 1. Mudança de Clima (Temperatura / Chuva / Alerta de App) — Prioridade Máxima se recente
+        // 1. Compromisso da Agenda faltando 15 minutos (<= 15m) — Troca para o Canvas de Agenda com Prioridade Máxima
+        if (nextEvent != null) {
+            val remMs = nextEvent.startEpochMs - nowMs
+            val fifteenMinMs = TimeUnit.MINUTES.toMillis(15L)
+            if (remMs in 1..fifteenMinMs) {
+                return MODE_EVENTS to "Faltam ${nextEvent.formatRemaining(nowMs)} para ${nextEvent.title} (${nextEvent.formatStartHHMM()})"
+            }
+        }
+
+        // 2. Mudança de Clima (Temperatura / Chuva / Alerta de App) — Prioridade Máxima se recente
         val weatherAlertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
         if (weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..unifiedHoldMs) {
             val snap = getHourlyWeatherSnapshot(nowMs)
-            return MODE_WEATHER to "${snap.weatherConditionLabel} • ${snap.alertHeadline}"
-        }
-
-        // 2. Agenda (Compromisso entrando na janela de exposição ou nos 15m finais)
-        if (nextEvent != null) {
-            val remMs = nextEvent.startEpochMs - nowMs
-            val agendaExposureMs = if (primaryContext == MODE_EVENTS) {
-                TimeUnit.MINUTES.toMillis(15L)
-            } else {
-                unifiedHoldMs
-            }
-            if (remMs in 1..agendaExposureMs) {
-                return MODE_EVENTS to "${nextEvent.formatStartHHMM()} ${nextEvent.title} (em ${nextEvent.formatRemaining(nowMs)})"
-            }
+            return MODE_WEATHER to "${snap.weatherConditionLabel} (${snap.locationName}) • ${snap.alertHeadline}"
         }
 
         // 3. Nascer e Pôr do Sol (dentro da janela unificada ao redor do evento solar)

@@ -102,6 +102,8 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchSleepSync: Switch
     private lateinit var subtitleSleepInfo: TextView
     private lateinit var switchNotifyWatchOnCanvasChange: Switch
+    private lateinit var switchNotifyAgenda15Min: Switch
+    private lateinit var subtitleWeatherLocationInfo: TextView
     private lateinit var rowContextModeChipsTop: LinearLayout
     private lateinit var rowContextModeChipsBottom: LinearLayout
     private lateinit var rowAutoPrimaryContextChips: LinearLayout
@@ -857,8 +859,8 @@ class MobileSyncConfigActivity : Activity() {
             sectionAutoBehaviorCard.addView(rowUnifiedCanvasHoldChips)
 
             val notifyWatchCanvasRow = createSettingToggleRow(
-                title = "Notificar no Relógio ao Forçar Mudança do Canvas",
-                subtitle = "Exibe uma notificação no relógio quando uma mudança de Clima, Agenda, Sol ou Sono assumir o Canvas com prioridade máxima",
+                title = "Notificar no Relógio ao Atualizar o Canvas",
+                subtitle = "Ativa ou desativa a notificação gerada pelo app do relógio quando o Canvas muda automaticamente",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchNotifyWatchOnCanvasChange = sw
@@ -870,6 +872,21 @@ class MobileSyncConfigActivity : Activity() {
                 }
             )
             sectionAutoBehaviorCard.addView(notifyWatchCanvasRow)
+
+            val notifyAgenda15MinRow = createSettingToggleRow(
+                title = "Notificar Compromisso Faltando 15 Minutos",
+                subtitle = "Quando faltar 15 minutos para o compromisso, o Canvas troca para Agenda e exibe notificação opcional no relógio",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchNotifyAgenda15Min = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setNotifyAgenda15MinEnabled(isChecked)
+                        syncSettingsToWatchInBackground("Notificar Agenda 15m")
+                    }
+                }
+            )
+            sectionAutoBehaviorCard.addView(notifyAgenda15MinRow)
             addView(sectionAutoBehaviorCard)
 
             // -----------------------------------------------------------------
@@ -980,7 +997,7 @@ class MobileSyncConfigActivity : Activity() {
             val phoneAutoWeatherRow = createSettingToggleRow(
                 title = "Busca Periódica de Clima pelo App (Auto)",
                 subtitle = "Busca a previsão pelo telefone e muda o Canvas se detectar variação de temperatura, chuva ou condição climática",
-                onSubtitleCreated = {},
+                onSubtitleCreated = { subtitleWeatherLocationInfo = it },
                 onSwitchCreated = { sw ->
                     switchPhoneWeatherAutoCheck = sw
                     sw.setOnCheckedChangeListener { _, isChecked ->
@@ -1054,7 +1071,7 @@ class MobileSyncConfigActivity : Activity() {
             sectionWeatherCard.addView(watchStandaloneWeatherRow)
 
             val btnWeatherFetchPill = createOutlineActionPillButton(
-                "Atualizar Previsão de Clima Agora"
+                "Forçar Atualização de Clima e Localização Agora"
             ) {
                 if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) !=
                     PackageManager.PERMISSION_GRANTED
@@ -1343,7 +1360,7 @@ class MobileSyncConfigActivity : Activity() {
             }
             Toast.makeText(
                 this@MobileSyncConfigActivity,
-                "Clima (${prefs.getPhoneWeatherConditionLabel()}) e Sol (${prefs.getSolarSunriseHHMM()} / ${prefs.getSolarSunsetHHMM()}) enviados ao relógio!",
+                "Clima (${prefs.getPhoneWeatherLocationName()} • ${prefs.getPhoneWeatherConditionLabel()}) enviado ao relógio!",
                 Toast.LENGTH_SHORT
             ).show()
             refreshUiState()
@@ -1596,12 +1613,16 @@ class MobileSyncConfigActivity : Activity() {
         switchWatchStandaloneSolar.isChecked = prefs.isWatchStandaloneSolarEnabled()
         switchSleepSync.isChecked = prefs.isSleepSyncEnabled()
         switchNotifyWatchOnCanvasChange.isChecked = prefs.isNotifyWatchOnCanvasChangeEnabled()
+        switchNotifyAgenda15Min.isChecked = prefs.isNotifyAgenda15MinEnabled()
         switchMediaPlaybackSync.isChecked = prefs.isMediaPlaybackSyncEnabled()
         switchCalendarEventsSync.isChecked = prefs.isCalendarEventsSyncEnabled() && hasCalPerm
         switchAutoReadOnChange.isChecked = prefs.isAutoSyncOnCalendarChangeEnabled()
         switchHighFreq15MinRule.isChecked = prefs.isHighFreq15MinRuleEnabled()
         switchUpdateOnScreenWake.isChecked = prefs.isUpdateOnScreenWakeEnabled()
         suppressSwitchEvents = false
+
+        subtitleWeatherLocationInfo.text =
+            "Local da previsão: ${prefs.getPhoneWeatherLocationName()} • Atualizado ${prefs.getPhoneWeatherUpdatedHHMM()}"
 
         btnWeatherTriggerAppsPill.text =
             "Escolher Apps de Clima por Categoria ($selectedWeatherAppsCount selecionados)"

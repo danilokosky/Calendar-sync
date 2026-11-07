@@ -119,6 +119,23 @@ object CalendarSyncEngine {
         return lat to lon
     }
 
+    @Suppress("DEPRECATION")
+    fun resolveDeviceLocationName(context: Context, lat: Double, lon: Double): String {
+        try {
+            val geocoder = android.location.Geocoder(context, Locale.getDefault())
+            val addresses = geocoder.getFromLocation(lat, lon, 1)
+            val addr = addresses?.firstOrNull()
+            if (addr != null) {
+                val city = addr.subAdminArea ?: addr.locality ?: addr.subLocality ?: ""
+                val state = addr.adminArea ?: ""
+                val combined = listOf(city, state).filter { it.isNotBlank() }.joinToString(", ")
+                if (combined.isNotBlank()) return combined
+            }
+        } catch (_: Exception) {
+        }
+        return SyncPreferences(context).getPhoneWeatherLocationName()
+    }
+
     /**
      * Calcula astronomicamente os horários de Nascer e Pôr do Sol (NOAA Solar Calculator)
      * baseado na latitude, longitude e fuso horário do dispositivo, servindo tanto offline
@@ -593,12 +610,14 @@ object CalendarSyncEngine {
                     val firstCondition = mapWmoCodeToPortugueseLabel(pickedCodes.firstOrNull() ?: 0, 0)
                     val dominantCondition = mapWmoCodeToPortugueseLabel(dominantWmoCode, maxRain)
                     val conditionShiftAcrossHours = firstCondition != dominantCondition
+                    val resolvedLocationName = resolveDeviceLocationName(context, lat, lon)
 
                     shiftDetected = prefs.savePhoneFetchedWeatherAndDetectShift(
                         pickedTemps = pickedTemps,
                         pickedLabels = pickedLabels,
                         rainProbPct = maxRain,
                         weatherConditionLabel = dominantCondition,
+                        locationName = resolvedLocationName,
                         conditionShiftDetected = conditionShiftAcrossHours,
                         fetchTimestampMs = nowMs
                     )
@@ -656,6 +675,7 @@ object CalendarSyncEngine {
         val autoPrimaryContext = prefs.getAutoPrimaryContext()
         val unifiedCanvasHoldMin = prefs.getUnifiedCanvasHoldMinutes()
         val notifyOnCanvasChange = prefs.isNotifyWatchOnCanvasChangeEnabled()
+        val notifyAgenda15Min = prefs.isNotifyAgenda15MinEnabled()
         val autoAgendaExposureMin = prefs.getAutoAgendaExposureMinutes()
         val autoWeatherExposureMin = prefs.getAutoWeatherExposureMinutes()
         val autoSunExposureMin = prefs.getAutoSunExposureMinutes()
@@ -674,6 +694,8 @@ object CalendarSyncEngine {
         val weatherHoursCsv = prefs.getPhoneWeatherHoursCsv()
         val weatherRainProb = prefs.getPhoneWeatherRainProbPct()
         val weatherConditionLabel = prefs.getPhoneWeatherConditionLabel()
+        val weatherLocationName = prefs.getPhoneWeatherLocationName()
+        val weatherUpdatedHHMM = prefs.getPhoneWeatherUpdatedHHMM()
         val weatherAlertSource = prefs.getWeatherAlertSource()
         val weatherAlertHeadline = prefs.getWeatherAlertHeadline()
         val weatherAlertTsMs = prefs.getWeatherAlertTimestampMs()
@@ -693,6 +715,7 @@ object CalendarSyncEngine {
             put("auto_primary_context", autoPrimaryContext)
             put("unified_canvas_hold_min", unifiedCanvasHoldMin)
             put("notify_on_canvas_change", notifyOnCanvasChange)
+            put("notify_agenda_15min", notifyAgenda15Min)
             put("auto_agenda_exposure_min", autoAgendaExposureMin)
             put("auto_weather_exposure_min", autoWeatherExposureMin)
             put("auto_sun_exposure_min", autoSunExposureMin)
@@ -710,6 +733,8 @@ object CalendarSyncEngine {
             put("weather_hours_csv", weatherHoursCsv)
             put("weather_rain_prob", weatherRainProb)
             put("weather_condition_label", weatherConditionLabel)
+            put("weather_location_name", weatherLocationName)
+            put("weather_updated_hhmm", weatherUpdatedHHMM)
             put("weather_alert_source", weatherAlertSource)
             put("weather_alert_headline", weatherAlertHeadline)
             put("weather_alert_timestamp_ms", weatherAlertTsMs)
@@ -737,6 +762,7 @@ object CalendarSyncEngine {
                 dataMap.putString("auto_primary_context", autoPrimaryContext)
                 dataMap.putInt("unified_canvas_hold_min", unifiedCanvasHoldMin)
                 dataMap.putBoolean("notify_on_canvas_change", notifyOnCanvasChange)
+                dataMap.putBoolean("notify_agenda_15min", notifyAgenda15Min)
                 dataMap.putInt("auto_agenda_exposure_min", autoAgendaExposureMin)
                 dataMap.putInt("auto_weather_exposure_min", autoWeatherExposureMin)
                 dataMap.putInt("auto_sun_exposure_min", autoSunExposureMin)
@@ -754,6 +780,8 @@ object CalendarSyncEngine {
                 dataMap.putString("weather_hours_csv", weatherHoursCsv)
                 dataMap.putInt("weather_rain_prob", weatherRainProb)
                 dataMap.putString("weather_condition_label", weatherConditionLabel)
+                dataMap.putString("weather_location_name", weatherLocationName)
+                dataMap.putString("weather_updated_hhmm", weatherUpdatedHHMM)
                 dataMap.putString("weather_alert_source", weatherAlertSource)
                 dataMap.putString("weather_alert_headline", weatherAlertHeadline)
                 dataMap.putLong("weather_alert_timestamp_ms", weatherAlertTsMs)

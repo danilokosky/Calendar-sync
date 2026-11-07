@@ -48,6 +48,8 @@ class WearMainActivity : Activity() {
     private lateinit var nextEventCountdownText: TextView
     private lateinit var complicationStatusText: TextView
     private lateinit var contextModeButton: Button
+    private lateinit var notifyCanvasChangeButton: Button
+    private lateinit var notifyAgenda15MinButton: Button
     private lateinit var turboRuleButton: Button
     private lateinit var standaloneWeatherButton: Button
     private lateinit var standaloneSolarButton: Button
@@ -228,6 +230,56 @@ class WearMainActivity : Activity() {
         }
         container.addView(contextModeButton)
 
+        notifyCanvasChangeButton = Button(this).apply {
+            val enabled = repo.isNotifyOnCanvasChangeEnabled()
+            text = if (enabled) "Notif. Atualiz. Canvas: ON" else "Notif. Atualiz. Canvas: OFF"
+            isAllCaps = false
+            textSize = 10.5f
+            setTextColor(Color.parseColor(if (enabled) "#4ADE80" else "#94A3B8"))
+            background = pillBg("#161D1B", "#2B3935", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(32)
+            ).apply { bottomMargin = dp(6) }
+            setOnClickListener {
+                val next = !repo.isNotifyOnCanvasChangeEnabled()
+                repo.setNotifyOnCanvasChangeEnabled(next)
+                text = if (next) "Notif. Atualiz. Canvas: ON" else "Notif. Atualiz. Canvas: OFF"
+                setTextColor(Color.parseColor(if (next) "#4ADE80" else "#94A3B8"))
+                Toast.makeText(
+                    this@WearMainActivity,
+                    if (next) "Notificações do Canvas ativadas no relógio" else "Notificações do Canvas desativadas",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+        container.addView(notifyCanvasChangeButton)
+
+        notifyAgenda15MinButton = Button(this).apply {
+            val enabled = repo.isNotifyAgenda15MinEnabled()
+            text = if (enabled) "Notif. Agenda (15m): ON" else "Notif. Agenda (15m): OFF"
+            isAllCaps = false
+            textSize = 10.5f
+            setTextColor(Color.parseColor(if (enabled) "#4ADE80" else "#94A3B8"))
+            background = pillBg("#161D1B", "#2B3935", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(32)
+            ).apply { bottomMargin = dp(6) }
+            setOnClickListener {
+                val next = !repo.isNotifyAgenda15MinEnabled()
+                repo.setNotifyAgenda15MinEnabled(next)
+                text = if (next) "Notif. Agenda (15m): ON" else "Notif. Agenda (15m): OFF"
+                setTextColor(Color.parseColor(if (next) "#4ADE80" else "#94A3B8"))
+                Toast.makeText(
+                    this@WearMainActivity,
+                    if (next) "Notificação de 15 min antes do compromisso: ATIVADA" else "Notificação de 15 min: DESATIVADA (apenas troca o Canvas)",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+        container.addView(notifyAgenda15MinButton)
+
         turboRuleButton = Button(this).apply {
             text = if (repo.isHighFreq15MinRuleEnabled()) "Turbo 1m (15m finais): ATIVO" else "Turbo 1m (15m finais): OFF"
             isAllCaps = false
@@ -329,7 +381,7 @@ class WearMainActivity : Activity() {
         container.addView(notifAccessBtn)
 
         val syncBtn = Button(this).apply {
-            text = "Atualizar Canvas"
+            text = "Atualizar Clima e Canvas"
             isAllCaps = false
             textSize = 11.5f
             setTextColor(Color.parseColor("#0B191E"))
@@ -341,7 +393,11 @@ class WearMainActivity : Activity() {
             )
             setPadding(dp(18), 0, dp(18), 0)
             setOnClickListener {
-                Toast.makeText(this@WearMainActivity, "Atualizando Janela de Contexto...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@WearMainActivity, "Atualizando Clima, Local e Canvas...", Toast.LENGTH_SHORT).show()
+                AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
+                    this@WearMainActivity,
+                    forceRefresh = true
+                )
                 announcePresenceAndRequestSync()
                 forceUpdateComplicationsAndTile()
             }
@@ -356,6 +412,24 @@ class WearMainActivity : Activity() {
         val nowMs = System.currentTimeMillis()
         upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
         contextModeButton.text = formatContextModeLabel(repo.getContextWindowMode())
+        val notifCanvasOn = repo.isNotifyOnCanvasChangeEnabled()
+        notifyCanvasChangeButton.text = if (notifCanvasOn) {
+            "Notif. Atualiz. Canvas: ON"
+        } else {
+            "Notif. Atualiz. Canvas: OFF"
+        }
+        notifyCanvasChangeButton.setTextColor(
+            Color.parseColor(if (notifCanvasOn) "#4ADE80" else "#94A3B8")
+        )
+        val notifAgenda15On = repo.isNotifyAgenda15MinEnabled()
+        notifyAgenda15MinButton.text = if (notifAgenda15On) {
+            "Notif. Agenda (15m): ON"
+        } else {
+            "Notif. Agenda (15m): OFF"
+        }
+        notifyAgenda15MinButton.setTextColor(
+            Color.parseColor(if (notifAgenda15On) "#4ADE80" else "#94A3B8")
+        )
         turboRuleButton.text = if (repo.isHighFreq15MinRuleEnabled()) {
             "Turbo 1m (15m finais): ATIVO"
         } else {
@@ -413,10 +487,11 @@ class WearMainActivity : Activity() {
         val nowMs = System.currentTimeMillis()
         val first = upcomingThree.firstOrNull { it.startEpochMs > nowMs }
         val effectiveContext = repo.resolveEffectiveContextMode(nowMs, upcomingThree)
+        val weatherSnap = repo.getHourlyWeatherSnapshot(nowMs)
         if (first == null) {
             nextEventTitleText.text = "Agenda livre"
             nextEventCountdownText.text = "Sem próximo evento"
-            complicationStatusText.text = "Canvas ativo: $effectiveContext"
+            complicationStatusText.text = "Canvas: $effectiveContext • 📍 ${weatherSnap.locationName} (${weatherSnap.updatedTimeHHMM})"
             return
         }
 
@@ -432,7 +507,7 @@ class WearMainActivity : Activity() {
         } else {
             String.format(Locale.getDefault(), "Em %02dm %02ds", mins, secs)
         }
-        complicationStatusText.text = "Canvas: $effectiveContext (${upcomingThree.size} ev)"
+        complicationStatusText.text = "Canvas: $effectiveContext • 📍 ${weatherSnap.locationName} (${weatherSnap.updatedTimeHHMM})"
     }
 
     private fun announcePresenceAndRequestSync() {

@@ -317,19 +317,21 @@ object AgendaCardBitmapRenderer {
         }
         canvas.drawText(rightBadgeText, CARD_WIDTH - 24f, 49f, rightConditionPaint)
 
-        // Subtítulo de condição / mudança climática ampliado
+        // Subtítulo com a localização da previsão e horário da última atualização
+        // para que o usuário saiba se o clima está atualizado e no local onde se situa
         val subPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#E2E8F0")
-            textSize = 29f
+            textSize = 28f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        val ellipsizedAlert = TextUtils.ellipsize(
-            weather.alertHeadline,
+        val locationSubtitle = "📍 ${weather.locationName} • Atualizado ${weather.updatedTimeHHMM}"
+        val ellipsizedLocation = TextUtils.ellipsize(
+            locationSubtitle,
             subPaint,
             (CARD_WIDTH - 48).toFloat(),
             TextUtils.TruncateAt.END
         ).toString()
-        canvas.drawText(ellipsizedAlert, 24f, 92f, subPaint)
+        canvas.drawText(ellipsizedLocation, 24f, 92f, subPaint)
 
         // Curva de Mudança de Temperatura (5 pontos nas próximas horas) com fontes maiores
         val temps = weather.hourlyTempsC.take(5).ifEmpty { listOf(28, 28, 27, 27, 27) }

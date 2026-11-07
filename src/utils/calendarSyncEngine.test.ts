@@ -237,22 +237,36 @@ test('progress bar stays at 0% outside configured window and grows linearly from
   assert.equal(halfway30m.progressRatio, 0.5);
 });
 
-test('resolveEffectiveWatchContextMode respects programmable Automatic Mode primary context and exposure durations', () => {
-  // When primary context is STEPS and event is 25m away, autoAgendaExposureMinutes=30 exposes EVENTS temporarily
-  const modeAgendaExposed = resolveEffectiveWatchContextMode(
+test('resolveEffectiveWatchContextMode switches to EVENTS specifically when <= 15 minutes remain before commitment and respects Sun/Sleep exposure', () => {
+  // When primary context is STEPS and event is 25m away (> 15m), Canvas stays on STEPS
+  const modeAt25m = resolveEffectiveWatchContextMode(
     'DYNAMIC',
     true,
     25 * 60 * 1000,
     false,
     {
       autoPrimaryContext: 'STEPS',
-      autoAgendaExposureMinutes: 30,
+      unifiedCanvasHoldMinutes: 30,
       currentMinutesOfDay: 14 * 60,
     }
   );
-  assert.equal(modeAgendaExposed, 'EVENTS');
+  assert.equal(modeAt25m, 'STEPS');
 
-  // When event is 50m away (outside 30m agenda exposure), near sunset (17:35 vs 17:40) exposes SUN
+  // When event is 15m or less away (e.g. 14m), Canvas switches to EVENTS with top priority
+  const modeAt14m = resolveEffectiveWatchContextMode(
+    'DYNAMIC',
+    true,
+    14 * 60 * 1000,
+    false,
+    {
+      autoPrimaryContext: 'STEPS',
+      unifiedCanvasHoldMinutes: 30,
+      currentMinutesOfDay: 14 * 60,
+    }
+  );
+  assert.equal(modeAt14m, 'EVENTS');
+
+  // When event is 50m away, near sunset (17:35 vs 17:40) exposes SUN
   const modeNearSunset = resolveEffectiveWatchContextMode(
     'DYNAMIC',
     true,
@@ -260,7 +274,6 @@ test('resolveEffectiveWatchContextMode respects programmable Automatic Mode prim
     false,
     {
       autoPrimaryContext: 'STEPS',
-      autoAgendaExposureMinutes: 30,
       autoSunExposureMinutes: 30,
       currentMinutesOfDay: 17 * 60 + 35,
       sunriseMinutesOfDay: 327,
@@ -284,32 +297,6 @@ test('resolveEffectiveWatchContextMode respects programmable Automatic Mode prim
     }
   );
   assert.equal(modeMorningWake, 'SLEEP');
-
-  // With unifiedCanvasHoldMinutes=15, an event 20m away stays on primary context (STEPS), whereas at 12m away it switches to EVENTS
-  const outsideUnified15m = resolveEffectiveWatchContextMode(
-    'DYNAMIC',
-    true,
-    20 * 60 * 1000,
-    false,
-    {
-      autoPrimaryContext: 'STEPS',
-      unifiedCanvasHoldMinutes: 15,
-      currentMinutesOfDay: 14 * 60,
-    }
-  );
-  assert.equal(outsideUnified15m, 'STEPS');
-
-  const insideUnified15m = resolveEffectiveWatchContextMode(
-    'DYNAMIC',
-    true,
-    12 * 60 * 1000,
-    false,
-    {
-      autoPrimaryContext: 'STEPS',
-      unifiedCanvasHoldMinutes: 15,
-      currentMinutesOfDay: 14 * 60,
-    }
-  );
-  assert.equal(insideUnified15m, 'EVENTS');
 });
+
 

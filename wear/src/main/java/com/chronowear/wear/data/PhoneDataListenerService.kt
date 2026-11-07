@@ -56,6 +56,9 @@ class PhoneDataListenerService : WearableListenerService() {
                 val notifyOnCanvasChange = if (dataMap.containsKey("notify_on_canvas_change")) {
                     dataMap.getBoolean("notify_on_canvas_change", true)
                 } else null
+                val notifyAgenda15Min = if (dataMap.containsKey("notify_agenda_15min")) {
+                    dataMap.getBoolean("notify_agenda_15min", true)
+                } else null
                 val autoAgendaExpMin = if (dataMap.containsKey("auto_agenda_exposure_min")) {
                     dataMap.getInt("auto_agenda_exposure_min", 30)
                 } else null
@@ -80,6 +83,8 @@ class PhoneDataListenerService : WearableListenerService() {
                     dataMap.getInt("weather_rain_prob", 20)
                 } else null
                 val weatherConditionLabel = dataMap.getString("weather_condition_label")
+                val weatherLocationName = dataMap.getString("weather_location_name")
+                val weatherUpdatedHHMM = dataMap.getString("weather_updated_hhmm")
                 val weatherAlertSource = dataMap.getString("weather_alert_source")
                 val weatherAlertHeadline = dataMap.getString("weather_alert_headline")
                 val weatherAlertTsMs = if (dataMap.containsKey("weather_alert_timestamp_ms")) {
@@ -127,6 +132,7 @@ class PhoneDataListenerService : WearableListenerService() {
                     autoPrimaryContext = autoPrimaryContext,
                     unifiedCanvasHoldMin = unifiedCanvasHoldMin,
                     notifyOnCanvasChange = notifyOnCanvasChange,
+                    notifyAgenda15Min = notifyAgenda15Min,
                     autoAgendaExposureMin = autoAgendaExpMin,
                     autoWeatherExposureMin = autoWeatherExpMin,
                     autoSunExposureMin = autoSunExpMin,
@@ -137,6 +143,8 @@ class PhoneDataListenerService : WearableListenerService() {
                     weatherHoursCsv = weatherHoursCsv,
                     weatherRainProb = weatherRainProb,
                     weatherConditionLabel = weatherConditionLabel,
+                    weatherLocationName = weatherLocationName,
+                    weatherUpdatedHHMM = weatherUpdatedHHMM,
                     weatherAlertSource = weatherAlertSource,
                     weatherAlertHeadline = weatherAlertHeadline,
                     weatherAlertTimestampMs = weatherAlertTsMs,
@@ -173,7 +181,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         Wearable.getMessageClient(applicationContext).sendMessage(
                             messageEvent.sourceNodeId,
                             "/chronowear/pong_watch_app",
-                            "installed:1.2.0-wear".toByteArray(Charsets.UTF_8)
+                            "installed:1.2.1-wear".toByteArray(Charsets.UTF_8)
                         ).await()
                     } catch (_: Exception) {
                     }
@@ -195,6 +203,9 @@ class PhoneDataListenerService : WearableListenerService() {
                     } else null
                     val notifyOnCanvasChange = if (json.has("notify_on_canvas_change")) {
                         json.optBoolean("notify_on_canvas_change", true)
+                    } else null
+                    val notifyAgenda15Min = if (json.has("notify_agenda_15min")) {
+                        json.optBoolean("notify_agenda_15min", true)
                     } else null
                     val autoAgendaExpMin = if (json.has("auto_agenda_exposure_min")) {
                         json.optInt("auto_agenda_exposure_min", 30)
@@ -220,6 +231,8 @@ class PhoneDataListenerService : WearableListenerService() {
                         json.optInt("weather_rain_prob", 20)
                     } else null
                     val weatherConditionLabel = json.optString("weather_condition_label", "").takeIf { it.isNotBlank() }
+                    val weatherLocationName = json.optString("weather_location_name", "").takeIf { it.isNotBlank() }
+                    val weatherUpdatedHHMM = json.optString("weather_updated_hhmm", "").takeIf { it.isNotBlank() }
                     val weatherAlertSource = json.optString("weather_alert_source", "").takeIf { it.isNotBlank() }
                     val weatherAlertHeadline = json.optString("weather_alert_headline", "").takeIf { it.isNotBlank() }
                     val weatherAlertTsMs = if (json.has("weather_alert_timestamp_ms")) {
@@ -268,6 +281,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         autoPrimaryContext = autoPrimaryContext,
                         unifiedCanvasHoldMin = unifiedCanvasHoldMin,
                         notifyOnCanvasChange = notifyOnCanvasChange,
+                        notifyAgenda15Min = notifyAgenda15Min,
                         autoAgendaExposureMin = autoAgendaExpMin,
                         autoWeatherExposureMin = autoWeatherExpMin,
                         autoSunExposureMin = autoSunExpMin,
@@ -278,6 +292,8 @@ class PhoneDataListenerService : WearableListenerService() {
                         weatherHoursCsv = weatherHoursCsv,
                         weatherRainProb = weatherRainProb,
                         weatherConditionLabel = weatherConditionLabel,
+                        weatherLocationName = weatherLocationName,
+                        weatherUpdatedHHMM = weatherUpdatedHHMM,
                         weatherAlertSource = weatherAlertSource,
                         weatherAlertHeadline = weatherAlertHeadline,
                         weatherAlertTimestampMs = weatherAlertTsMs,
@@ -311,6 +327,7 @@ class PhoneDataListenerService : WearableListenerService() {
         autoPrimaryContext: String? = null,
         unifiedCanvasHoldMin: Int? = null,
         notifyOnCanvasChange: Boolean? = null,
+        notifyAgenda15Min: Boolean? = null,
         autoAgendaExposureMin: Int? = null,
         autoWeatherExposureMin: Int? = null,
         autoSunExposureMin: Int? = null,
@@ -321,6 +338,8 @@ class PhoneDataListenerService : WearableListenerService() {
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
         weatherConditionLabel: String? = null,
+        weatherLocationName: String? = null,
+        weatherUpdatedHHMM: String? = null,
         weatherAlertSource: String? = null,
         weatherAlertHeadline: String? = null,
         weatherAlertTimestampMs: Long? = null,
@@ -350,6 +369,7 @@ class PhoneDataListenerService : WearableListenerService() {
                 autoPrimaryContext = autoPrimaryContext,
                 unifiedCanvasHoldMin = unifiedCanvasHoldMin,
                 notifyOnCanvasChange = notifyOnCanvasChange,
+                notifyAgenda15Min = notifyAgenda15Min,
                 autoAgendaExposureMin = autoAgendaExposureMin,
                 autoWeatherExposureMin = autoWeatherExposureMin,
                 autoSunExposureMin = autoSunExposureMin,
@@ -360,6 +380,8 @@ class PhoneDataListenerService : WearableListenerService() {
                 weatherHoursCsv = weatherHoursCsv,
                 weatherRainProb = weatherRainProb,
                 weatherConditionLabel = weatherConditionLabel,
+                weatherLocationName = weatherLocationName,
+                weatherUpdatedHHMM = weatherUpdatedHHMM,
                 weatherAlertSource = weatherAlertSource,
                 weatherAlertHeadline = weatherAlertHeadline,
                 weatherAlertTimestampMs = weatherAlertTimestampMs,

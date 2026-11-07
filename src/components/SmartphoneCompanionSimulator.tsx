@@ -574,23 +574,46 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </div>
               </div>
 
-              {/* Notificar no Relógio ao Forçar Mudança do Canvas */}
+              {/* Notificar no Relógio ao Atualizar o Canvas */}
               <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Notificar no Relógio ao Forçar Mudança do Canvas
+                    Notificar no Relógio ao Atualizar o Canvas
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Exibe uma notificação no relógio quando Clima, Agenda, Sol ou Sono assumirem o Canvas com prioridade máxima
+                    Ativa ou desativa a notificação gerada pelo app do relógio quando o Canvas muda automaticamente
                   </div>
                 </div>
                 <ModernOneUiSwitch
                   checked={config.notifyWatchOnCanvasChange ?? true}
-                  ariaLabel="Notificar no Relógio ao Forçar Mudança do Canvas"
+                  ariaLabel="Notificar no Relógio ao Atualizar o Canvas"
                   onChange={() =>
                     onUpdateConfig({
                       notifyWatchOnCanvasChange: !(
                         config.notifyWatchOnCanvasChange ?? true
+                      ),
+                    })
+                  }
+                />
+              </div>
+
+              {/* Notificar Compromisso da Agenda Faltando 15 Minutos (Opcional) */}
+              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Notificar Compromisso Faltando 15 Minutos (Opcional)
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Quando faltar 15 minutos para o compromisso, o Canvas troca para Agenda e exibe notificação opcional no relógio
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.notifyAgenda15MinEnabled ?? true}
+                  ariaLabel="Notificar Compromisso Faltando 15 Minutos"
+                  onChange={() =>
+                    onUpdateConfig({
+                      notifyAgenda15MinEnabled: !(
+                        config.notifyAgenda15MinEnabled ?? true
                       ),
                     })
                   }
@@ -610,7 +633,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Sincronizar Calendários do Telefone
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Envia compromissos selecionados para o banco autônomo do relógio
+                    Envia compromissos selecionados para o banco autônomo do relógio (troca o Canvas faltando 15 min)
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -712,7 +735,11 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Busca Periódica de Clima (Telefone)
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Detecta mudança de temperatura ou condição climática (chuva, tempestade) e envia ao relógio
+                    Local atual no Canvas:{' '}
+                    <strong className="text-sky-300">
+                      📍 {config.weatherLocationName ?? 'São Paulo, SP'} • Atualizado{' '}
+                      {config.weatherUpdatedHHMM ?? '09:00'}
+                    </strong>
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -727,6 +754,32 @@ export const SmartphoneCompanionSimulator: React.FC<
                   }
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const locations = [
+                    'São Paulo, SP',
+                    'Pinheiros, São Paulo',
+                    'Campinas, SP',
+                    'Rio de Janeiro, RJ',
+                  ];
+                  const curLoc = config.weatherLocationName ?? 'São Paulo, SP';
+                  const nextLoc =
+                    locations[(locations.indexOf(curLoc) + 1) % locations.length];
+                  onUpdateConfig({
+                    weatherLocationName: nextLoc,
+                    weatherUpdatedHHMM: formatHHMM(referenceTimeMs),
+                  });
+                  onTriggerManualSync();
+                }}
+                className="w-full py-2 px-4 rounded-2xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-sky-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <CloudRain className="w-4 h-4 text-sky-400" />
+                <span>
+                  Forçar Atualização de Clima e Localização Agora ({config.weatherLocationName ?? 'São Paulo, SP'})
+                </span>
+              </button>
 
               <div className="space-y-1.5 pt-2 border-t border-[#232925]">
                 <span className="text-xs font-bold text-slate-200 block">

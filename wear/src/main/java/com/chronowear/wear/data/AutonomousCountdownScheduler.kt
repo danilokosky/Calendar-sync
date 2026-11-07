@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.Geocoder
 import android.location.LocationManager
 import android.os.Build
 import androidx.wear.tiles.TileService
@@ -47,7 +48,8 @@ object AutonomousCountdownScheduler {
 
     /**
      * Exibe uma notificação no Relógio quando o app recebe ou detecta uma mudança de contexto
-     * de prioridade máxima (Clima, Agenda, Nascer/Pôr do Sol, Dormir/Acordar) que força a mudança do Canvas.
+     * de prioridade máxima (Clima, Agenda faltando 15m, Nascer/Pôr do Sol, Dormir/Acordar)
+     * que força a mudança do Canvas.
      */
     fun notifyWatchOnForcedCanvasChangeIfNeeded(
         context: Context,
@@ -70,23 +72,42 @@ object AutonomousCountdownScheduler {
         val priorityPair = repo.evaluatePriorityContextOverride(nowMs, upcomingThree) ?: return
         val (forcedMode, autoReason) = priorityPair
 
-        val lastMode = repo.getLastNotifiedForcedContext()
-        val lastTs = repo.getLastNotifiedForcedContextTimestampMs()
-        // Evita repetir a mesma notificação para o mesmo gatilho em menos de 10 minutos
-        if (forcedMode == lastMode && (nowMs - lastTs) < TimeUnit.MINUTES.toMillis(10L) && explicitReasonOverride == null) {
+        // Para compromissos da Agenda faltando 15 minutos, respeita a opção dedicada de ativar/desativar a notificação
+        if (forcedMode == WatchAutonomousRepository.MODE_EVENTS && !repo.isNotifyAgenda15MinEnabled()) {
             return
         }
-        repo.recordNotifiedForcedContext(forcedMode, nowMs)
+
+        val nextEventId = upcomingThree.firstOrNull()?.id ?: ""
+        val notificationDedupKey = if (forcedMode == WatchAutonomousRepository.MODE_EVENTS) {
+            "EVENTS_15M_$nextEventId"
+        } else {
+            forcedMode
+        }
+
+        val lastMode = repo.getLastNotifiedForcedContext()
+        val lastTs = repo.getLastNotifiedForcedContextTimestampMs()
+        // Evita repetir a mesma notificação para o mesmo compromisso de 15m ou mesmo gatilho em menos de 10 minutos
+        if (notificationDedupKey == lastMode &&
+            (forcedMode == WatchAutonomousRepository.MODE_EVENTS || (nowMs - lastTs) < TimeUnit.MINUTES.toMillis(10L)) &&
+            explicitReasonOverride == null
+        ) {
+            return
+        }
+        repo.recordNotifiedForcedContext(notificationDedupKey, nowMs)
 
         val modeTitle = when (forcedMode) {
             WatchAutonomousRepository.MODE_WEATHER -> "Canvas • Clima"
-            WatchAutonomousRepository.MODE_EVENTS -> "Canvas • Agenda"
+            WatchAutonomousRepository.MODE_EVENTS -> "Canvas • Agenda (15 min)"
             WatchAutonomousRepository.MODE_SUN -> "Canvas • Nascer e Pôr do Sol"
             WatchAutonomousRepository.MODE_SLEEP -> "Canvas • Sono"
             WatchAutonomousRepository.MODE_STEPS -> "Canvas • Passos"
             else -> "Canvas Atualizado"
         }
-        val holdMins = repo.getUnifiedCanvasHoldMinutes()
+        val holdMins = if (forcedMode == WatchAutonomousRepository.MODE_EVENTS) {
+            15
+        } else {
+            repo.getUnifiedCanvasHoldMinutes()
+        }
         val primaryLabel = when (repo.getAutoPrimaryContext()) {
             WatchAutonomousRepository.MODE_EVENTS -> "Agenda"
             WatchAutonomousRepository.MODE_WEATHER -> "Clima"
@@ -106,7 +127,7 @@ object AutonomousCountdownScheduler {
                     "Mudança Prioritária do Canvas",
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    description = "Avulso quando Clima, Agenda, Sol ou Sono assumem o Canvas do relógio"
+                    description = "Avulso quando Clima, Agenda (15m), Sol ou Sono assumem o Canvas do relógio"
                     enableVibration(true)
                 }
                 nm.createNotificationChannel(channel)
@@ -187,6 +208,27 @@ object AutonomousCountdownScheduler {
         } catch (_: Exception) {
         }
         return lat to lon
+    }
+
+    private fun resolveWatchLocationName(context: Context, lat: Double, lon: Double): String {
+        val repo = WatchAutonomousRepository.getInstance(context)
+        try {
+            @Suppress("DEPRECATION")
+            val addresses = Geocoder(context, Locale.getDefault()).getFromLocation(lat, lon, 1)
+            val addr = addresses?.firstOrNull()
+            if (addr != null) {
+                val city = addr.locality ?: addr.subAdminArea ?: addr.featureName
+                val state = addr.adminArea
+                if (!city.isNullOrBlank() && !state.isNullOrBlank()) {
+                    val stateShort = if (state.length > 3) state.take(2).uppercase(Locale.getDefault()) else state
+                    return "$city, $stateShort"
+                } else if (!city.isNullOrBlank()) {
+                    return city
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return repo.getWeatherLocationName()
     }
 
     fun calculateAstronomicalSunriseSunset(lat: Double, lon: Double): Pair<String, String> {
@@ -341,12 +383,14 @@ object AutonomousCountdownScheduler {
                         val firstCondition = mapWmoCodeToPortugueseLabel(pickedCodes.firstOrNull() ?: 0, 0)
                         val dominantCondition = mapWmoCodeToPortugueseLabel(dominantWmoCode, maxRain)
                         val conditionShiftAcrossHours = firstCondition != dominantCondition
+                        val resolvedLocationName = resolveWatchLocationName(appCtx, lat, lon)
 
                         val shiftDetected = repo.saveStandaloneWeatherAndDetectShift(
                             pickedTemps = pickedTemps,
                             pickedLabels = pickedLabels,
                             maxRainProbPct = maxRain,
                             weatherConditionLabel = dominantCondition,
+                            locationName = resolvedLocationName,
                             conditionShiftDetected = conditionShiftAcrossHours,
                             nowMs = nowMs
                         )
@@ -355,7 +399,8 @@ object AutonomousCountdownScheduler {
                             notifyWatchOnForcedCanvasChangeIfNeeded(appCtx)
                         }
 
-                        if (shiftDetected ||
+                        if (forceRefresh ||
+                            shiftDetected ||
                             repo.getContextWindowMode() == WatchAutonomousRepository.MODE_WEATHER ||
                             repo.getContextWindowMode() == WatchAutonomousRepository.MODE_SUN
                         ) {
@@ -396,19 +441,23 @@ object AutonomousCountdownScheduler {
             val progressWindowMs = TimeUnit.MINUTES.toMillis(repo.getProgressWindowMinutes().toLong())
             val progressStartEpochMs = nextEvent.startEpochMs - progressWindowMs
             val fifteenMinBeforeMs = nextEvent.startEpochMs - TimeUnit.MINUTES.toMillis(15L)
-            val highFreq15MinEnabled = repo.isHighFreq15MinRuleEnabled()
 
             when {
-                // Dentro da janela da barra de progresso (30m, 1h, 2h ou 3h antes) ou nos 15m finais:
-                // desperta a cada 1 minuto para fazer a barra crescer de 0% a 100% até a hora do evento
-                nowMs in progressStartEpochMs until nextEvent.startEpochMs -> {
+                // Faltando 15 minutos ou menos: o Canvas troca para Agenda (e notifica se ativado)
+                // e desperta a cada 1 minuto até a hora do compromisso
+                nowMs in fifteenMinBeforeMs until nextEvent.startEpochMs -> {
                     minOf(nowMs + 60_000L, nextEvent.startEpochMs + 1000L)
                 }
-                highFreq15MinEnabled && nowMs in fifteenMinBeforeMs until nextEvent.startEpochMs -> {
-                    minOf(nowMs + 60_000L, nextEvent.startEpochMs + 1000L)
+                // Dentro da janela da barra de progresso antes dos 15m finais:
+                // desperta a cada 1 minuto e garante despertar exatamente na marca de 15m antes do compromisso
+                nowMs in progressStartEpochMs until fifteenMinBeforeMs -> {
+                    minOf(nowMs + 60_000L, fifteenMinBeforeMs)
                 }
-                nowMs < progressStartEpochMs -> {
-                    progressStartEpochMs
+                nowMs < minOf(progressStartEpochMs, fifteenMinBeforeMs) -> {
+                    minOf(progressStartEpochMs, fifteenMinBeforeMs)
+                }
+                nowMs < fifteenMinBeforeMs -> {
+                    fifteenMinBeforeMs
                 }
                 else -> {
                     nextEvent.startEpochMs + 1000L

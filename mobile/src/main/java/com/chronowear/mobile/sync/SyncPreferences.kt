@@ -153,6 +153,14 @@ class SyncPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_NOTIFY_ON_CANVAS_CHANGE, enabled).commit()
     }
 
+    fun isNotifyAgenda15MinEnabled(): Boolean {
+        return prefs.getBoolean(KEY_NOTIFY_AGENDA_15MIN, true)
+    }
+
+    fun setNotifyAgenda15MinEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFY_AGENDA_15MIN, enabled).commit()
+    }
+
     fun getAutoAgendaExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
 
     fun setAutoAgendaExposureMinutes(minutes: Int) = setUnifiedCanvasHoldMinutes(minutes)
@@ -329,6 +337,7 @@ class SyncPreferences(context: Context) {
         pickedLabels: List<String>,
         rainProbPct: Int,
         weatherConditionLabel: String = "Parcialmente nublado",
+        locationName: String = "",
         conditionShiftDetected: Boolean = false,
         fetchTimestampMs: Long = System.currentTimeMillis()
     ): Boolean {
@@ -353,26 +362,21 @@ class SyncPreferences(context: Context) {
         val shiftDetected = isPhoneWeatherAutoCheckEnabled() &&
             (shiftAcrossHours || shiftFromPreviousFetch || rainAlert || weatherConditionChanged)
 
+        val resolvedLoc = locationName.ifBlank { getPhoneWeatherLocationName() }
+        val updatedHHMM = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(fetchTimestampMs))
+
         val editor = prefs.edit()
             .putString(KEY_WEATHER_TEMPS_CSV, tempsCsv)
             .putString(KEY_WEATHER_HOURS_CSV, hoursCsv)
             .putInt(KEY_WEATHER_RAIN_PROB, rainProbPct.coerceIn(0, 100))
             .putString(KEY_WEATHER_CONDITION_LABEL, weatherConditionLabel)
+            .putString(KEY_WEATHER_LOCATION_NAME, resolvedLoc)
+            .putString(KEY_WEATHER_UPDATED_HHMM, updatedHHMM)
             .putLong(KEY_WEATHER_LAST_FETCH_MS, fetchTimestampMs)
 
         if (shiftDetected) {
-            val headline = when {
-                rainAlert && shiftAcrossHours ->
-                    "$weatherConditionLabel (${rainProbPct}%) • ${firstT}° → ${lastT}°C"
-                weatherConditionChanged ->
-                    "$weatherConditionLabel • ${firstT}° → ${lastT}°C (Chuva ${rainProbPct}%)"
-                rainAlert ->
-                    "Previsão de $weatherConditionLabel (${rainProbPct}%) nas próx. horas"
-                shiftAcrossHours ->
-                    "$weatherConditionLabel • Variação ${firstT}° → ${lastT}°C"
-                else ->
-                    "$weatherConditionLabel • Temperatura atual ${firstT}°C"
-            }
+            val headline = "$resolvedLoc • Atualizado $updatedHHMM"
             editor.putString(KEY_WEATHER_ALERT_SOURCE, "Clima")
             editor.putString(KEY_WEATHER_ALERT_HEADLINE, headline)
             editor.putLong(KEY_WEATHER_ALERT_TS_MS, fetchTimestampMs)
@@ -395,6 +399,28 @@ class SyncPreferences(context: Context) {
 
     fun getPhoneWeatherConditionLabel(): String {
         return prefs.getString(KEY_WEATHER_CONDITION_LABEL, "Céu limpo") ?: "Céu limpo"
+    }
+
+    fun getPhoneWeatherLocationName(): String {
+        return prefs.getString(KEY_WEATHER_LOCATION_NAME, "São Paulo, SP") ?: "São Paulo, SP"
+    }
+
+    fun setPhoneWeatherLocationName(locationName: String) {
+        if (locationName.isNotBlank()) {
+            prefs.edit().putString(KEY_WEATHER_LOCATION_NAME, locationName.trim()).apply()
+        }
+    }
+
+    fun getPhoneWeatherUpdatedHHMM(): String {
+        val saved = prefs.getString(KEY_WEATHER_UPDATED_HHMM, "") ?: ""
+        if (saved.isNotBlank()) return saved
+        val lastFetch = getPhoneWeatherLastFetchMs()
+        return if (lastFetch > 0L) {
+            java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(lastFetch))
+        } else {
+            "Agora"
+        }
     }
 
     fun getPhoneWeatherLastFetchMs(): Long {
@@ -485,6 +511,7 @@ class SyncPreferences(context: Context) {
         private const val KEY_AUTO_PRIMARY_CONTEXT = "auto_primary_context"
         private const val KEY_UNIFIED_CANVAS_HOLD_MIN = "unified_canvas_hold_min"
         private const val KEY_NOTIFY_ON_CANVAS_CHANGE = "notify_on_canvas_change"
+        private const val KEY_NOTIFY_AGENDA_15MIN = "notify_agenda_15min"
         private const val KEY_AUTO_AGENDA_EXPOSURE_MIN = "auto_agenda_exposure_min"
         private const val KEY_AUTO_WEATHER_EXPOSURE_MIN = "auto_weather_exposure_min"
         private const val KEY_AUTO_SUN_EXPOSURE_MIN = "auto_sun_exposure_min"
@@ -511,6 +538,8 @@ class SyncPreferences(context: Context) {
         private const val KEY_WEATHER_HOURS_CSV = "weather_hours_csv"
         private const val KEY_WEATHER_RAIN_PROB = "weather_rain_prob"
         private const val KEY_WEATHER_CONDITION_LABEL = "weather_condition_label"
+        private const val KEY_WEATHER_LOCATION_NAME = "weather_location_name"
+        private const val KEY_WEATHER_UPDATED_HHMM = "weather_updated_hhmm"
         private const val KEY_WEATHER_LAST_FETCH_MS = "weather_last_fetch_ms"
         private const val KEY_WEATHER_ALERT_SOURCE = "weather_alert_source"
         private const val KEY_WEATHER_ALERT_HEADLINE = "weather_alert_headline"
