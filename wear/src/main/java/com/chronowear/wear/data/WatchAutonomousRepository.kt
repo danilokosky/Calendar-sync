@@ -349,16 +349,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit().putBoolean("notify_agenda_15min", enabled).commit()
     }
 
-    fun getWeatherLocationName(): String {
-        return prefs.getString("weather_location_name", "São Paulo, SP") ?: "São Paulo, SP"
-    }
-
-    fun setWeatherLocationName(locationName: String) {
-        if (locationName.isNotBlank()) {
-            prefs.edit().putString("weather_location_name", locationName.trim()).apply()
-        }
-    }
-
     fun getAutoAgendaExposureMinutes(): Int = 15
 
     fun getAutoWeatherExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
