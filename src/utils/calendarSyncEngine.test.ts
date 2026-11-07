@@ -156,5 +156,30 @@ test('detectHourlyWeatherShift detects temperature shifts and rain across period
   // 3) Sudden delta >= 3°C compared to previous periodic check triggers shift
   const deltaShift = detectHourlyWeatherShift([22, 22, 21, 21, 22], 20, 26);
   assert.equal(deltaShift.hasShift, true);
+
+  // 4) Condition shift (e.g. Céu Limpo -> Chuva) triggers shift even if temperature is stable
+  const conditionShift = detectHourlyWeatherShift(
+    [25, 25, 25, 24, 24],
+    20,
+    25,
+    true
+  );
+  assert.equal(conditionShift.hasShift, true);
 });
+
+test('evaluateWatchAutonomousState supports SUN (Sunrise/Sunset) context mode', () => {
+  const syncedEvents = buildSyncPayload(mockEvents, mockCalendars, baseTime, 7);
+  const sunCache: WatchCacheState = {
+    cachedEvents: syncedEvents,
+    lastSyncEpochMs: baseTime,
+    syncedHorizonDays: 7,
+    progressWindowMinutes: 60,
+    isBluetoothConnected: true,
+    contextWindowMode: 'SUN',
+  };
+
+  const state = evaluateWatchAutonomousState(sunCache, baseTime);
+  assert.equal(state.effectiveContextMode, 'SUN');
+});
+
 

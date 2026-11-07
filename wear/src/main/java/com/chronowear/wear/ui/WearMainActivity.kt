@@ -50,6 +50,7 @@ class WearMainActivity : Activity() {
     private lateinit var contextModeButton: Button
     private lateinit var turboRuleButton: Button
     private lateinit var standaloneWeatherButton: Button
+    private lateinit var standaloneSolarButton: Button
 
     private var upcomingThree: List<CachedWearEvent> = emptyList()
 
@@ -106,11 +107,12 @@ class WearMainActivity : Activity() {
 
     private fun formatContextModeLabel(mode: String): String {
         return when (mode) {
-            WatchAutonomousRepository.MODE_DYNAMIC -> "Contexto: Dinâmico (Auto)"
-            WatchAutonomousRepository.MODE_EVENTS -> "Contexto: Próximos Eventos"
-            WatchAutonomousRepository.MODE_WEATHER -> "Contexto: Curva de Clima"
-            WatchAutonomousRepository.MODE_STEPS -> "Contexto: Passos Semanais"
-            else -> "Contexto: Dinâmico (Auto)"
+            WatchAutonomousRepository.MODE_DYNAMIC -> "Contexto: Auto (Dinâmico)"
+            WatchAutonomousRepository.MODE_EVENTS -> "Contexto: Agenda"
+            WatchAutonomousRepository.MODE_WEATHER -> "Contexto: Clima"
+            WatchAutonomousRepository.MODE_STEPS -> "Contexto: Passos"
+            WatchAutonomousRepository.MODE_SUN -> "Contexto: Nascer/Pôr do Sol"
+            else -> "Contexto: Auto (Dinâmico)"
         }
     }
 
@@ -119,7 +121,8 @@ class WearMainActivity : Activity() {
             WatchAutonomousRepository.MODE_DYNAMIC,
             WatchAutonomousRepository.MODE_EVENTS,
             WatchAutonomousRepository.MODE_WEATHER,
-            WatchAutonomousRepository.MODE_STEPS
+            WatchAutonomousRepository.MODE_STEPS,
+            WatchAutonomousRepository.MODE_SUN
         )
         val cur = repo.getContextWindowMode()
         val next = order[(order.indexOf(cur) + 1) % order.size]
@@ -199,7 +202,6 @@ class WearMainActivity : Activity() {
 
         container.addView(eventCard)
 
-        // Seletor rápido de modo da Janela de Contexto direto no relógio
         contextModeButton = Button(this).apply {
             text = formatContextModeLabel(repo.getContextWindowMode())
             isAllCaps = false
@@ -217,9 +219,8 @@ class WearMainActivity : Activity() {
         }
         container.addView(contextModeButton)
 
-        // Botão da Regra Turbo 1m (quando faltam <= 15 minutos)
         turboRuleButton = Button(this).apply {
-            text = if (repo.isHighFreq15MinRuleEnabled()) "⚡ Turbo 1m (≤15m): ATIVO" else "⚡ Turbo 1m (≤15m): OFF"
+            text = if (repo.isHighFreq15MinRuleEnabled()) "Turbo 1m (15m finais): ATIVO" else "Turbo 1m (15m finais): OFF"
             isAllCaps = false
             textSize = 10.5f
             setTextColor(Color.parseColor("#E2E8F0"))
@@ -231,17 +232,16 @@ class WearMainActivity : Activity() {
             setOnClickListener {
                 val next = !repo.isHighFreq15MinRuleEnabled()
                 repo.setHighFreq15MinRuleEnabled(next)
-                text = if (next) "⚡ Turbo 1m (≤15m): ATIVO" else "⚡ Turbo 1m (≤15m): OFF"
+                text = if (next) "Turbo 1m (15m finais): ATIVO" else "Turbo 1m (15m finais): OFF"
                 AutonomousCountdownScheduler.scheduleNextTransition(this@WearMainActivity)
                 forceUpdateComplicationsAndTile()
             }
         }
         container.addView(turboRuleButton)
 
-        // Serviço Opcional Stand-Alone de Clima no Relógio (1h em 1h) — Desligado por padrão
         standaloneWeatherButton = Button(this).apply {
             val enabled = repo.isWatchStandaloneWeatherEnabled()
-            text = if (enabled) "🌤 Clima Stand-Alone (1h): ON" else "🌤 Clima Stand-Alone (1h): OFF"
+            text = if (enabled) "Clima Stand-Alone (1h): ON" else "Clima Stand-Alone (1h): OFF"
             isAllCaps = false
             textSize = 10.5f
             setTextColor(Color.parseColor(if (enabled) "#4ADE80" else "#94A3B8"))
@@ -253,7 +253,7 @@ class WearMainActivity : Activity() {
             setOnClickListener {
                 val next = !repo.isWatchStandaloneWeatherEnabled()
                 repo.setWatchStandaloneWeatherEnabled(next)
-                text = if (next) "🌤 Clima Stand-Alone (1h): ON" else "🌤 Clima Stand-Alone (1h): OFF"
+                text = if (next) "Clima Stand-Alone (1h): ON" else "Clima Stand-Alone (1h): OFF"
                 setTextColor(Color.parseColor(if (next) "#4ADE80" else "#94A3B8"))
                 if (next) {
                     AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
@@ -267,9 +267,36 @@ class WearMainActivity : Activity() {
         }
         container.addView(standaloneWeatherButton)
 
-        // Permissão para Ler Notificações do Relógio (Clima / Alertas Contextuais)
+        standaloneSolarButton = Button(this).apply {
+            val enabled = repo.isWatchStandaloneSolarEnabled()
+            text = if (enabled) "Solar Stand-Alone: ON" else "Solar Stand-Alone: OFF"
+            isAllCaps = false
+            textSize = 10.5f
+            setTextColor(Color.parseColor(if (enabled) "#4ADE80" else "#94A3B8"))
+            background = pillBg("#161D1B", "#2B3935", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(32)
+            ).apply { bottomMargin = dp(6) }
+            setOnClickListener {
+                val next = !repo.isWatchStandaloneSolarEnabled()
+                repo.setWatchStandaloneSolarEnabled(next)
+                text = if (next) "Solar Stand-Alone: ON" else "Solar Stand-Alone: OFF"
+                setTextColor(Color.parseColor(if (next) "#4ADE80" else "#94A3B8"))
+                if (next) {
+                    AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
+                        this@WearMainActivity,
+                        forceRefresh = true
+                    )
+                }
+                AutonomousCountdownScheduler.scheduleNextTransition(this@WearMainActivity)
+                forceUpdateComplicationsAndTile()
+            }
+        }
+        container.addView(standaloneSolarButton)
+
         val notifAccessBtn = Button(this).apply {
-            text = "🔔 Acesso Notificações (Clima)"
+            text = "Acesso Notificações (Clima)"
             isAllCaps = false
             textSize = 10.5f
             setTextColor(Color.parseColor("#BAE6FD"))
@@ -321,18 +348,27 @@ class WearMainActivity : Activity() {
         upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
         contextModeButton.text = formatContextModeLabel(repo.getContextWindowMode())
         turboRuleButton.text = if (repo.isHighFreq15MinRuleEnabled()) {
-            "⚡ Turbo 1m (≤15m): ATIVO"
+            "Turbo 1m (15m finais): ATIVO"
         } else {
-            "⚡ Turbo 1m (≤15m): OFF"
+            "Turbo 1m (15m finais): OFF"
         }
         val standAloneOn = repo.isWatchStandaloneWeatherEnabled()
         standaloneWeatherButton.text = if (standAloneOn) {
-            "🌤 Clima Stand-Alone (1h): ON"
+            "Clima Stand-Alone (1h): ON"
         } else {
-            "🌤 Clima Stand-Alone (1h): OFF"
+            "Clima Stand-Alone (1h): OFF"
         }
         standaloneWeatherButton.setTextColor(
             Color.parseColor(if (standAloneOn) "#4ADE80" else "#94A3B8")
+        )
+        val solarStandAloneOn = repo.isWatchStandaloneSolarEnabled()
+        standaloneSolarButton.text = if (solarStandAloneOn) {
+            "Solar Stand-Alone: ON"
+        } else {
+            "Solar Stand-Alone: OFF"
+        }
+        standaloneSolarButton.setTextColor(
+            Color.parseColor(if (solarStandAloneOn) "#4ADE80" else "#94A3B8")
         )
         updateCountdownTick()
 
@@ -345,7 +381,7 @@ class WearMainActivity : Activity() {
                 }
             }
             if (nodes.isNotEmpty()) {
-                connectionStatusText.text = "ᛒ Conectado • ${nodes.first().displayName}"
+                connectionStatusText.text = "Conectado • ${nodes.first().displayName}"
                 connectionStatusText.setTextColor(Color.parseColor("#4ADE80"))
             } else {
                 connectionStatusText.text = "Offline • Cache (${repo.getHorizonDays()}d)"
@@ -404,7 +440,7 @@ class WearMainActivity : Activity() {
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,
                         "/chronowear/pong_watch_app",
-                        "installed:1.1.0-wear".toByteArray(Charsets.UTF_8)
+                        "installed:1.1.2-wear".toByteArray(Charsets.UTF_8)
                     ).await()
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,

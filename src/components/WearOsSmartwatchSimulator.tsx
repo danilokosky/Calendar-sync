@@ -70,9 +70,10 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 
   const contextModes: { id: ContextWindowMode; label: string }[] = [
     { id: 'DYNAMIC', label: 'Auto' },
-    { id: 'EVENTS', label: 'Eventos' },
+    { id: 'EVENTS', label: 'Agenda' },
     { id: 'WEATHER', label: 'Clima' },
     { id: 'STEPS', label: 'Passos' },
+    { id: 'SUN', label: 'Sol' },
   ];
 
   const weeklyStepsData = [
@@ -99,19 +100,27 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     }
   };
 
+  // Cálculo da posição atual do sol na curva cosseno (0h..24h) para o modo SUN
+  const currentMinutesOfDay =
+    watchDate.getHours() * 60 + watchDate.getMinutes();
+  const sunProgressRatio = Math.min(
+    1,
+    Math.max(0, currentMinutesOfDay / (24 * 60))
+  );
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col h-full justify-between">
       {/* Top Header & Autonomous Mode Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.1)
+            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.2)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            3 Gatilhos de Clima: Busca Periódica (1h) · Apps Escolhidos · Stand-Alone no Relógio
+            DPI Ampliado · Cabeçalho &quot;Clima&quot; Limpo · Condições Climáticas · Nascer e Pôr do Sol
           </p>
         </div>
 
@@ -152,7 +161,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             }`}
           >
             <Watch className="w-3.5 h-3.5" />
-            <span>Watch Face v1.1.1</span>
+            <span>Watch Face v1.1.2</span>
           </button>
           <button
             type="button"
@@ -206,7 +215,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           <button
             type="button"
             onClick={handleCycleWeatherNotif}
-            title="Testa os 3 gatilhos de mudança de clima: Busca Periódica do App (1h), App de Terceiro Escolhido ou Serviço Stand-Alone do Relógio"
+            title="Testa os gatilhos de mudança de temperatura e condição climática (chuva/tempestade)"
             className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
               hasActiveWatchWeatherAlert
                 ? 'bg-sky-500/20 border-sky-400 text-sky-300'
@@ -216,14 +225,14 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             <BellRing className="w-3 h-3 text-sky-400" />
             <span>
               {hasActiveWatchWeatherAlert
-                ? `🔔 ${weatherNotifSource}: ATIVO`
+                ? `${weatherNotifSource}: ATIVO`
                 : 'Simular Gatilho de Clima'}
             </span>
           </button>
         </div>
       </div>
 
-      {/* Center Circular Watch Bezel (450x450 logical representation matching Samsung 16:22:13) */}
+      {/* Center Circular Watch Bezel (450x450 logical representation) */}
       <div className="flex flex-col items-center justify-center my-1">
         <div
           data-testid="wear-watch-face"
@@ -269,7 +278,6 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               />
 
               {/* BARRA INFERIOR DE BATERIA ESTILO TUBO DE ENSAIO (164°..196°) */}
-              {/* 1. Borda externa do tubo (mais grossa: 22px) */}
               <path
                 d="M 168.0 424.0 A 207 207 0 0 0 282.0 424.0"
                 fill="none"
@@ -277,7 +285,6 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 strokeWidth="22"
                 strokeLinecap="round"
               />
-              {/* 2. Cartucho interno de fundo (17px, mais grosso que a barra de progresso) */}
               <path
                 d="M 168.0 424.0 A 207 207 0 0 0 282.0 424.0"
                 fill="none"
@@ -285,7 +292,6 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 strokeWidth="17"
                 strokeLinecap="round"
               />
-              {/* 3. 9 Cortes radiais AO FUNDO (cortando o cartucho de fundo antes do líquido) */}
               <line x1="182" y1="414" x2="177" y2="439" stroke="#14170F" strokeWidth="3.2" />
               <line x1="192" y1="416" x2="189" y2="441" stroke="#14170F" strokeWidth="3.2" />
               <line x1="203" y1="418" x2="201" y2="443" stroke="#14170F" strokeWidth="3.2" />
@@ -295,7 +301,6 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               <line x1="247" y1="418" x2="249" y2="443" stroke="#14170F" strokeWidth="3.2" />
               <line x1="258" y1="416" x2="261" y2="441" stroke="#14170F" strokeWidth="3.2" />
               <line x1="268" y1="414" x2="273" y2="439" stroke="#14170F" strokeWidth="3.2" />
-              {/* 4. Líquido de progresso da bateria À FRENTE (11.5px, 80% opaco / 20% transparente) */}
               <path
                 d="M 168.0 424.0 A 207 207 0 0 0 246.0 431.0"
                 fill="none"
@@ -342,7 +347,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           {/* VIEW 1: Official Watch Face Format (WFF) — Janela de Contexto Dinâmica (Slot 1 SMALL_IMAGE) */}
           {watchScreenMode === 'wff' && (
             <>
-              {/* Ícones e textos dos arcos laterais INCLINADOS (rotate +-28deg) seguindo a curvatura da tela */}
+              {/* Ícones e textos dos arcos laterais INCLINADOS seguindo a curvatura da tela */}
               <span className="absolute left-6 top-[102px] rotate-[28deg] text-[14px] font-bold text-[#F5C438] z-10">
                 ⏳
               </span>
@@ -356,23 +361,23 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 0
               </span>
 
-              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — Renderizado 100% pelo Bitmap Transparente */}
+              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — DPI Ampliado em todos os cenários */}
               <div
                 data-testid="watch-context-canvas"
-                className="w-[80%] h-[112px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
+                className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
               >
-                {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS) */}
+                {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — DPI Ampliado) */}
                 {effectiveMode === 'EVENTS' && (
                   <>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-[#F5C438] shrink-0" />
-                        <span className="text-[13px] font-bold text-[#F5C438] leading-none">
+                        <Calendar className="w-4 h-4 text-[#F5C438] shrink-0" />
+                        <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
                           Hoje
                         </span>
                       </div>
                       {watchState.isWithinTurbo15MinWindow && (
-                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 flex items-center gap-0.5">
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 flex items-center gap-0.5">
                           <Zap className="w-2.5 h-2.5" />
                           1m Turbo
                         </span>
@@ -380,23 +385,23 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                     </div>
 
                     {/* LINHA 1: Hora Branca + Nome Dourado + Timer Ciano + Barra 5px */}
-                    <div className="w-full space-y-0.5">
-                      <div className="flex items-center justify-between gap-1 text-[13px] leading-tight">
+                    <div className="w-full space-y-1">
+                      <div className="flex items-center justify-between gap-1 text-[14.5px] leading-tight">
                         <div className="flex items-center min-w-0">
-                          <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                          <span className="w-[46px] font-mono font-bold text-white shrink-0">
                             {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
                           </span>
                           <span className="font-bold text-[#F5C438] truncate">
                             {ev1 ? ev1.title : 'Sem eventos'}
                           </span>
                         </div>
-                        <span className="font-mono font-bold text-[11px] text-[#67E8F9] shrink-0 ml-1">
+                        <span className="font-mono font-bold text-[12.5px] text-[#67E8F9] shrink-0 ml-1">
                           {watchState.hasUpcomingEvent
                             ? watchState.formattedCountdown
                             : '--'}
                         </span>
                       </div>
-                      <div className="w-full h-[4px] bg-[#252E3A] rounded-full overflow-hidden">
+                      <div className="w-full h-[5px] bg-[#252E3A] rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[#F5C438] rounded-full transition-all duration-200"
                           style={{
@@ -407,8 +412,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                     </div>
 
                     {/* LINHA 2: Hora Branca + Título Dourado */}
-                    <div className="w-full flex items-center text-[13px] leading-tight">
-                      <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                    <div className="w-full flex items-center text-[14.5px] leading-tight">
+                      <span className="w-[46px] font-mono font-bold text-white shrink-0">
                         {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
                       </span>
                       <span className="font-bold text-[#F5C438] truncate">
@@ -417,8 +422,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                     </div>
 
                     {/* LINHA 3: Hora Branca + Título Dourado */}
-                    <div className="w-full flex items-center text-[13px] leading-tight">
-                      <span className="w-[42px] font-mono font-bold text-white shrink-0">
+                    <div className="w-full flex items-center text-[14.5px] leading-tight">
+                      <span className="w-[46px] font-mono font-bold text-white shrink-0">
                         {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
                       </span>
                       <span className="font-bold text-[#F5C438] truncate">
@@ -428,64 +433,72 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </>
                 )}
 
-                {/* MODO 2: CURVA DE TEMPERATURA NAS PRÓXIMAS HORAS (WEATHER — Buscada pelo Telefone) */}
+                {/* MODO 2: CLIMA (WEATHER — Título apenas "Clima", condição climática e DPI ampliado) */}
                 {effectiveMode === 'WEATHER' && (
                   <>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <CloudRain className="w-3.5 h-3.5 text-[#67E8F9] shrink-0" />
-                        <span className="text-[11.5px] font-bold text-[#F5C438] leading-none truncate">
-                          {hasActiveWatchWeatherAlert
-                            ? `🔔 ${weatherNotifSource} • Clima`
-                            : 'Clima • Pelo Telefone'}
+                        <CloudRain className="w-4 h-4 text-[#67E8F9] shrink-0" />
+                        <span
+                          data-testid="weather-canvas-title"
+                          className="text-[15px] font-bold text-[#F5C438] leading-none"
+                        >
+                          Clima
                         </span>
                       </div>
-                      <span className="text-[10px] font-mono font-bold text-[#67E8F9] shrink-0">
-                        {hasActiveWatchWeatherAlert ? 'Chuva 75%' : '29° → 23°'}
+                      <span className="text-[12px] font-mono font-bold text-[#67E8F9] shrink-0">
+                        {hasActiveWatchWeatherAlert
+                          ? 'Chuva • 75%'
+                          : 'Parcial nublado • 25%'}
                       </span>
                     </div>
 
-                    <div className="text-[9.5px] text-slate-300 truncate leading-none">
+                    <div className="text-[11px] font-semibold text-slate-200 truncate leading-none">
                       {hasActiveWatchWeatherAlert
-                        ? `${weatherNotifSource}: Queda p/ 23°C e chuva às 18h`
-                        : 'Previsão horária sincronizada pelo telefone'}
+                        ? 'Mudança p/ Chuva e queda 29°→23°C'
+                        : 'Queda 29°→23°C nas próximas horas'}
                     </div>
 
-                    {/* Curva Bezier de Temperatura no Canvas 604x272 */}
-                    <div className="relative w-full h-[44px] flex items-center">
+                    {/* Curva Bezier de Temperatura no Canvas 604x272 com números maiores */}
+                    <div className="relative w-full h-[46px] flex items-center">
                       <svg viewBox="0 0 240 54" className="w-full h-full overflow-visible">
                         <defs>
                           <linearGradient id="tempFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#67E8F9" stopOpacity="0.32" />
+                            <stop offset="0%" stopColor="#67E8F9" stopOpacity="0.34" />
                             <stop offset="100%" stopColor="#67E8F9" stopOpacity="0.0" />
                           </linearGradient>
                         </defs>
                         <path
-                          d="M 18 16 C 42 16, 50 22, 74 22 C 98 22, 106 36, 130 36 C 154 36, 162 42, 186 42 C 202 42, 212 31, 224 31 L 224 50 L 18 50 Z"
+                          d="M 18 18 C 42 18, 50 23, 74 23 C 98 23, 106 37, 130 37 C 154 37, 162 43, 186 43 C 202 43, 212 32, 224 32 L 224 51 L 18 51 Z"
                           fill="url(#tempFill)"
                         />
                         <path
-                          d="M 18 16 C 42 16, 50 22, 74 22 C 98 22, 106 36, 130 36 C 154 36, 162 42, 186 42 C 202 42, 212 31, 224 31"
+                          d="M 18 18 C 42 18, 50 23, 74 23 C 98 23, 106 37, 130 37 C 154 37, 162 43, 186 43 C 202 43, 212 32, 224 32"
                           fill="none"
                           stroke="#67E8F9"
-                          strokeWidth="2.5"
+                          strokeWidth="3"
                           strokeLinecap="round"
                         />
                         {[
-                          { x: 18, y: 16, t: '29°', h: '14h' },
-                          { x: 74, y: 22, t: '27°', h: '16h' },
-                          { x: 130, y: 36, t: '24°', h: '18h' },
-                          { x: 186, y: 42, t: '23°', h: '20h' },
-                          { x: 224, y: 31, t: '25°', h: '22h' },
+                          { x: 18, y: 18, t: '29°', h: 'Agora', first: true },
+                          { x: 74, y: 23, t: '27°', h: '16h', first: false },
+                          { x: 130, y: 37, t: '24°', h: '18h', first: false },
+                          { x: 186, y: 43, t: '23°', h: '20h', first: false },
+                          { x: 224, y: 32, t: '25°', h: '22h', first: false },
                         ].map((pt) => (
                           <g key={pt.h}>
-                            <circle cx={pt.x} cy={pt.y} r="3" fill="#F5C438" />
+                            <circle
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={pt.first ? '3.8' : '3.2'}
+                              fill={pt.first ? '#F5C438' : '#67E8F9'}
+                            />
                             <text
                               x={pt.x}
-                              y={pt.y - 5}
+                              y={pt.y - 5.5}
                               textAnchor="middle"
                               fill="#FFFFFF"
-                              fontSize="9"
+                              fontSize="11.5"
                               fontWeight="bold"
                               fontFamily="monospace"
                             >
@@ -496,32 +509,32 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       </svg>
                     </div>
 
-                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-400 px-1 leading-none">
-                      <span>14h</span>
+                    <div className="flex items-center justify-between text-[11px] font-bold font-mono text-slate-300 px-1 leading-none">
+                      <span>Agora</span>
                       <span>16h</span>
-                      <span className="text-sky-300 font-bold">18h 🌧</span>
+                      <span className="text-sky-300">18h</span>
                       <span>20h</span>
                       <span>22h</span>
                     </div>
                   </>
                 )}
 
-                {/* MODO 3: PASSOS SEMANAIS (STEPS) */}
+                {/* MODO 3: PASSOS SEMANAIS (STEPS — DPI Ampliado) */}
                 {effectiveMode === 'STEPS' && (
                   <>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <Footprints className="w-3.5 h-3.5 text-[#22C55E] shrink-0" />
-                        <span className="text-[12px] font-bold text-[#F5C438] leading-none">
-                          Passos Semanais
+                        <Footprints className="w-4 h-4 text-[#22C55E] shrink-0" />
+                        <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
+                          Passos
                         </span>
                       </div>
-                      <span className="text-[10px] font-mono font-bold text-[#67E8F9]">
-                        50.455 total
+                      <span className="text-[12px] font-mono font-bold text-[#67E8F9]">
+                        50.455 sem.
                       </span>
                     </div>
 
-                    <div className="flex items-end justify-between gap-1.5 h-[56px] pt-2 px-1">
+                    <div className="flex items-end justify-between gap-1.5 h-[58px] pt-2 px-0.5">
                       {weeklyStepsData.map((d) => {
                         const heightPct = Math.round((d.steps / 9500) * 100);
                         return (
@@ -529,10 +542,14 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                             key={d.day}
                             className="flex-1 flex flex-col items-center justify-end h-full"
                           >
-                            <span className="text-[8px] font-mono text-slate-300 mb-0.5 leading-none">
+                            <span
+                              className={`text-[9.5px] font-mono font-bold mb-0.5 leading-none ${
+                                d.isToday ? 'text-white' : 'text-slate-300'
+                              }`}
+                            >
                               {(d.steps / 1000).toFixed(1)}k
                             </span>
-                            <div className="w-full h-[32px] bg-[#1C2632] rounded-sm flex items-end overflow-hidden">
+                            <div className="w-full h-[34px] bg-[#1C2632] rounded-sm flex items-end overflow-hidden">
                               <div
                                 className={`w-full rounded-sm ${
                                   d.isToday ? 'bg-[#F5C438]' : 'bg-[#22C55E]'
@@ -545,12 +562,12 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       })}
                     </div>
 
-                    <div className="flex items-center justify-between text-[9px] font-mono px-1 leading-none">
+                    <div className="flex items-center justify-between text-[10.5px] font-mono font-bold px-0.5 leading-none">
                       {weeklyStepsData.map((d) => (
                         <span
                           key={d.day}
                           className={
-                            d.isToday ? 'text-[#F5C438] font-bold' : 'text-slate-400'
+                            d.isToday ? 'text-[#F5C438]' : 'text-slate-300'
                           }
                         >
                           {d.day}
@@ -559,6 +576,151 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                     </div>
                   </>
                 )}
+
+                {/* MODO 4: NASCER E PÔR DO SOL (SUN — Fiel à imagem de referência One UI Watch) */}
+                {effectiveMode === 'SUN' && (
+                  <div
+                    data-testid="sun-context-canvas"
+                    className="flex flex-col justify-between h-full py-0.5"
+                  >
+                    {/* Linha Superior: Ícone Verde Nascer + 05:27 à esquerda | 17:40 + Ícone Azul Pôr do Sol à direita */}
+                    <div className="flex items-center justify-between px-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <svg viewBox="0 0 28 24" className="w-6 h-5 shrink-0">
+                          <circle cx="14" cy="11" r="8" fill="#5D7B1E" opacity="0.55" />
+                          <circle cx="14" cy="11" r="5.5" fill="#C9F31D" />
+                          <path
+                            d="M 2 19 L 9 19 L 14 14 L 19 19 L 26 19"
+                            fill="none"
+                            stroke="#84B126"
+                            strokeWidth="2.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span className="text-[16px] font-bold font-mono text-white leading-none">
+                          {config.solarSunriseHHMM ?? '05:27'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[16px] font-bold font-mono text-white leading-none">
+                          {config.solarSunsetHHMM ?? '17:40'}
+                        </span>
+                        <svg viewBox="0 0 28 24" className="w-6 h-5 shrink-0">
+                          <circle cx="14" cy="11" r="8" fill="#46608C" opacity="0.6" />
+                          <circle cx="14" cy="11" r="5.5" fill="#9AC1FF" />
+                          <path
+                            d="M 2 17 L 9 17 L 14 22 L 19 17 L 26 17"
+                            fill="none"
+                            stroke="#82A3D8"
+                            strokeWidth="2.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Gráfico Solar Astronômico com Gradiente Crepuscular, Horizonte Azul, 3 Pontilhados e Símbolos ↑ ☼ ↓ */}
+                    <div className="relative w-full flex-1 mt-0.5">
+                      <svg viewBox="0 0 260 72" className="w-full h-full overflow-visible">
+                        <defs>
+                          <linearGradient id="twilightGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#1B2436" stopOpacity="0.06" />
+                            <stop offset="55%" stopColor="#2E3E5C" stopOpacity="0.45" />
+                            <stop offset="100%" stopColor="#4F6896" stopOpacity="0.72" />
+                          </linearGradient>
+                        </defs>
+
+                        {/* Faixa de gradiente crepuscular acima da linha do horizonte */}
+                        <rect
+                          x="4"
+                          y="10"
+                          width="252"
+                          height="34"
+                          fill="url(#twilightGrad)"
+                        />
+
+                        {/* 3 linhas verticais pontilhadas (Nascer x=66, Meio-dia x=130, Pôr do Sol x=194) */}
+                        {[66, 130, 194].map((xPos) => (
+                          <line
+                            key={xPos}
+                            x1={xPos}
+                            y1="6"
+                            x2={xPos}
+                            y2="54"
+                            stroke="#788296"
+                            strokeWidth="2"
+                            strokeDasharray="1 5"
+                            strokeLinecap="round"
+                          />
+                        ))}
+
+                        {/* Linha horizontal azul-clara do horizonte */}
+                        <line
+                          x1="4"
+                          y1="44"
+                          x2="256"
+                          y2="44"
+                          stroke="#8EB2F2"
+                          strokeWidth="3.2"
+                          strokeLinecap="round"
+                        />
+
+                        {/* Curva Cosseno Branca da Trajetória Solar */}
+                        <path
+                          d="M 4 65 C 32 65, 48 44, 66 44 C 86 20, 106 10, 130 10 C 154 10, 174 20, 194 44 C 212 44, 228 65, 256 65"
+                          fill="none"
+                          stroke="#FFFFFF"
+                          strokeWidth="3.2"
+                          strokeLinecap="round"
+                        />
+
+                        {/* Símbolo ↑ (Nascer) */}
+                        <g stroke="#96A0B0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                          <line x1="66" y1="68" x2="66" y2="57" />
+                          <polyline points="61,62 66,57 71,62" />
+                        </g>
+
+                        {/* Símbolo ☼ (Meio-dia Solar) */}
+                        <g stroke="#96A0B0" strokeWidth="2" strokeLinecap="round" fill="none">
+                          <circle cx="130" cy="62" r="3.2" />
+                          <line x1="130" y1="55.5" x2="130" y2="57" />
+                          <line x1="130" y1="67" x2="130" y2="68.5" />
+                          <line x1="123.5" y1="62" x2="125" y2="62" />
+                          <line x1="135" y1="62" x2="136.5" y2="62" />
+                        </g>
+
+                        {/* Símbolo ↓ (Pôr do Sol) */}
+                        <g stroke="#96A0B0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                          <line x1="194" y1="57" x2="194" y2="68" />
+                          <polyline points="189,63 194,68 199,63" />
+                        </g>
+
+                        {/* Ponto luminoso do Sol na trajetória atual */}
+                        {(() => {
+                          const sunX = 4 + sunProgressRatio * 252;
+                          const phase = (sunProgressRatio - 0.5) * 2 * Math.PI;
+                          const cosVal = Math.cos(phase);
+                          const sunY = 37.5 - cosVal * 27.5;
+                          return (
+                            <g>
+                              <circle
+                                cx={sunX}
+                                cy={sunY}
+                                r="7"
+                                fill="#FFF2CC"
+                                opacity="0.38"
+                              />
+                              <circle cx={sunX} cy={sunY} r="4.2" fill="#FFFDF5" />
+                            </g>
+                          );
+                        })()}
+                      </svg>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* DOCK EM CARTUCHO ENVOLVENTE (x=84, y=268, w=282, h=92) COM APENAS 2 COMPLICATIONS MAIORES E CONTORNO FORTE */}
@@ -566,9 +728,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 title="Cartucho Externo Envolvente (x=84, y=268, w=282, h=92, r=46)"
                 className="rounded-full bg-[#161D1C] border-[1.5px] border-[#283533] px-2 py-1.5 flex items-center justify-center gap-2.5 z-10 mt-0.5 mb-10 shadow-inner"
               >
-                {/* Slot #4: Cartucho Interno Esquerdo (x=92, y=275, w=127, h=78, r=39) */}
+                {/* Slot #4: Cartucho Interno Esquerdo */}
                 <div
-                  title="Slot #4: Complication Cartucho Esquerdo (Fundo #263230 + Contorno #455955)"
+                  title="Slot #4: Complication Cartucho Esquerdo"
                   className="w-[104px] h-[56px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
                 >
                   <Footprints className="w-4 h-4 text-[#22C55E]" />
@@ -577,14 +739,14 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </span>
                 </div>
 
-                {/* Slot #5: Cartucho Interno Direito (x=231, y=275, w=127, h=78, r=39) */}
+                {/* Slot #5: Cartucho Interno Direito */}
                 <div
-                  title="Slot #5: Complication Cartucho Direito (Fundo #263230 + Contorno #455955)"
+                  title="Slot #5: Complication Cartucho Direito"
                   className="w-[104px] h-[56px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
                 >
                   <Sun className="w-4 h-4 text-[#F97316]" />
                   <span className="text-[15px] font-bold text-white leading-tight mt-0.5 tracking-tight">
-                    17:40
+                    {config.solarSunsetHHMM ?? '17:40'}
                   </span>
                 </div>
               </div>
@@ -634,7 +796,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 </div>
                 <div>Contexto Ativo: {effectiveMode}</div>
                 <div>
-                  Turbo ≤15m (1 min): {watchState.isWithinTurbo15MinWindow ? 'ATIVO ⚡' : 'Aguardando'}
+                  Turbo ≤15m (1 min): {watchState.isWithinTurbo15MinWindow ? 'ATIVO' : 'Aguardando'}
                 </div>
                 <div className="text-amber-300 truncate">
                   1º: {watchState.nextEvent?.title || 'Nenhum'}
@@ -658,7 +820,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Resetar (14:04)</span>
+            <span>Resetar (09:00)</span>
           </button>
         </div>
 
@@ -673,8 +835,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           </button>
           <button
             type="button"
-            onClick={() => onAdvanceTimeMinutes(135)}
-            title="Avança 2h15m (de 14:04 para 16:19, faltando 11 min para Adolescentes às 16:30)"
+            onClick={() => onAdvanceTimeMinutes(25)}
+            title="Avança para dentro da janela de ≤15 min antes do próximo evento"
             className="py-2 px-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-lg text-xs font-mono text-amber-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
           >
             <Zap className="w-3 h-3 text-amber-400" />

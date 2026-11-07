@@ -58,8 +58,9 @@ class PhoneDataListenerService : WearableListenerService() {
                 val weatherTempsCsv = dataMap.getString("weather_temps_csv")
                 val weatherHoursCsv = dataMap.getString("weather_hours_csv")
                 val weatherRainProb = if (dataMap.containsKey("weather_rain_prob")) {
-                    dataMap.getInt("weather_rain_prob", 65)
+                    dataMap.getInt("weather_rain_prob", 20)
                 } else null
+                val weatherConditionLabel = dataMap.getString("weather_condition_label")
                 val weatherAlertSource = dataMap.getString("weather_alert_source")
                 val weatherAlertHeadline = dataMap.getString("weather_alert_headline")
                 val weatherAlertTsMs = if (dataMap.containsKey("weather_alert_timestamp_ms")) {
@@ -72,6 +73,11 @@ class PhoneDataListenerService : WearableListenerService() {
                     dataMap.getInt("watch_standalone_weather_interval_min", 60)
                 } else null
                 val selectedTriggerPkgsCsv = dataMap.getString("selected_weather_trigger_packages_csv")
+                val solarSunriseHHMM = dataMap.getString("solar_sunrise_hhmm")
+                val solarSunsetHHMM = dataMap.getString("solar_sunset_hhmm")
+                val watchStandaloneSolar = if (dataMap.containsKey("watch_standalone_solar_enabled")) {
+                    dataMap.getBoolean("watch_standalone_solar_enabled", false)
+                } else null
 
                 persistAndNotify(
                     eventsJson = eventsJson,
@@ -85,12 +91,16 @@ class PhoneDataListenerService : WearableListenerService() {
                     weatherTempsCsv = weatherTempsCsv,
                     weatherHoursCsv = weatherHoursCsv,
                     weatherRainProb = weatherRainProb,
+                    weatherConditionLabel = weatherConditionLabel,
                     weatherAlertSource = weatherAlertSource,
                     weatherAlertHeadline = weatherAlertHeadline,
                     weatherAlertTimestampMs = weatherAlertTsMs,
                     watchStandaloneWeatherEnabled = watchStandaloneWeather,
                     watchStandaloneWeatherIntervalMin = watchStandaloneInterval,
-                    selectedWeatherTriggerPackagesCsv = selectedTriggerPkgsCsv
+                    selectedWeatherTriggerPackagesCsv = selectedTriggerPkgsCsv,
+                    solarSunriseHHMM = solarSunriseHHMM,
+                    solarSunsetHHMM = solarSunsetHHMM,
+                    watchStandaloneSolarEnabled = watchStandaloneSolar
                 )
             }
         }
@@ -111,7 +121,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         Wearable.getMessageClient(applicationContext).sendMessage(
                             messageEvent.sourceNodeId,
                             "/chronowear/pong_watch_app",
-                            "installed:1.1.1-wear".toByteArray(Charsets.UTF_8)
+                            "installed:1.1.2-wear".toByteArray(Charsets.UTF_8)
                         ).await()
                     } catch (_: Exception) {
                     }
@@ -136,8 +146,9 @@ class PhoneDataListenerService : WearableListenerService() {
                     val weatherTempsCsv = json.optString("weather_temps_csv", "").takeIf { it.isNotBlank() }
                     val weatherHoursCsv = json.optString("weather_hours_csv", "").takeIf { it.isNotBlank() }
                     val weatherRainProb = if (json.has("weather_rain_prob")) {
-                        json.optInt("weather_rain_prob", 65)
+                        json.optInt("weather_rain_prob", 20)
                     } else null
+                    val weatherConditionLabel = json.optString("weather_condition_label", "").takeIf { it.isNotBlank() }
                     val weatherAlertSource = json.optString("weather_alert_source", "").takeIf { it.isNotBlank() }
                     val weatherAlertHeadline = json.optString("weather_alert_headline", "").takeIf { it.isNotBlank() }
                     val weatherAlertTsMs = if (json.has("weather_alert_timestamp_ms")) {
@@ -151,6 +162,11 @@ class PhoneDataListenerService : WearableListenerService() {
                     } else null
                     val selectedTriggerPkgsCsv = json.optString("selected_weather_trigger_packages_csv", "")
                         .takeIf { it.isNotBlank() }
+                    val solarSunriseHHMM = json.optString("solar_sunrise_hhmm", "").takeIf { it.isNotBlank() }
+                    val solarSunsetHHMM = json.optString("solar_sunset_hhmm", "").takeIf { it.isNotBlank() }
+                    val watchStandaloneSolar = if (json.has("watch_standalone_solar_enabled")) {
+                        json.optBoolean("watch_standalone_solar_enabled", false)
+                    } else null
 
                     persistAndNotify(
                         eventsJson = eventsArray,
@@ -164,12 +180,16 @@ class PhoneDataListenerService : WearableListenerService() {
                         weatherTempsCsv = weatherTempsCsv,
                         weatherHoursCsv = weatherHoursCsv,
                         weatherRainProb = weatherRainProb,
+                        weatherConditionLabel = weatherConditionLabel,
                         weatherAlertSource = weatherAlertSource,
                         weatherAlertHeadline = weatherAlertHeadline,
                         weatherAlertTimestampMs = weatherAlertTsMs,
                         watchStandaloneWeatherEnabled = watchStandaloneWeather,
                         watchStandaloneWeatherIntervalMin = watchStandaloneInterval,
-                        selectedWeatherTriggerPackagesCsv = selectedTriggerPkgsCsv
+                        selectedWeatherTriggerPackagesCsv = selectedTriggerPkgsCsv,
+                        solarSunriseHHMM = solarSunriseHHMM,
+                        solarSunsetHHMM = solarSunsetHHMM,
+                        watchStandaloneSolarEnabled = watchStandaloneSolar
                     )
                 } catch (_: Exception) {
                 }
@@ -189,12 +209,16 @@ class PhoneDataListenerService : WearableListenerService() {
         weatherTempsCsv: String? = null,
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
+        weatherConditionLabel: String? = null,
         weatherAlertSource: String? = null,
         weatherAlertHeadline: String? = null,
         weatherAlertTimestampMs: Long? = null,
         watchStandaloneWeatherEnabled: Boolean? = null,
         watchStandaloneWeatherIntervalMin: Int? = null,
-        selectedWeatherTriggerPackagesCsv: String? = null
+        selectedWeatherTriggerPackagesCsv: String? = null,
+        solarSunriseHHMM: String? = null,
+        solarSunsetHHMM: String? = null,
+        watchStandaloneSolarEnabled: Boolean? = null
     ) {
         serviceScope.launch {
             val repo = WatchAutonomousRepository.getInstance(applicationContext)
@@ -210,12 +234,16 @@ class PhoneDataListenerService : WearableListenerService() {
                 weatherTempsCsv = weatherTempsCsv,
                 weatherHoursCsv = weatherHoursCsv,
                 weatherRainProb = weatherRainProb,
+                weatherConditionLabel = weatherConditionLabel,
                 weatherAlertSource = weatherAlertSource,
                 weatherAlertHeadline = weatherAlertHeadline,
                 weatherAlertTimestampMs = weatherAlertTimestampMs,
                 watchStandaloneWeatherEnabled = watchStandaloneWeatherEnabled,
                 watchStandaloneWeatherIntervalMin = watchStandaloneWeatherIntervalMin,
-                selectedWeatherTriggerPackagesCsv = selectedWeatherTriggerPackagesCsv
+                selectedWeatherTriggerPackagesCsv = selectedWeatherTriggerPackagesCsv,
+                solarSunriseHHMM = solarSunriseHHMM,
+                solarSunsetHHMM = solarSunsetHHMM,
+                watchStandaloneSolarEnabled = watchStandaloneSolarEnabled
             )
 
             AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
@@ -237,16 +265,6 @@ class PhoneDataListenerService : WearableListenerService() {
     }
 }
 
-/**
- * Leitor de Notificações no Relógio (`WearContextNotificationListenerService`):
- * Observa notificações sobre clima que chegam ao relógio vindas dos Apps de Clima selecionados
- * pelo usuário nas configurações (`getSelectedWeatherTriggerPackages()`, ex: App Google, Samsung Clima,
- * Climatempo, AccuWeather, The Weather Channel).
- * Quando detectada:
- * - Identifica e informa a origem do App escolhido.
- * - Aciona a atualização do clima (e se o Stand-Alone estiver ativo, atualiza localmente também).
- * - Redesenha a Janela de Contexto (Canvas) para exibir o gráfico de mudança de temperatura!
- */
 class WearContextNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -283,7 +301,7 @@ class WearContextNotificationListenerService : NotificationListenerService() {
                 pkg.contains("daemonapp") || pkg.contains("samsung") -> "App Clima"
                 pkg.contains("climatempo") -> "Climatempo"
                 pkg.contains("accuweather") -> "AccuWeather"
-                else -> "App Clima"
+                else -> "Clima"
             }
 
             val rawSummary = when {
@@ -292,7 +310,7 @@ class WearContextNotificationListenerService : NotificationListenerService() {
                 text.isNotBlank() -> text
                 else -> "Mudança climática detectada"
             }
-            val headline = "$sourceLabel • $rawSummary".take(42)
+            val headline = "$sourceLabel • $rawSummary".take(44)
 
             repo.recordWatchWeatherNotificationAlert(
                 sourceAppLabel = sourceLabel,
@@ -303,7 +321,6 @@ class WearContextNotificationListenerService : NotificationListenerService() {
                 nowMs = System.currentTimeMillis()
             )
 
-            // Se o serviço Stand-Alone estiver ativo no relógio, aproveita a trigger para atualizar a curva
             if (repo.isWatchStandaloneWeatherEnabled()) {
                 AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
                     applicationContext,

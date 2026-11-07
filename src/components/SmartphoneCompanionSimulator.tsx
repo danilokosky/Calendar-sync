@@ -36,6 +36,39 @@ interface SmartphoneCompanionSimulatorProps {
 
 type BottomTab = 'home' | 'settings' | 'about';
 
+interface ModernSwitchProps {
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+}
+
+const ModernOneUiSwitch: React.FC<ModernSwitchProps> = ({
+  checked,
+  onChange,
+  ariaLabel,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={ariaLabel}
+    onClick={onChange}
+    className={`w-[52px] h-[28px] rounded-full p-[3px] transition-all duration-200 active:scale-95 flex items-center cursor-pointer shrink-0 border ${
+      checked
+        ? 'bg-[#22C55E] border-[#4ADE80]'
+        : 'bg-[#2A3441] border-[#64748B]'
+    }`}
+  >
+    <span
+      className={`w-[20px] h-[20px] rounded-full transition-transform duration-200 shadow-xs ${
+        checked
+          ? 'translate-x-[24px] bg-white'
+          : 'translate-x-0 bg-[#CBD5E1]'
+      }`}
+    />
+  </button>
+);
+
 export const SmartphoneCompanionSimulator: React.FC<
   SmartphoneCompanionSimulatorProps
 > = ({
@@ -56,14 +89,13 @@ export const SmartphoneCompanionSimulator: React.FC<
   // Simula se o app versão Wear OS já foi instalado no relógio conectado
   const [isWearAppInstalledOnWatch, setIsWearAppInstalledOnWatch] = useState(true);
 
-  // Estados das chaves de Settings (padrão Amoled Watchfaces + estética Samsung Health)
+  // Estados das chaves de Settings
   const [bgServiceEnabled, setBgServiceEnabled] = useState(true);
   const [notificationsSyncEnabled, setNotificationsSyncEnabled] = useState(true);
-  const [mediaPlaybackSyncEnabled, setMediaPlaybackSyncEnabled] = useState(false);
   const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
   const [calendarPermGranted, setCalendarPermGranted] = useState(true);
 
-  // Modal "Synced calendars" e Modal "Apps de Clima (Trigger)"
+  // Modal "Synced calendars" e Modal "Apps de Clima por Categoria"
   const [isSyncedCalendarsDialogOpen, setIsSyncedCalendarsDialogOpen] = useState(false);
   const [isWeatherAppsDialogOpen, setIsWeatherAppsDialogOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -84,6 +116,7 @@ export const SmartphoneCompanionSimulator: React.FC<
       : [...selectedWeatherApps, pkg];
     onUpdateConfig({ selectedWeatherTriggerApps: next });
   };
+
   const upcomingEvents = events
     .filter((e) => e.startEpochMs > referenceTimeMs)
     .sort((a, b) => a.startEpochMs - b.startEpochMs);
@@ -125,6 +158,11 @@ export const SmartphoneCompanionSimulator: React.FC<
     setNewTitle('');
   };
 
+  // Agrupa os apps de clima por categoria (Provedores do Sistema, Clima e Meteorologia, Clima e Radar)
+  const weatherCategories = Array.from(
+    new Set(WEATHER_TRIGGER_CATALOG.map((app) => app.categoryName))
+  );
+
   // Lógica de status: SÓ dá positivo se houver conexão Bluetooth E o app estiver instalado no relógio
   const renderConnectionBanner = () => {
     if (!isBluetoothConnected) {
@@ -158,6 +196,14 @@ export const SmartphoneCompanionSimulator: React.FC<
   const activeTabIndex =
     activeTab === 'home' ? 0 : activeTab === 'settings' ? 1 : 2;
 
+  const contextModeOptions = [
+    { id: 'DYNAMIC', label: 'Auto' },
+    { id: 'EVENTS', label: 'Agenda' },
+    { id: 'WEATHER', label: 'Clima' },
+    { id: 'STEPS', label: 'Passos' },
+    { id: 'SUN', label: 'Sol' },
+  ] as const;
+
   return (
     <div
       className="relative rounded-[36px] border border-[#2A332C] text-slate-100 shadow-2xl overflow-hidden flex flex-col justify-between min-h-[620px]"
@@ -187,8 +233,8 @@ export const SmartphoneCompanionSimulator: React.FC<
             }`}
           >
             {isWearAppInstalledOnWatch
-              ? '✓ App Wear Instalado'
-              : '⚠ App Wear Ausente'}
+              ? 'App Wear Instalado'
+              : 'App Wear Ausente'}
           </button>
         </div>
 
@@ -204,7 +250,7 @@ export const SmartphoneCompanionSimulator: React.FC<
             <div className="relative rounded-[26px] bg-[#1F2C24]/90 border border-[#34463B] p-4 shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
               <div className="flex items-center gap-4">
-                {/* Mockup Circular do Relógio com os 4 Slots WFF */}
+                {/* Mockup Circular do Relógio */}
                 <div className="relative w-28 h-28 rounded-full bg-[#070A10] border-[5px] border-[#2A352F] shadow-inner flex flex-col items-center justify-center px-2.5 py-2 gap-1 shrink-0">
                   <div className="text-[11px] font-bold font-mono text-white leading-none">
                     10:08
@@ -239,10 +285,10 @@ export const SmartphoneCompanionSimulator: React.FC<
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="text-sm font-bold text-white leading-snug">
-                    Janela de Contexto em Canvas Bitmap
+                    Janela de Contexto em Canvas Bitmap (v1.1.2)
                   </div>
                   <p className="text-[11px] text-[#C8D3CC] leading-relaxed">
-                    1 única Complication no relógio: atualiza o clima pelo próprio app (de hora em hora), por apps de clima escolhidos ou pelo serviço Stand-Alone no relógio.
+                    5 modos em alta densidade (Auto, Agenda, Clima, Passos e Nascer/Pôr do Sol) com atualização instantânea ao trocar opções.
                   </p>
                 </div>
               </div>
@@ -254,18 +300,11 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Contexto no Relógio:
                   </span>
                   <span className="font-mono text-[10px] text-amber-300">
-                    {config.highFreq15MinRule ? '⚡ Turbo 1m (≤15m) Ativo' : 'Padrão Screen-On'}
+                    {config.highFreq15MinRule ? 'Turbo 1m (≤15m) Ativo' : 'Padrão Screen-On'}
                   </span>
                 </div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(
-                    [
-                      { id: 'DYNAMIC', label: 'Auto' },
-                      { id: 'EVENTS', label: 'Eventos' },
-                      { id: 'WEATHER', label: 'Clima' },
-                      { id: 'STEPS', label: 'Passos' },
-                    ] as const
-                  ).map((mode) => (
+                <div className="grid grid-cols-5 gap-1.5">
+                  {contextModeOptions.map((mode) => (
                     <button
                       key={mode.id}
                       type="button"
@@ -274,8 +313,8 @@ export const SmartphoneCompanionSimulator: React.FC<
                       }
                       className={`py-1.5 px-2 rounded-full text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
                         config.contextWindowMode === mode.id
-                          ? 'bg-[#BAE6FD] text-slate-950 font-bold shadow-xs'
-                          : 'bg-[#141D18] text-slate-300 border border-[#2D3E34] hover:bg-[#1C2821]'
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold shadow-xs'
+                          : 'bg-[#141D18] text-slate-200 border border-[#2D3E34] hover:bg-[#1C2821]'
                       }`}
                     >
                       {mode.label}
@@ -293,7 +332,7 @@ export const SmartphoneCompanionSimulator: React.FC<
             <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-3 shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-bold text-white">Welcome!</h3>
+                <h3 className="text-base font-bold text-white">Status de Sincronização</h3>
                 <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
                   {syncedEventsCount} sincronizados
                 </span>
@@ -321,7 +360,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                 ) : (
                   <>
                     <div className="text-xs font-semibold text-slate-300">
-                      App is installed on your wear device(s):
+                      App instalado no seu relógio Wear OS:
                     </div>
                     <div className="text-sm font-bold text-[#6EE7B7]">
                       Galaxy Watch Ultra (ZNDA)
@@ -331,10 +370,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
 
               {/* Mini indicadores estilo cards Samsung Health */}
-              <div className="pt-3 border-t border-[#242A26] grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-[#1B201D] p-3">
+              <div className="pt-3 border-t border-[#242A26] grid grid-cols-3 gap-2.5">
+                <div className="rounded-2xl bg-[#1B201D] p-2.5">
                   <div className="text-[10px] text-slate-400">
-                    Próximo compromisso
+                    Próximo evento
                   </div>
                   <div className="text-xs font-bold text-white truncate mt-0.5">
                     {nextEvent ? nextEvent.title : 'Sem eventos'}
@@ -344,15 +383,27 @@ export const SmartphoneCompanionSimulator: React.FC<
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-[#1B201D] p-3">
+                <div className="rounded-2xl bg-[#1B201D] p-2.5">
                   <div className="text-[10px] text-slate-400">
                     Clima &amp; Triggers
                   </div>
                   <div className="text-xs font-bold text-white mt-0.5">
-                    {selectedWeatherApps.length} apps trigger
+                    {selectedWeatherApps.length} apps ativos
                   </div>
-                  <div className="text-[11px] font-mono text-sky-400 mt-0.5">
-                    Auto {config.phoneWeatherCheckIntervalMinutes ?? 60}m • Watch SA: {config.watchStandaloneWeatherEnabled ? 'ON' : 'OFF'}
+                  <div className="text-[10px] font-mono text-sky-400 mt-0.5">
+                    Auto {config.phoneWeatherCheckIntervalMinutes ?? 60}m
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-[#1B201D] p-2.5">
+                  <div className="text-[10px] text-slate-400">
+                    Nascer / Pôr do Sol
+                  </div>
+                  <div className="text-xs font-bold text-white mt-0.5 font-mono">
+                    {config.solarSunriseHHMM ?? '05:27'} • {config.solarSunsetHHMM ?? '17:40'}
+                  </div>
+                  <div className="text-[10px] font-mono text-emerald-400 mt-0.5">
+                    {config.phoneSolarAutoSyncEnabled ?? true ? 'GPS Telefone' : 'Stand-Alone'}
                   </div>
                 </div>
               </div>
@@ -361,306 +412,38 @@ export const SmartphoneCompanionSimulator: React.FC<
         )}
 
         {/* =============================================================== */}
-        {/* ABA 2: SETTINGS (Amoled Watchfaces + Cards Samsung Health)      */}
+        {/* ABA 2: CONFIGURAÇÕES (Separada por Seções, Sem Emojis, Switches */}
+        {/* Modernos de Alto Contraste)                                     */}
         {/* =============================================================== */}
         {activeTab === 'settings' && (
           <div
             key="tab-settings"
-            className="space-y-3.5 flex-1 transition-all duration-300 ease-out"
+            className="space-y-3.5 flex-1 max-h-[480px] overflow-y-auto pr-1 transition-all duration-300 ease-out"
           >
             {renderConnectionBanner()}
 
-            <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-3.5 shadow-lg">
-              <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
-
-              {/* 1. Background Service */}
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-sm font-bold text-slate-100">
-                    Background Service
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Important - Notifications Access required
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={bgServiceEnabled}
-                  aria-label="Background Service"
-                  onClick={() => setBgServiceEnabled((v) => !v)}
-                  className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                    bgServiceEnabled
-                      ? 'bg-[#BAE6FD]'
-                      : 'bg-[#36393F]'
-                  }`}
-                >
-                  <span
-                    className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                      bgServiceEnabled
-                        ? 'translate-x-5 bg-[#311B92]'
-                        : 'translate-x-0 bg-[#8E9297]'
-                    }`}
-                  />
-                </button>
+            {/* SEÇÃO 1: CONTEXTO & ATUALIZAÇÃO DO CANVAS */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                1. Contexto e Atualização do Canvas
               </div>
 
-              {/* 2. Busca Periódica de Clima pelo Nosso App (Independente de Notificação Externa) */}
-              <div className="space-y-2 pt-2 border-t border-[#232925]">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-bold text-sky-300">
-                      Busca Periódica de Clima pelo App
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      Nosso app busca o clima de hora em hora e notifica o relógio se houver mudança de temperatura
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={config.phoneWeatherAutoCheckEnabled ?? true}
-                    aria-label="Busca Periódica de Clima pelo App"
-                    onClick={() =>
-                      onUpdateConfig({
-                        phoneWeatherAutoCheckEnabled: !(
-                          config.phoneWeatherAutoCheckEnabled ?? true
-                        ),
-                      })
-                    }
-                    className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                      config.phoneWeatherAutoCheckEnabled ?? true
-                        ? 'bg-[#BAE6FD]'
-                        : 'bg-[#36393F]'
-                    }`}
-                  >
-                    <span
-                      className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                        config.phoneWeatherAutoCheckEnabled ?? true
-                          ? 'translate-x-5 bg-[#311B92]'
-                          : 'translate-x-0 bg-[#8E9297]'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold text-slate-300">
-                    Intervalo da busca de clima:
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {([30, 60, 120, 180] as const).map((mins) => (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() =>
-                          onUpdateConfig({
-                            phoneWeatherCheckIntervalMinutes: mins,
-                          })
-                        }
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-all cursor-pointer ${
-                          (config.phoneWeatherCheckIntervalMinutes ?? 60) === mins
-                            ? 'bg-[#BAE6FD] text-slate-950 font-bold'
-                            : 'bg-[#222824] text-slate-300 hover:bg-[#2C342F]'
-                        }`}
-                      >
-                        {mins === 30 ? '30m' : `${mins / 60}h`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Trigger por Apps de Terceiros de Clima Escolhidos pelo Usuário */}
-              <div className="space-y-2.5 pt-2 border-t border-[#232925]">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-bold text-slate-100">
-                      Trigger por Apps de Clima Escolhidos
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      Dispara atualização de clima e muda o Canvas quando um app escolhido notificar
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={notificationsSyncEnabled}
-                    aria-label="Trigger por Apps de Clima Escolhidos"
-                    onClick={() => setNotificationsSyncEnabled((v) => !v)}
-                    className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                      notificationsSyncEnabled
-                        ? 'bg-[#BAE6FD]'
-                        : 'bg-[#36393F]'
-                    }`}
-                  >
-                    <span
-                      className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                        notificationsSyncEnabled
-                          ? 'translate-x-5 bg-[#311B92]'
-                          : 'translate-x-0 bg-[#8E9297]'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsWeatherAppsDialogOpen(true)}
-                  className="px-4 py-2 rounded-full border border-[#4B5850] bg-[#1E2420] hover:bg-[#28312B] active:scale-95 text-xs font-semibold text-slate-100 inline-flex items-center gap-2 transition-all duration-150 cursor-pointer"
-                >
-                  <CloudRain className="w-4 h-4 text-sky-300" />
-                  <span>
-                    Escolher Apps de Clima ({selectedWeatherApps.length})
-                  </span>
-                </button>
-              </div>
-
-              {/* 4. Serviço Stand-Alone de Clima no Relógio (1h em 1h, opcional) */}
-              <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
-                <div>
-                  <div className="text-sm font-bold text-emerald-300">
-                    Serviço Stand-Alone no Relógio (1h)
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Opcional: relógio busca sozinho o clima de hora em hora (desligado por padrão)
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={config.watchStandaloneWeatherEnabled ?? false}
-                  aria-label="Serviço Stand-Alone no Relógio (1h)"
-                  onClick={() =>
-                    onUpdateConfig({
-                      watchStandaloneWeatherEnabled: !(
-                        config.watchStandaloneWeatherEnabled ?? false
-                      ),
-                    })
-                  }
-                  className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                    config.watchStandaloneWeatherEnabled
-                      ? 'bg-[#BAE6FD]'
-                      : 'bg-[#36393F]'
-                  }`}
-                >
-                  <span
-                    className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                      config.watchStandaloneWeatherEnabled
-                        ? 'translate-x-5 bg-[#311B92]'
-                        : 'translate-x-0 bg-[#8E9297]'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* 5. Regra Turbo 15 min (Atualizar a cada 1 min) */}
-              <div className="flex items-center justify-between gap-4 pt-2 border-t border-[#232925]">
-                <div>
-                  <div className="text-sm font-bold text-amber-300">
-                    Regra Turbo 15 min (1 min)
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    Atualiza o Canvas a cada 1 min quando faltar ≤ 15 min
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={config.highFreq15MinRule}
-                  aria-label="Regra Turbo 15 min"
-                  onClick={() =>
-                    onUpdateConfig({
-                      highFreq15MinRule: !config.highFreq15MinRule,
-                    })
-                  }
-                  className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                    config.highFreq15MinRule
-                      ? 'bg-[#BAE6FD]'
-                      : 'bg-[#36393F]'
-                  }`}
-                >
-                  <span
-                    className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                      config.highFreq15MinRule
-                        ? 'translate-x-5 bg-[#311B92]'
-                        : 'translate-x-0 bg-[#8E9297]'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* 6. Calendar Events Sync + Synced calendars */}
-              <div className="space-y-3 pt-2 border-t border-[#232925]">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-bold text-slate-100">
-                      Calendar Events Sync
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      Janela de Contexto (Canvas Bitmap)
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={calendarSyncEnabled && calendarPermGranted}
-                    aria-label="Calendar Events Sync"
-                    onClick={handleToggleCalendarEventsSync}
-                    className={`w-12 h-7 rounded-full p-1 transition-all duration-200 active:scale-90 flex items-center cursor-pointer shrink-0 ${
-                      calendarSyncEnabled && calendarPermGranted
-                        ? 'bg-[#BAE6FD]'
-                        : 'bg-[#36393F]'
-                    }`}
-                  >
-                    <span
-                      className={`w-5 h-5 rounded-full transition-all duration-200 ${
-                        calendarSyncEnabled && calendarPermGranted
-                          ? 'translate-x-5 bg-[#311B92]'
-                          : 'translate-x-0 bg-[#8E9297]'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsSyncedCalendarsDialogOpen(true)}
-                    className="px-4 py-2 rounded-full border border-[#4B5850] bg-[#1E2420] hover:bg-[#28312B] active:scale-95 text-xs font-semibold text-slate-100 inline-flex items-center gap-2 transition-all duration-150 cursor-pointer"
-                  >
-                    <Calendar className="w-4 h-4 text-emerald-300" />
-                    <span>Synced calendars ({selectedCalendarsCount})</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Função da Janela de Contexto + Frequência e Barra */}
-            <div className="rounded-[26px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="space-y-1.5">
-                <span className="text-xs font-bold text-slate-200 block">
-                  Função da Janela de Contexto (Canvas):
+                <span className="text-xs font-bold text-slate-100 block">
+                  Função da Janela de Contexto (Canvas Bitmap)
                 </span>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(
-                    [
-                      { id: 'DYNAMIC', label: 'Auto' },
-                      { id: 'EVENTS', label: 'Eventos' },
-                      { id: 'WEATHER', label: 'Clima' },
-                      { id: 'STEPS', label: 'Passos' },
-                    ] as const
-                  ).map((m) => (
+                <div className="grid grid-cols-5 gap-1.5">
+                  {contextModeOptions.map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() =>
                         onUpdateConfig({ contextWindowMode: m.id })
                       }
-                      className={`py-1.5 px-2 rounded-full text-[11px] font-semibold transition-all duration-200 active:scale-90 cursor-pointer ${
+                      className={`py-2 px-2 rounded-full text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
                         config.contextWindowMode === m.id
-                          ? 'bg-[#BAE6FD] text-slate-950 font-bold'
-                          : 'bg-[#222824] text-slate-300 hover:bg-[#2C342F]'
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E] hover:bg-[#26302A]'
                       }`}
                     >
                       {m.label}
@@ -669,11 +452,83 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#232925]">
-                <span className="text-xs font-bold text-slate-200">
-                  Frequência de Leitura:
+              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Regra Turbo 15 Minutos (1 em 1 min)
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Atualiza o Canvas a cada minuto quando faltar 15 min ou menos para o evento
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.highFreq15MinRule}
+                  ariaLabel="Regra Turbo 15 Minutos"
+                  onChange={() =>
+                    onUpdateConfig({
+                      highFreq15MinRule: !config.highFreq15MinRule,
+                    })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Atualizar Canvas ao Acordar a Tela
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Redesenha o quadro ao ligar a tela do relógio (com proteção de 25s)
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.updateOnScreenWake}
+                  ariaLabel="Atualizar Canvas ao Acordar a Tela"
+                  onChange={() =>
+                    onUpdateConfig({
+                      updateOnScreenWake: !config.updateOnScreenWake,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* SEÇÃO 2: SINCRONIZAÇÃO DE AGENDA */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                2. Sincronização de Agenda
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Sincronizar Calendários do Telefone
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Envia compromissos selecionados para o banco autônomo do relógio
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={calendarSyncEnabled && calendarPermGranted}
+                  ariaLabel="Sincronizar Calendários do Telefone"
+                  onChange={handleToggleCalendarEventsSync}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSyncedCalendarsDialogOpen(true)}
+                className="w-full py-2.5 px-4 rounded-2xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-white flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <Calendar className="w-4 h-4 text-emerald-400" />
+                <span>Selecionar Calendários Sincronizados ({selectedCalendarsCount})</span>
+              </button>
+
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Frequência de Leitura do Calendário
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   {([15, 30, 60] as const).map((mins) => (
                     <button
                       key={mins}
@@ -681,23 +536,23 @@ export const SmartphoneCompanionSimulator: React.FC<
                       onClick={() =>
                         onUpdateConfig({ syncIntervalMinutes: mins })
                       }
-                      className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-all duration-200 active:scale-90 cursor-pointer ${
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
                         config.syncIntervalMinutes === mins
-                          ? 'bg-[#BAE6FD] text-slate-950 scale-105'
-                          : 'bg-[#222824] text-slate-300 hover:bg-[#2C342F]'
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
                       }`}
                     >
-                      {mins}m
+                      {mins === 60 ? '1h' : `${mins}m`}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#232925]">
-                <span className="text-xs font-bold text-slate-200">
-                  Barra Progresso:
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Janela da Barra de Progresso do Evento
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="grid grid-cols-4 gap-1.5">
                   {([30, 60, 120, 180] as const).map((mins) => (
                     <button
                       key={mins}
@@ -705,16 +560,218 @@ export const SmartphoneCompanionSimulator: React.FC<
                       onClick={() =>
                         onUpdateConfig({ progressWindowMinutes: mins })
                       }
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all duration-200 active:scale-90 cursor-pointer ${
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
                         config.progressWindowMinutes === mins
-                          ? 'bg-[#BAE6FD] text-slate-950 scale-105'
-                          : 'bg-[#222824] text-slate-300 hover:bg-[#2C342F]'
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
                       }`}
                     >
                       {mins === 30 ? '30m' : `${mins / 60}h`}
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Horizonte Autônomo de Eventos (Cache Offline)
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {([2, 3, 5, 7] as const).map((days) => (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() => onUpdateConfig({ horizonDays: days })}
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        config.horizonDays === days
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
+                      }`}
+                    >
+                      {days}d
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* SEÇÃO 3: INTELIGÊNCIA DE CLIMA & GATILHOS */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                3. Inteligência de Clima e Gatilhos
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Busca Periódica de Clima (Telefone)
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Detecta mudança de temperatura ou condição climática (chuva, tempestade) e envia ao relógio
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.phoneWeatherAutoCheckEnabled ?? true}
+                  ariaLabel="Busca Periódica de Clima (Telefone)"
+                  onChange={() =>
+                    onUpdateConfig({
+                      phoneWeatherAutoCheckEnabled: !(
+                        config.phoneWeatherAutoCheckEnabled ?? true
+                      ),
+                    })
+                  }
+                />
+              </div>
+
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Intervalo de Busca Automática de Clima
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {([30, 60, 120, 180] as const).map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({
+                          phoneWeatherCheckIntervalMinutes: mins,
+                        })
+                      }
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.phoneWeatherCheckIntervalMinutes ?? 60) === mins
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
+                      }`}
+                    >
+                      {mins === 30 ? '30m' : `${mins / 60}h`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2.5 pt-2.5 border-t border-[#232925]">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-bold text-slate-100">
+                      Gatilho por Apps de Clima Instalados
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Atualiza o clima quando um app da categoria de clima enviar notificação
+                    </div>
+                  </div>
+                  <ModernOneUiSwitch
+                    checked={notificationsSyncEnabled}
+                    ariaLabel="Gatilho por Apps de Clima Instalados"
+                    onChange={() => setNotificationsSyncEnabled((v) => !v)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsWeatherAppsDialogOpen(true)}
+                  className="w-full py-2.5 px-4 rounded-2xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-white flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <CloudRain className="w-4 h-4 text-sky-400" />
+                  <span>
+                    Apps de Clima por Categoria ({selectedWeatherApps.length} selecionados)
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Clima Stand-Alone no Relógio (1 em 1h)
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Opcional: próprio relógio busca o clima de hora em hora via Wi-Fi/LTE
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.watchStandaloneWeatherEnabled ?? false}
+                  ariaLabel="Clima Stand-Alone no Relógio"
+                  onChange={() =>
+                    onUpdateConfig({
+                      watchStandaloneWeatherEnabled: !(
+                        config.watchStandaloneWeatherEnabled ?? false
+                      ),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* SEÇÃO 4: NASCER E PÔR DO SOL (LOCALIZAÇÃO) */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                4. Nascer e Pôr do Sol (Localização)
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Sincronizar Sol pelo Smartphone (GPS)
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Calcula nascer ({config.solarSunriseHHMM ?? '05:27'}) e pôr do sol ({config.solarSunsetHHMM ?? '17:40'}) pela localização do telefone
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.phoneSolarAutoSyncEnabled ?? true}
+                  ariaLabel="Sincronizar Sol pelo Smartphone"
+                  onChange={() =>
+                    onUpdateConfig({
+                      phoneSolarAutoSyncEnabled: !(
+                        config.phoneSolarAutoSyncEnabled ?? true
+                      ),
+                    })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Sol Stand-Alone no Relógio
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Permite ao relógio calcular a curva solar autonomamente quando desconectado
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.watchStandaloneSolarEnabled ?? false}
+                  ariaLabel="Sol Stand-Alone no Relógio"
+                  onChange={() =>
+                    onUpdateConfig({
+                      watchStandaloneSolarEnabled: !(
+                        config.watchStandaloneSolarEnabled ?? false
+                      ),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* SEÇÃO 5: SERVIÇO EM SEGUNDO PLANO */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-2.5 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                5. Serviço em Segundo Plano
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Acesso a Notificações Ativo
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Permite detectar gatilhos dos apps de clima selecionados
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={bgServiceEnabled}
+                  ariaLabel="Acesso a Notificações Ativo"
+                  onChange={() => setBgServiceEnabled((v) => !v)}
+                />
               </div>
             </div>
           </div>
@@ -728,28 +785,19 @@ export const SmartphoneCompanionSimulator: React.FC<
             key="tab-about"
             className="space-y-4 flex-1 transition-all duration-300 ease-out"
           >
-            <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-3 text-xs text-slate-300 leading-relaxed shadow-lg">
+            <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-2.5 text-xs text-slate-300 leading-relaxed shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
               <div className="text-sm font-bold text-white">
-                3 Gatilhos Inteligentes de Clima para o Canvas (v1.1.1)
+                ChronoWear Sync v1.1.2 — Recursos da Janela Canvas
               </div>
               <p>
-                • <strong>1. Busca Periódica pelo Nosso App (Telefone)</strong>:
-                Mesmo que nenhum app externo envie notificação, o próprio ChronoWear
-                busca o clima de hora em hora (ou no intervalo configurado) e,
-                se detectar mudança relevante de temperatura nas próximas horas,
-                notifica o relógio para mudar dinamicamente o Canvas.
+                • <strong>Tipografia de Alto DPI no Relógio</strong>: Textos, horários e curvas ampliados no bitmap 604×272px para leitura imediata em Agenda, Clima, Passos e Sol.
               </p>
               <p>
-                • <strong>2. Trigger por App de Clima Escolhido</strong>: Você
-                escolhe em Settings quais apps de clima (App Google, Google Weather,
-                App Clima Samsung, Climatempo, AccuWeather, The Weather Channel,
-                Windy) disparam a atualização imediata e enviam o contexto ao relógio.
+                • <strong>Clima por Temperatura e Condição Climática</strong>: Cabeçalho limpo (&quot;Clima&quot;) e detecção automática de chuva, tempestade, garoa ou mudança brusca de temperatura.
               </p>
               <p>
-                • <strong>3. Serviço Stand-Alone no Relógio (1h em 1h)</strong>:
-                Opcional e configurável caso o usuário queira que o próprio
-                relógio busque sozinho o clima de hora em hora.
+                • <strong>Novo Contexto Nascer e Pôr do Sol</strong>: Curva astronômica com gradiente crepuscular, linha do horizonte e posição solar sincronizada pelo telefone ou Stand-Alone no relógio.
               </p>
             </div>
 
@@ -778,7 +826,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </select>
                 <button
                   type="submit"
-                  className="px-3 py-1.5 rounded-xl bg-[#BAE6FD] text-slate-950 font-bold text-xs flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-[#22C55E] text-[#052E16] font-bold text-xs flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Criar</span>
@@ -815,7 +863,6 @@ export const SmartphoneCompanionSimulator: React.FC<
 
       {/* ================================================================= */}
       {/* RODAPÉ FLUTUANTE EM PÍLULA IDÊNTICO AO SAMSUNG HEALTH             */}
-      {/* Mantém APENAS as 3 opções: Início, Settings, About (sem relógio)  */}
       {/* ================================================================= */}
       <div className="absolute bottom-4 left-0 right-0 px-5 pointer-events-none z-10">
         <nav
@@ -833,8 +880,8 @@ export const SmartphoneCompanionSimulator: React.FC<
           {(
             [
               { id: 'home', label: 'Início', Icon: Home },
-              { id: 'settings', label: 'Settings', Icon: Settings, dot: true },
-              { id: 'about', label: 'About', Icon: Info },
+              { id: 'settings', label: 'Configurações', Icon: Settings, dot: true },
+              { id: 'about', label: 'Sobre', Icon: Info },
             ] as const
           ).map((item) => {
             const isActive = activeTab === item.id;
@@ -872,13 +919,13 @@ export const SmartphoneCompanionSimulator: React.FC<
         </nav>
       </div>
 
-      {/* Modal Nativo Multi-Escolha "Synced calendars" */}
+      {/* Modal Multi-Escolha "Synced calendars" */}
       {isSyncedCalendarsDialogOpen && (
         <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-5 z-20 transition-opacity duration-200">
           <div className="w-full max-w-sm rounded-[28px] bg-[#1A201C] border border-[#344038] p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white">
-                Synced calendars
+                Calendários Sincronizados
               </h3>
               <button
                 type="button"
@@ -918,8 +965,8 @@ export const SmartphoneCompanionSimulator: React.FC<
                   <div
                     className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
                       cal.enabled
-                        ? 'bg-[#BAE6FD] text-slate-950'
-                        : 'border border-slate-600'
+                        ? 'bg-[#22C55E] text-[#052E16]'
+                        : 'border border-slate-500'
                     }`}
                   >
                     {cal.enabled && <Check className="w-3.5 h-3.5 stroke-[3]" />}
@@ -935,7 +982,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                   setIsSyncedCalendarsDialogOpen(false);
                   onTriggerManualSync();
                 }}
-                className="px-5 py-2 rounded-full bg-[#BAE6FD] text-slate-950 font-bold text-xs active:scale-95 transition-transform cursor-pointer"
+                className="px-5 py-2 rounded-full bg-[#22C55E] text-[#052E16] font-bold text-xs active:scale-95 transition-transform cursor-pointer"
               >
                 Salvar
               </button>
@@ -944,17 +991,17 @@ export const SmartphoneCompanionSimulator: React.FC<
         </div>
       )}
 
-      {/* Modal Nativo Multi-Escolha "Apps de Clima (Trigger de Notificação)" */}
+      {/* Modal Multi-Escolha "Apps de Clima Instalados por Categoria" */}
       {isWeatherAppsDialogOpen && (
         <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-5 z-20 transition-opacity duration-200">
           <div className="w-full max-w-sm rounded-[28px] bg-[#1A201C] border border-[#344038] p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-white">
-                  Apps de Clima (Trigger)
+                  Apps de Clima por Categoria
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Escolha quais apps da categoria de clima disparam a atualização do Canvas
+                  Apps verificados no telefone e agrupados por área de clima para disparar o Canvas
                 </p>
               </div>
               <button
@@ -967,54 +1014,83 @@ export const SmartphoneCompanionSimulator: React.FC<
               </button>
             </div>
 
-            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-              {WEATHER_TRIGGER_CATALOG.map((app) => {
-                const isSelected = selectedWeatherApps.includes(
-                  app.packageName
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+              {weatherCategories.map((category) => {
+                const appsInCat = WEATHER_TRIGGER_CATALOG.filter(
+                  (a) => a.categoryName === category
                 );
                 return (
-                  <button
-                    key={app.packageName}
-                    type="button"
-                    onClick={() => handleToggleWeatherTriggerApp(app.packageName)}
-                    className={`w-full flex items-center justify-between gap-3 p-2.5 rounded-2xl border text-left transition-all duration-150 cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#26322B] border-[#4A6353]'
-                        : 'bg-[#141815] border-[#242B26] opacity-70'
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-white truncate">
-                        {app.displayName}
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate">
-                        {app.categorySubtitle}
-                      </div>
+                  <div key={category} className="space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 px-1">
+                      {category}
                     </div>
-                    <div
-                      className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
-                        isSelected
-                          ? 'bg-[#BAE6FD] text-slate-950'
-                          : 'border border-slate-600'
-                      }`}
-                    >
-                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </div>
-                  </button>
+                    {appsInCat.map((appItem) => {
+                      const isChecked = selectedWeatherApps.includes(
+                        appItem.packageName
+                      );
+                      return (
+                        <button
+                          key={appItem.packageName}
+                          type="button"
+                          onClick={() =>
+                            handleToggleWeatherTriggerApp(appItem.packageName)
+                          }
+                          className={`w-full flex items-center justify-between gap-3 p-2.5 rounded-2xl border text-left transition-all duration-150 cursor-pointer ${
+                            isChecked
+                              ? 'bg-[#26322B] border-[#4A6353]'
+                              : 'bg-[#141815] border-[#242B26] opacity-75'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-white truncate">
+                                {appItem.displayName}
+                              </span>
+                              <span
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${
+                                  appItem.isInstalledOnDevice
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-slate-800 text-slate-400'
+                                }`}
+                              >
+                                {appItem.isInstalledOnDevice
+                                  ? 'Instalado'
+                                  : 'Catálogo'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] font-mono text-slate-400 truncate">
+                              {appItem.packageName}
+                            </div>
+                          </div>
+                          <div
+                            className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                              isChecked
+                                ? 'bg-[#22C55E] text-[#052E16]'
+                                : 'border border-slate-500'
+                            }`}
+                          >
+                            {isChecked && (
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </div>
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => {
                   setIsWeatherAppsDialogOpen(false);
                   onTriggerManualSync();
                 }}
-                className="px-5 py-2 rounded-full bg-[#BAE6FD] text-slate-950 font-bold text-xs active:scale-95 transition-transform cursor-pointer"
+                className="px-5 py-2 rounded-full bg-[#22C55E] text-[#052E16] font-bold text-xs active:scale-95 transition-transform cursor-pointer"
               >
-                Salvar Apps Trigger
+                Salvar Triggers
               </button>
             </div>
           </div>
@@ -1023,4 +1099,3 @@ export const SmartphoneCompanionSimulator: React.FC<
     </div>
   );
 };
-

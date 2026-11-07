@@ -123,6 +123,10 @@ export default function App() {
       'br.com.climatempo.meteorologia',
     ],
     watchStandaloneWeatherEnabled: false,
+    phoneSolarAutoSyncEnabled: true,
+    watchStandaloneSolarEnabled: false,
+    solarSunriseHHMM: '05:27',
+    solarSunsetHHMM: '17:40',
   });
 
   // Watch clock can be fast-forwarded to test autonomous offline behavior

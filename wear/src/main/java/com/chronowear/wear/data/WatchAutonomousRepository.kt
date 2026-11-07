@@ -6,9 +6,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 data class CachedWearEvent(
     val id: String,
@@ -40,6 +42,7 @@ data class CachedWearEvent(
 data class HourlyWeatherSnapshot(
     val alertSource: String,
     val alertHeadline: String,
+    val weatherConditionLabel: String,
     val hourlyLabels: List<String>,
     val hourlyTempsC: List<Int>,
     val rainProbabilityPct: Int,
@@ -51,6 +54,14 @@ data class WeeklyStepsSnapshot(
     val dailyGoal: Int,
     val weekDaysLabels: List<String>,
     val weekDaysSteps: List<Int>
+)
+
+data class SolarSnapshot(
+    val sunriseHHMM: String,
+    val sunsetHHMM: String,
+    val currentMinutesOfDay: Int,
+    val sunriseMinutesOfDay: Int,
+    val sunsetMinutesOfDay: Int
 )
 
 class WatchAutonomousRepository private constructor(context: Context) :
@@ -93,12 +104,16 @@ class WatchAutonomousRepository private constructor(context: Context) :
         weatherTempsCsv: String? = null,
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
+        weatherConditionLabel: String? = null,
         weatherAlertSource: String? = null,
         weatherAlertHeadline: String? = null,
         weatherAlertTimestampMs: Long? = null,
         watchStandaloneWeatherEnabled: Boolean? = null,
         watchStandaloneWeatherIntervalMin: Int? = null,
-        selectedWeatherTriggerPackagesCsv: String? = null
+        selectedWeatherTriggerPackagesCsv: String? = null,
+        solarSunriseHHMM: String? = null,
+        solarSunsetHHMM: String? = null,
+        watchStandaloneSolarEnabled: Boolean? = null
     ) {
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
@@ -126,7 +141,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!selectedWeatherTriggerPackagesCsv.isNullOrBlank()) {
             editor.putString("selected_weather_trigger_packages_csv", selectedWeatherTriggerPackagesCsv)
         }
-        // Salva a previsão horária real buscada pelo telefone
         if (!weatherTempsCsv.isNullOrBlank()) {
             editor.putString("weather_temps_csv", weatherTempsCsv)
         }
@@ -135,6 +149,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (weatherRainProb != null) {
             editor.putInt("weather_rain_prob", weatherRainProb.coerceIn(0, 100))
+        }
+        if (!weatherConditionLabel.isNullOrBlank()) {
+            editor.putString("weather_condition_label", weatherConditionLabel)
         }
         if (!weatherAlertSource.isNullOrBlank()) {
             editor.putString("weather_alert_source", weatherAlertSource)
@@ -148,7 +165,16 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 editor.putLong("weather_alert_timestamp_ms", weatherAlertTimestampMs)
             }
         }
-        editor.apply()
+        if (!solarSunriseHHMM.isNullOrBlank()) {
+            editor.putString("solar_sunrise_hhmm", solarSunriseHHMM)
+        }
+        if (!solarSunsetHHMM.isNullOrBlank()) {
+            editor.putString("solar_sunset_hhmm", solarSunsetHHMM)
+        }
+        if (watchStandaloneSolarEnabled != null) {
+            editor.putBoolean("watch_standalone_solar_enabled", watchStandaloneSolarEnabled)
+        }
+        editor.commit()
 
         val arr = JSONArray(eventsJson)
         val db = writableDatabase
@@ -184,7 +210,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun setContextWindowMode(mode: String) {
-        prefs.edit().putString("context_window_mode", mode).apply()
+        prefs.edit().putString("context_window_mode", mode).commit()
     }
 
     fun isHighFreq15MinRuleEnabled(): Boolean {
@@ -192,7 +218,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun setHighFreq15MinRuleEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("high_freq_15min_rule", enabled).apply()
+        prefs.edit().putBoolean("high_freq_15min_rule", enabled).commit()
     }
 
     fun isUpdateOnScreenWakeEnabled(): Boolean {
@@ -200,19 +226,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun setUpdateOnScreenWakeEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("update_on_screen_wake", enabled).apply()
+        prefs.edit().putBoolean("update_on_screen_wake", enabled).commit()
     }
 
-    /**
-     * Serviço Stand-Alone de Clima no Relógio (opcional, desligado por padrão caso o usuário
-     * não queira que o relógio busque sozinho de hora em hora).
-     */
     fun isWatchStandaloneWeatherEnabled(): Boolean {
         return prefs.getBoolean("watch_standalone_weather_enabled", false)
     }
 
     fun setWatchStandaloneWeatherEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("watch_standalone_weather_enabled", enabled).apply()
+        prefs.edit().putBoolean("watch_standalone_weather_enabled", enabled).commit()
     }
 
     fun getWatchStandaloneWeatherIntervalMinutes(): Int {
@@ -220,7 +242,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun setWatchStandaloneWeatherIntervalMinutes(minutes: Int) {
-        prefs.edit().putInt("watch_standalone_weather_interval_min", minutes.coerceAtLeast(15)).apply()
+        prefs.edit().putInt("watch_standalone_weather_interval_min", minutes.coerceAtLeast(15)).commit()
     }
 
     fun getLastStandaloneWeatherFetchMs(): Long {
@@ -231,10 +253,44 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit().putLong("watch_standalone_last_fetch_ms", timestampMs).apply()
     }
 
-    /**
-     * Lista de pacotes de aplicativos de clima de terceiros escolhidos pelo usuário
-     * para servir como Trigger de Notificação.
-     */
+    fun isWatchStandaloneSolarEnabled(): Boolean {
+        return prefs.getBoolean("watch_standalone_solar_enabled", false)
+    }
+
+    fun setWatchStandaloneSolarEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("watch_standalone_solar_enabled", enabled).commit()
+    }
+
+    fun saveSolarTimes(sunriseHHMM: String, sunsetHHMM: String) {
+        prefs.edit()
+            .putString("solar_sunrise_hhmm", sunriseHHMM)
+            .putString("solar_sunset_hhmm", sunsetHHMM)
+            .apply()
+    }
+
+    fun getSolarSnapshot(nowMs: Long): SolarSnapshot {
+        val riseStr = prefs.getString("solar_sunrise_hhmm", "05:27") ?: "05:27"
+        val setStr = prefs.getString("solar_sunset_hhmm", "17:40") ?: "17:40"
+
+        fun parseHHMMToMins(hhmm: String, defaultMins: Int): Int {
+            val parts = hhmm.split(":")
+            if (parts.size != 2) return defaultMins
+            val h = parts[0].trim().toIntOrNull() ?: return defaultMins
+            val m = parts[1].trim().toIntOrNull() ?: return defaultMins
+            return (h * 60 + m).coerceIn(0, 1439)
+        }
+
+        val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
+        val curMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        return SolarSnapshot(
+            sunriseHHMM = riseStr,
+            sunsetHHMM = setStr,
+            currentMinutesOfDay = curMins,
+            sunriseMinutesOfDay = parseHHMMToMins(riseStr, 5 * 60 + 27),
+            sunsetMinutesOfDay = parseHHMMToMins(setStr, 17 * 60 + 40)
+        )
+    }
+
     fun getSelectedWeatherTriggerPackages(): Set<String> {
         val csv = prefs.getString(
             "selected_weather_trigger_packages_csv",
@@ -244,19 +300,20 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Avalia se a curva horária buscada (pelo serviço Stand-Alone do relógio) apresenta
-     * uma mudança significativa de temperatura nas próximas horas (>= 4°C ou diferença >= 3°C
-     * em relação à leitura anterior) ou alta chance de chuva (>= 55%). Se sim, aciona
-     * automaticamente o alerta dinâmico para trocar a Janela de Contexto (Canvas)!
+     * Avalia se a curva horária buscada pelo relógio apresenta mudança significativa de
+     * temperatura OU mudança climática (chuva, garoa, tempestade, neblina).
      */
     fun saveStandaloneWeatherAndDetectShift(
         pickedTemps: List<Int>,
         pickedLabels: List<String>,
         maxRainProbPct: Int,
+        weatherConditionLabel: String = "Céu limpo",
+        conditionShiftDetected: Boolean = false,
         nowMs: Long = System.currentTimeMillis()
     ): Boolean {
         val prevTempsStr = prefs.getString("weather_temps_csv", "") ?: ""
         val prevFirstTemp = prevTempsStr.split(",").firstOrNull()?.trim()?.toIntOrNull()
+        val prevCondition = prefs.getString("weather_condition_label", "") ?: ""
 
         val tempsCsv = pickedTemps.joinToString(",")
         val hoursCsv = pickedLabels.joinToString(",")
@@ -266,30 +323,35 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val firstT = pickedTemps.firstOrNull() ?: 22
         val lastT = pickedTemps.lastOrNull() ?: firstT
 
-        val shiftAcrossHours = (maxT - minT) >= 4
-        val shiftFromPreviousFetch = prevFirstTemp != null && kotlin.math.abs(firstT - prevFirstTemp) >= 3
-        val rainAlert = maxRainProbPct >= 55
+        val shiftAcrossHours = (maxT - minT) >= 3
+        val shiftFromPreviousFetch = prevFirstTemp != null && abs(firstT - prevFirstTemp) >= 2
+        val rainAlert = maxRainProbPct >= 45
+        val weatherConditionChanged = conditionShiftDetected ||
+            (prevCondition.isNotBlank() && !prevCondition.equals(weatherConditionLabel, ignoreCase = true))
 
-        val shiftDetected = shiftAcrossHours || shiftFromPreviousFetch || rainAlert
+        val shiftDetected = shiftAcrossHours || shiftFromPreviousFetch || rainAlert || weatherConditionChanged
 
         val editor = prefs.edit()
             .putString("weather_temps_csv", tempsCsv)
             .putString("weather_hours_csv", hoursCsv)
             .putInt("weather_rain_prob", maxRainProbPct.coerceIn(0, 100))
+            .putString("weather_condition_label", weatherConditionLabel)
             .putLong("watch_standalone_last_fetch_ms", nowMs)
 
         if (shiftDetected) {
             val headline = when {
                 rainAlert && shiftAcrossHours ->
-                    "Relógio 1h • Mudança ${firstT}°→${lastT}° (Chuva ${maxRainProbPct}%)"
-                shiftAcrossHours ->
-                    "Relógio 1h • Variação ${firstT}°→${lastT}° nas próx. horas"
+                    "$weatherConditionLabel (${maxRainProbPct}%) • ${firstT}° → ${lastT}°C"
+                weatherConditionChanged ->
+                    "$weatherConditionLabel • ${firstT}° → ${lastT}°C (Chuva ${maxRainProbPct}%)"
                 rainAlert ->
-                    "Relógio 1h • Previsão de chuva (${maxRainProbPct}%)"
+                    "Previsão de $weatherConditionLabel (${maxRainProbPct}%)"
+                shiftAcrossHours ->
+                    "$weatherConditionLabel • Variação ${firstT}° → ${lastT}°C"
                 else ->
-                    "Relógio 1h • Mudança térmica p/ ${firstT}°C"
+                    "$weatherConditionLabel • Temperatura ${firstT}°C"
             }
-            editor.putString("weather_alert_source", "Relógio Stand-Alone")
+            editor.putString("weather_alert_source", "Clima")
             editor.putString("weather_alert_headline", headline)
             editor.putLong("weather_alert_timestamp_ms", nowMs)
         }
@@ -297,12 +359,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return shiftDetected
     }
 
-    /**
-     * Registra uma notificação de Clima observada (vinda de um App de terceiro escolhido pelo usuário),
-     * mantendo a curva horária de temperaturas que foi buscada pelo telefone ou pelo relógio!
-     */
     fun recordWatchWeatherNotificationAlert(
-        sourceAppLabel: String = "App Clima",
+        sourceAppLabel: String = "Clima",
         headline: String,
         tempsCsv: String? = null,
         hoursCsv: String? = null,
@@ -333,21 +391,23 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun getHourlyWeatherSnapshot(nowMs: Long): HourlyWeatherSnapshot {
-        val source = prefs.getString("weather_alert_source", "Previsão do Telefone") ?: "Previsão do Telefone"
-        val headline = prefs.getString("weather_alert_headline", "Previsão horária sincronizada pelo telefone")
-            ?: "Previsão horária sincronizada pelo telefone"
-        val tempsStr = prefs.getString("weather_temps_csv", "29,27,24,23,25") ?: "29,27,24,23,25"
-        val hoursStr = prefs.getString("weather_hours_csv", "Agora,16h,18h,20h,22h") ?: "Agora,16h,18h,20h,22h"
-        val rainProb = prefs.getInt("weather_rain_prob", 65)
+        val source = prefs.getString("weather_alert_source", "Clima") ?: "Clima"
+        val headline = prefs.getString("weather_alert_headline", "Previsão para as próximas horas")
+            ?: "Previsão para as próximas horas"
+        val conditionLabel = prefs.getString("weather_condition_label", "Céu limpo") ?: "Céu limpo"
+        val tempsStr = prefs.getString("weather_temps_csv", "28,28,27,27,27") ?: "28,28,27,27,27"
+        val hoursStr = prefs.getString("weather_hours_csv", "Agora,23h,01h,03h,05h") ?: "Agora,23h,01h,03h,05h"
+        val rainProb = prefs.getInt("weather_rain_prob", 20)
 
         val temps = tempsStr.split(",").mapNotNull { it.trim().toIntOrNull() }
-            .ifEmpty { listOf(29, 27, 24, 23, 25) }
+            .ifEmpty { listOf(28, 28, 27, 27, 27) }
         val labels = hoursStr.split(",").map { it.trim() }
-            .ifEmpty { listOf("Agora", "16h", "18h", "20h", "22h") }
+            .ifEmpty { listOf("Agora", "23h", "01h", "03h", "05h") }
 
         return HourlyWeatherSnapshot(
             alertSource = source,
             alertHeadline = headline,
+            weatherConditionLabel = conditionLabel,
             hourlyLabels = labels,
             hourlyTempsC = temps,
             rainProbabilityPct = rainProb,
@@ -356,12 +416,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun getWeeklyStepsSnapshot(): WeeklyStepsSnapshot {
-        val today = prefs.getInt("steps_today", 7840)
+        val today = prefs.getInt("steps_today", 9567)
         val goal = prefs.getInt("steps_goal", 10000)
-        val csv = prefs.getString("steps_week_csv", "6400,8200,7100,9500,7840,5300,4900")
-            ?: "6400,8200,7100,9500,7840,5300,4900"
+        val csv = prefs.getString("steps_week_csv", "6400,8200,7100,9500,9567,5300,4900")
+            ?: "6400,8200,7100,9500,9567,5300,4900"
         val stepsList = csv.split(",").mapNotNull { it.trim().toIntOrNull() }
-            .ifEmpty { listOf(6400, 8200, 7100, 9500, 7840, 5300, 4900) }
+            .ifEmpty { listOf(6400, 8200, 7100, 9500, 9567, 5300, 4900) }
         return WeeklyStepsSnapshot(
             todaySteps = today,
             dailyGoal = goal,
@@ -372,11 +432,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     /**
      * Resolve qual contexto deve ser desenhado no Canvas agora:
-     * - Se o usuário fixou EVENTS, WEATHER ou STEPS, respeita a escolha.
-     * - Se escolheu DYNAMIC:
+     * - Se o usuário fixou EVENTS, WEATHER, STEPS ou SUN, respeita a escolha.
+     * - Se escolheu DYNAMIC (Auto):
      *   1. Faltando <= 15 min para um compromisso -> prioriza EVENTS (com atualização a cada 1 min!)
-     *   2. Se o relógio recebeu uma notificação recente de Mudança Climática -> exibe WEATHER temporariamente!
-     *   3. Caso contrário -> exibe EVENTS (ou WEATHER se a agenda estiver vazia).
+     *   2. Se houve mudança climática / chuva / notificação de clima -> exibe WEATHER!
+     *   3. Se estiver próximo ao Nascer ou Pôr do Sol (±25 min) -> exibe SUN (Nascer e Pôr do Sol)!
+     *   4. Caso contrário -> exibe EVENTS (ou WEATHER se a agenda estiver vazia).
      */
     fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
         val configured = getContextWindowMode()
@@ -390,13 +451,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (hasActiveWeatherNotificationOverride(nowMs)) {
             return MODE_WEATHER
         }
+        val solar = getSolarSnapshot(nowMs)
+        val nearSunrise = abs(solar.currentMinutesOfDay - solar.sunriseMinutesOfDay) <= 25
+        val nearSunset = abs(solar.currentMinutesOfDay - solar.sunsetMinutesOfDay) <= 25
+        if (nearSunrise || nearSunset) {
+            return MODE_SUN
+        }
         return if (upcomingThree.isNotEmpty()) MODE_EVENTS else MODE_WEATHER
     }
 
-    /**
-     * Retorna sempre os próximos 3 eventos que ainda vão começar a partir de `nowMs`,
-     * funcionando de forma 100% autônoma no relógio mesmo após dias sem Bluetooth.
-     */
     fun getNextThreeUpcomingEvents(nowMs: Long): List<CachedWearEvent> {
         val list = mutableListOf<CachedWearEvent>()
         val db = readableDatabase
@@ -443,6 +506,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val MODE_EVENTS = "EVENTS"
         const val MODE_WEATHER = "WEATHER"
         const val MODE_STEPS = "STEPS"
+        const val MODE_SUN = "SUN"
 
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"

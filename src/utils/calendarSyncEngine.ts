@@ -20,49 +20,65 @@ export type SyncHorizonDays = 2 | 3 | 5 | 7;
 export type ProgressWindowMinutes = 30 | 60 | 120 | 180;
 export type SyncIntervalMinutes = 15 | 30 | 60;
 export type PhoneWeatherCheckIntervalMinutes = 30 | 60 | 120 | 180;
-export type ContextWindowMode = 'DYNAMIC' | 'EVENTS' | 'WEATHER' | 'STEPS';
+export type ContextWindowMode = 'DYNAMIC' | 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN';
 
 export interface WeatherTriggerAppItem {
   packageName: string;
   displayName: string;
+  categoryName: string;
   categorySubtitle: string;
+  isInstalledOnDevice: boolean;
 }
 
 export const WEATHER_TRIGGER_CATALOG: WeatherTriggerAppItem[] = [
   {
     packageName: 'com.google.android.googlequicksearchbox',
     displayName: 'App Google',
-    categorySubtitle: 'Alertas de Clima e Previsão do Google',
+    categoryName: 'Provedores do Sistema',
+    categorySubtitle: 'Alertas meteorológicos e de chuva do Google',
+    isInstalledOnDevice: true,
   },
   {
     packageName: 'com.google.android.apps.weather',
     displayName: 'Google Weather',
-    categorySubtitle: 'App Clima oficial do Google / Pixel / Wear',
+    categoryName: 'Provedores do Sistema',
+    categorySubtitle: 'App dedicado de Clima do Google / Wear OS',
+    isInstalledOnDevice: true,
   },
   {
     packageName: 'com.sec.android.daemonapp',
-    displayName: 'App Clima (Samsung)',
-    categorySubtitle: 'Clima nativo One UI / Galaxy Watch',
+    displayName: 'Samsung Clima (One UI Weather)',
+    categoryName: 'Provedores do Sistema',
+    categorySubtitle: 'Provedor oficial de Clima da Samsung',
+    isInstalledOnDevice: true,
   },
   {
     packageName: 'br.com.climatempo.meteorologia',
     displayName: 'Climatempo',
-    categorySubtitle: 'Previsão do Tempo e Alertas de Chuva',
+    categoryName: 'Clima e Meteorologia',
+    categorySubtitle: 'Previsão do tempo, chuva e frente fria',
+    isInstalledOnDevice: true,
   },
   {
     packageName: 'com.accuweather.android',
     displayName: 'AccuWeather',
-    categorySubtitle: 'Alertas Meteorológicos e Radar',
+    categoryName: 'Clima e Meteorologia',
+    categorySubtitle: 'Alertas de precipitação e variação térmica',
+    isInstalledOnDevice: false,
   },
   {
     packageName: 'com.weather.Weather',
     displayName: 'The Weather Channel',
-    categorySubtitle: 'Radar e Mudanças Bruscas de Clima',
+    categoryName: 'Clima e Meteorologia',
+    categorySubtitle: 'Notificações de mudança brusca de clima',
+    isInstalledOnDevice: false,
   },
   {
     packageName: 'com.windyty.android',
-    displayName: 'Windy',
-    categorySubtitle: 'Mapas de Vento, Frente Fria e Tempestade',
+    displayName: 'Windy.com',
+    categoryName: 'Clima e Radar',
+    categorySubtitle: 'Mapas de vento, frente fria e tempestade',
+    isInstalledOnDevice: true,
   },
 ];
 
@@ -78,6 +94,10 @@ export interface SyncConfiguration {
   phoneWeatherCheckIntervalMinutes?: PhoneWeatherCheckIntervalMinutes;
   selectedWeatherTriggerApps?: string[];
   watchStandaloneWeatherEnabled?: boolean;
+  phoneSolarAutoSyncEnabled?: boolean;
+  watchStandaloneSolarEnabled?: boolean;
+  solarSunriseHHMM?: string;
+  solarSunsetHHMM?: string;
 }
 
 export interface WatchCacheState {
@@ -91,6 +111,7 @@ export interface WatchCacheState {
   updateOnScreenWake?: boolean;
   hasActiveWatchWeatherAlert?: boolean;
   watchStandaloneWeatherEnabled?: boolean;
+  watchStandaloneSolarEnabled?: boolean;
 }
 
 export interface ComplicationProgressState {
@@ -103,7 +124,7 @@ export interface ComplicationProgressState {
   progressRatio: number; // 0.0 to 1.0
   isWithinProgressWindow: boolean;
   isWithinTurbo15MinWindow: boolean;
-  effectiveContextMode: 'EVENTS' | 'WEATHER' | 'STEPS';
+  effectiveContextMode: 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN';
   isOngoing: boolean;
   autonomousCacheValidUntilMs: number;
   isOperatingAutonomously: boolean;
@@ -111,12 +132,13 @@ export interface ComplicationProgressState {
 
 /**
  * Avalia se a previsão horária buscada periodicamente pelo nosso App (no telefone ou no serviço
- * Stand-Alone do relógio) apresenta mudança relevante de temperatura ou chuva nas próximas horas.
+ * Stand-Alone do relógio) apresenta mudança relevante de temperatura, chuva ou condição climática.
  */
 export function detectHourlyWeatherShift(
   temps: number[],
   rainProbPct: number,
-  previousFirstTemp?: number | null
+  previousFirstTemp?: number | null,
+  conditionChanged?: boolean
 ): { hasShift: boolean; summary: string } {
   if (temps.length < 2) {
     return { hasShift: false, summary: 'Estável' };
@@ -125,12 +147,17 @@ export function detectHourlyWeatherShift(
   const lastT = temps[temps.length - 1];
   const minT = Math.min(...temps);
   const maxT = Math.max(...temps);
-  const swingInUpcomingHours = maxT - minT >= 4;
+  const swingInUpcomingHours = maxT - minT >= 3;
   const deltaFromPreviousCheck =
-    previousFirstTemp != null && Math.abs(firstT - previousFirstTemp) >= 3;
-  const highRain = rainProbPct >= 55;
+    previousFirstTemp != null && Math.abs(firstT - previousFirstTemp) >= 2;
+  const highRain = rainProbPct >= 45;
 
-  const hasShift = swingInUpcomingHours || deltaFromPreviousCheck || highRain;
+  const hasShift =
+    swingInUpcomingHours ||
+    deltaFromPreviousCheck ||
+    highRain ||
+    Boolean(conditionChanged);
+
   const summary =
     lastT < firstT
       ? `Queda ${firstT}°→${minT}°C (${rainProbPct}% chuva)`
@@ -146,7 +173,7 @@ export function resolveEffectiveWatchContextMode(
   hasUpcomingEvent: boolean,
   remainingMs: number,
   hasActiveWatchWeatherAlert: boolean
-): 'EVENTS' | 'WEATHER' | 'STEPS' {
+): 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN' {
   if (configuredMode !== 'DYNAMIC') {
     return configuredMode;
   }
@@ -160,10 +187,6 @@ export function resolveEffectiveWatchContextMode(
   return hasUpcomingEvent ? 'EVENTS' : 'WEATHER';
 }
 
-/**
- * Filters phone events according to enabled calendars and the configured horizon window
- * starting from `syncTimeMs` up to `syncTimeMs + horizonDays * 86400_000`.
- */
 export function buildSyncPayload(
   allPhoneEvents: CalendarEventItem[],
   calendars: CalendarSource[],
@@ -178,28 +201,15 @@ export function buildSyncPayload(
   return allPhoneEvents
     .filter((ev) => {
       if (!enabledCalIds.has(ev.calendarId)) return false;
-      // Include events that haven't ended yet and start within the horizon window
       return ev.endEpochMs > syncTimeMs && ev.startEpochMs <= maxTimeMs;
     })
     .sort((a, b) => a.startEpochMs - b.startEpochMs);
 }
 
-/**
- * Evaluates the watch's local Room cache autonomously at any `currentWatchTimeMs`
- * (even when Bluetooth / Data Layer is disconnected for days).
- * Always returns the next 3 upcoming events, the countdown timer to the primary event,
- * and the RangedValue progress bar calculation based on `progressWindowMinutes` (e.g., 1h or 2h before).
- */
 export function evaluateWatchAutonomousState(
   cache: WatchCacheState,
   currentWatchTimeMs: number
 ): ComplicationProgressState {
-  // Filter cached events that are still in the future (or currently ongoing but primarily upcoming)
-  // Wait: if an event hasn't started yet (startEpochMs > currentWatchTimeMs), it's upcoming for countdown.
-  // What if an event has already started or we want upcoming events?
-  // The user states: "apresentar os próximos três eventos, sempre os próximos três eventos, em uma janela grande e geralmente, se possível em cima, o tempo restante que falta para que esse evento comece."
-  // Let's filter events whose startEpochMs > currentWatchTimeMs so countdown is always towards the next event start,
-  // or if none start in the future, check ongoing. Keeping startEpochMs > currentWatchTimeMs guarantees "próximo evento vai começar e a contagem regressiva do próximo evento".
   const futureEvents = cache.cachedEvents
     .filter((ev) => ev.startEpochMs > currentWatchTimeMs)
     .sort((a, b) => a.startEpochMs - b.startEpochMs);
@@ -241,9 +251,6 @@ export function evaluateWatchAutonomousState(
   const windowMs = cache.progressWindowMinutes * 60 * 1000;
   const fifteenMinMs = 15 * 60 * 1000;
 
-  // Progress bar calculation:
-  // If remainingMs > windowMs, progress is 0 (or minimal lead-in) and isWithinProgressWindow = false.
-  // Once remainingMs <= windowMs, progress ramps linearly from 0.0 (at windowMs before start) to 1.0 (at event start).
   let progressRatio = 0;
   let isWithinProgressWindow = false;
 
