@@ -98,6 +98,8 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchUpdateOnScreenWake: Switch
     private lateinit var switchSleepSync: Switch
     private lateinit var subtitleSleepInfo: TextView
+    private lateinit var switchTasksSync: Switch
+    private lateinit var subtitleTasksInfo: TextView
     private lateinit var switchNotifyWatchOnCanvasChange: Switch
     private lateinit var switchNotifyAgenda15Min: Switch
     private lateinit var subtitleWeatherLocationInfo: TextView
@@ -754,7 +756,7 @@ class MobileSyncConfigActivity : Activity() {
             sectionContextCard.addView(ctxLabel)
 
             val ctxSubLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Escolha um modo fixo ou Auto para alternar entre Agenda, Clima, Sol, Passos e Sono"
+                text = "Escolha um modo fixo ou Auto para alternar entre Agenda, Tarefas, Clima, Sol, Passos e Sono"
                 textSize = 12.5f
                 setTextColor(Color.parseColor("#9CA3AF"))
                 setPadding(0, 0, 0, dp(10))
@@ -1086,9 +1088,49 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionWeatherCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 5: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH)
+            // SEÇÃO 5: TAREFAS (SAMSUNG REMINDER E GOOGLE TASKS)
             // -----------------------------------------------------------------
-            val sectionSleepCard = createSectionCard("5. Monitoramento de Sono (Health Connect / Samsung Health)")
+            val sectionTasksCard = createSectionCard("5. Tarefas (Samsung Reminder e Google Tasks)")
+
+            val tasksSyncRow = createSettingToggleRow(
+                title = "Sincronizar Tarefas (Reminder e Google Tasks)",
+                subtitle = "Exibe checklist de tarefas no Canvas e prioriza o quadro quando um lembrete tocar",
+                onSubtitleCreated = { subtitleTasksInfo = it },
+                onSwitchCreated = { sw ->
+                    switchTasksSync = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setTasksSyncEnabled(isChecked)
+                        refreshUiState()
+                        syncSettingsToWatchInBackground("Sincronização de Tarefas")
+                    }
+                }
+            )
+            sectionTasksCard.addView(tasksSyncRow)
+
+            val btnSyncTasksNowPill = createOutlineActionPillButton(
+                "Sincronizar Tarefas (Reminder / Google Tasks) Agora"
+            ) {
+                prefs.setTasksSyncEnabled(true)
+                prefs.saveTasksJson(
+                    tasksJson = SyncPreferences.DEFAULT_TASKS_JSON,
+                    alertTimestampMs = System.currentTimeMillis()
+                )
+                refreshUiState()
+                syncSettingsToWatchInBackground("Tarefas Reminder/Tasks Atualizadas")
+                Toast.makeText(
+                    this@MobileSyncConfigActivity,
+                    "Quadro de Tarefas (Samsung Reminder / Google Tasks) enviado ao relógio!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            sectionTasksCard.addView(btnSyncTasksNowPill)
+            addView(sectionTasksCard)
+
+            // -----------------------------------------------------------------
+            // SEÇÃO 6: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH)
+            // -----------------------------------------------------------------
+            val sectionSleepCard = createSectionCard("6. Monitoramento de Sono (Health Connect / Samsung Health)")
 
             val sleepSyncRow = createSettingToggleRow(
                 title = "Sincronizar Dados de Sono no Canvas",
@@ -1130,9 +1172,9 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionSleepCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 6: SERVIÇO EM SEGUNDO PLANO E SISTEMA
+            // SEÇÃO 7: SERVIÇO EM SEGUNDO PLANO E SISTEMA
             // -----------------------------------------------------------------
-            val sectionSystemCard = createSectionCard("6. Serviço em Segundo Plano e Sistema")
+            val sectionSystemCard = createSectionCard("7. Serviço em Segundo Plano e Sistema")
 
             val bgServiceRow = createSettingToggleRow(
                 title = "Serviço Persistente em 2º Plano",
@@ -1551,6 +1593,7 @@ class MobileSyncConfigActivity : Activity() {
         switchNotificationsSync.isChecked = prefs.isNotificationsSyncEnabled()
         switchWatchStandaloneWeather.isChecked = prefs.isWatchStandaloneWeatherEnabled()
         switchSleepSync.isChecked = prefs.isSleepSyncEnabled()
+        switchTasksSync.isChecked = prefs.isTasksSyncEnabled()
         switchNotifyWatchOnCanvasChange.isChecked = prefs.isNotifyWatchOnCanvasChangeEnabled()
         switchNotifyAgenda15Min.isChecked = prefs.isNotifyAgenda15MinEnabled()
         switchMediaPlaybackSync.isChecked = prefs.isMediaPlaybackSyncEnabled()
@@ -1565,6 +1608,8 @@ class MobileSyncConfigActivity : Activity() {
 
         btnWeatherTriggerAppsPill.text =
             "Escolher Apps de Clima por Categoria ($selectedWeatherAppsCount selecionados)"
+
+        subtitleTasksInfo.text = prefs.getTasksSummaryLabel()
 
         val sleepDurMin = prefs.getSleepDurationMinutes()
         val sleepH = sleepDurMin / 60
@@ -1656,6 +1701,7 @@ class MobileSyncConfigActivity : Activity() {
         listOf(
             "DYNAMIC" to "Auto",
             "EVENTS" to "Agenda",
+            "TASKS" to "Tarefas",
             "WEATHER" to "Clima"
         ).forEach { (mode, label) ->
             rowContextModeChipsTop.addView(
@@ -1686,6 +1732,7 @@ class MobileSyncConfigActivity : Activity() {
         val curPrimary = prefs.getAutoPrimaryContext()
         listOf(
             "EVENTS" to "Agenda",
+            "TASKS" to "Tarefas",
             "WEATHER" to "Clima",
             "SUN" to "Sol",
             "STEPS" to "Passos",

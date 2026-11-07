@@ -121,6 +121,13 @@ class PhoneDataListenerService : WearableListenerService() {
                     dataMap.containsKey("sleep_wake_timestamp_ms") -> dataMap.getLong("sleep_wake_timestamp_ms", 0L)
                     else -> null
                 }
+                val tasksSyncEnabled = if (dataMap.containsKey("tasks_sync_enabled")) {
+                    dataMap.getBoolean("tasks_sync_enabled", true)
+                } else null
+                val tasksJson = dataMap.getString("tasks_json")
+                val tasksAlertTsMs = if (dataMap.containsKey("tasks_alert_timestamp_ms")) {
+                    dataMap.getLong("tasks_alert_timestamp_ms", 0L)
+                } else null
 
                 persistAndNotify(
                     eventsJson = eventsJson,
@@ -160,7 +167,10 @@ class PhoneDataListenerService : WearableListenerService() {
                     sleepBedtimeHHMM = sleepBedtimeHHMM,
                     sleepWakeHHMM = sleepWakeHHMM,
                     sleepStagesCsv = sleepStagesCsv,
-                    sleepWakeTimestampMs = sleepWakeTsMs
+                    sleepWakeTimestampMs = sleepWakeTsMs,
+                    tasksSyncEnabled = tasksSyncEnabled,
+                    tasksJson = tasksJson,
+                    tasksAlertTimestampMs = tasksAlertTsMs
                 )
             }
         }
@@ -270,6 +280,13 @@ class PhoneDataListenerService : WearableListenerService() {
                         json.has("sleep_wake_timestamp_ms") -> json.optLong("sleep_wake_timestamp_ms", 0L)
                         else -> null
                     }
+                    val tasksSyncEnabled = if (json.has("tasks_sync_enabled")) {
+                        json.optBoolean("tasks_sync_enabled", true)
+                    } else null
+                    val tasksJson = json.optString("tasks_json", "").takeIf { it.isNotBlank() }
+                    val tasksAlertTsMs = if (json.has("tasks_alert_timestamp_ms")) {
+                        json.optLong("tasks_alert_timestamp_ms", 0L)
+                    } else null
 
                     persistAndNotify(
                         eventsJson = eventsArray,
@@ -309,7 +326,10 @@ class PhoneDataListenerService : WearableListenerService() {
                         sleepBedtimeHHMM = sleepBedtimeHHMM,
                         sleepWakeHHMM = sleepWakeHHMM,
                         sleepStagesCsv = sleepStagesCsv,
-                        sleepWakeTimestampMs = sleepWakeTsMs
+                        sleepWakeTimestampMs = sleepWakeTsMs,
+                        tasksSyncEnabled = tasksSyncEnabled,
+                        tasksJson = tasksJson,
+                        tasksAlertTimestampMs = tasksAlertTsMs
                     )
                 } catch (_: Exception) {
                 }
@@ -355,7 +375,10 @@ class PhoneDataListenerService : WearableListenerService() {
         sleepBedtimeHHMM: String? = null,
         sleepWakeHHMM: String? = null,
         sleepStagesCsv: String? = null,
-        sleepWakeTimestampMs: Long? = null
+        sleepWakeTimestampMs: Long? = null,
+        tasksSyncEnabled: Boolean? = null,
+        tasksJson: String? = null,
+        tasksAlertTimestampMs: Long? = null
     ) {
         serviceScope.launch {
             val repo = WatchAutonomousRepository.getInstance(applicationContext)
@@ -397,7 +420,10 @@ class PhoneDataListenerService : WearableListenerService() {
                 sleepBedtimeHHMM = sleepBedtimeHHMM,
                 sleepWakeHHMM = sleepWakeHHMM,
                 sleepStagesCsv = sleepStagesCsv,
-                sleepWakeTimestampMs = sleepWakeTimestampMs
+                sleepWakeTimestampMs = sleepWakeTimestampMs,
+                tasksSyncEnabled = tasksSyncEnabled,
+                tasksJson = tasksJson,
+                tasksAlertTimestampMs = tasksAlertTimestampMs
             )
 
             AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)
@@ -511,6 +537,37 @@ class WearContextNotificationListenerService : NotificationListenerService() {
         if (isSleepNotification && repo.isSleepSyncEnabled()) {
             repo.recordWatchSleepNotification(nowMs = System.currentTimeMillis())
             AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)
+            AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
+            ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
+            applicationContext.sendBroadcast(
+                Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
+                    .setPackage(applicationContext.packageName)
+            )
+            return
+        }
+
+        // 3) Captura lembretes e tarefas do Samsung Reminder ou Google Tasks diretamente no relógio
+        val isTaskReminderNotification = pkg.contains("com.samsung.android.app.reminder") ||
+            pkg.contains("reminder") ||
+            pkg.contains("com.google.android.apps.tasks") ||
+            pkg.contains("microsoft.todos")
+
+        if (isTaskReminderNotification && repo.isTasksSyncEnabled()) {
+            val sourceLabel = if (pkg.contains("reminder") || pkg.contains("samsung")) {
+                "Reminder"
+            } else {
+                "Tasks"
+            }
+            val taskTitle = title.ifBlank { text }.ifBlank { "Lembrete agendado" }
+            repo.recordWatchTaskNotification(
+                title = taskTitle,
+                sourceLabel = sourceLabel,
+                nowMs = System.currentTimeMillis()
+            )
+            AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(
+                applicationContext,
+                "$sourceLabel: $taskTitle"
+            )
             AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
             ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
             applicationContext.sendBroadcast(

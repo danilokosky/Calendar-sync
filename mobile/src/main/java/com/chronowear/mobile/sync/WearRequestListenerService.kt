@@ -69,7 +69,36 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
             )?.toString()?.trim().orEmpty()
         val combinedLower = "$title $text".lowercase()
 
-        // 1) Verifica se é um relatório de Sono (Samsung Health, Health Connect, Sleep as Android, etc.)
+        // 1) Verifica se é um lembrete de Tarefa (Samsung Reminder ou Google Tasks)
+        val isSamsungReminderPkg = pkg.contains("com.samsung.android.app.reminder") || pkg.contains("reminder")
+        val isGoogleTasksPkg = pkg.contains("com.google.android.apps.tasks") ||
+            pkg.contains("tasks") ||
+            pkg.contains("microsoft.todos")
+        if (prefs.isTasksSyncEnabled() && (isSamsungReminderPkg || isGoogleTasksPkg)) {
+            val sourceLabel = if (isSamsungReminderPkg) "Reminder" else "Tasks"
+            val taskHeadline = when {
+                title.isNotBlank() && !title.equals("Reminder", ignoreCase = true) && !title.equals("Tasks", ignoreCase = true) -> title
+                text.isNotBlank() -> text
+                else -> "Lembrete pendente"
+            }
+            val timeRegex = Regex("(\\d{2}:\\d{2})")
+            val dueHHMM = timeRegex.find("$title $text")?.groupValues?.getOrNull(1) ?: ""
+            prefs.recordObservedTaskNotification(
+                title = taskHeadline,
+                sourceLabel = sourceLabel,
+                dueHHMM = dueHHMM,
+                timestampMs = System.currentTimeMillis()
+            )
+            scope.launch {
+                CalendarSyncEngine.performFullSyncToWatch(
+                    context = applicationContext,
+                    triggerSource = "Lembrete de Tarefa ($sourceLabel)"
+                )
+            }
+            return
+        }
+
+        // 2) Verifica se é um relatório de Sono (Samsung Health, Health Connect, Sleep as Android, etc.)
         val isSleepAppPkg = pkg.contains("shealth") ||
             pkg.contains("healthdata") ||
             pkg.contains("sleep") ||
@@ -112,7 +141,7 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        // 2) Verifica se é um gatilho de Clima escolhido pelo usuário
+        // 3) Verifica se é um gatilho de Clima escolhido pelo usuário
         if (!prefs.isNotificationsSyncEnabled()) return
 
         val selectedPkgs = prefs.getSelectedWeatherTriggerPackages().map { it.lowercase() }.toSet()

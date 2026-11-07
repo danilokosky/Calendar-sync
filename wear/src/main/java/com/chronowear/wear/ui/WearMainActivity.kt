@@ -117,6 +117,7 @@ class WearMainActivity : Activity() {
         return when (mode) {
             WatchAutonomousRepository.MODE_DYNAMIC -> "Contexto: Auto (Dinâmico)"
             WatchAutonomousRepository.MODE_EVENTS -> "Contexto: Agenda"
+            WatchAutonomousRepository.MODE_TASKS -> "Contexto: Tarefas"
             WatchAutonomousRepository.MODE_WEATHER -> "Contexto: Clima"
             WatchAutonomousRepository.MODE_STEPS -> "Contexto: Passos"
             WatchAutonomousRepository.MODE_SUN -> "Contexto: Nascer/Pôr do Sol"
@@ -129,6 +130,7 @@ class WearMainActivity : Activity() {
         val order = listOf(
             WatchAutonomousRepository.MODE_DYNAMIC,
             WatchAutonomousRepository.MODE_EVENTS,
+            WatchAutonomousRepository.MODE_TASKS,
             WatchAutonomousRepository.MODE_WEATHER,
             WatchAutonomousRepository.MODE_STEPS,
             WatchAutonomousRepository.MODE_SUN,

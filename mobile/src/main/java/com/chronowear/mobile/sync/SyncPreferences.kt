@@ -231,6 +231,97 @@ class SyncPreferences(context: Context) {
         return prefs.getLong(KEY_SLEEP_WAKE_TS_MS, 0L)
     }
 
+    /**
+     * QUADRO DE TAREFAS (Samsung Reminder + Google Tasks)
+     */
+    fun isTasksSyncEnabled(): Boolean {
+        return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true)
+    }
+
+    fun setTasksSyncEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TASKS_SYNC_ENABLED, enabled).commit()
+    }
+
+    fun getTasksJson(): String {
+        val raw = prefs.getString(KEY_TASKS_JSON, "") ?: ""
+        return raw.ifBlank { DEFAULT_TASKS_JSON }
+    }
+
+    fun saveTasksJson(tasksJson: String, alertTimestampMs: Long = System.currentTimeMillis()) {
+        if (tasksJson.isNotBlank()) {
+            prefs.edit()
+                .putString(KEY_TASKS_JSON, tasksJson)
+                .putLong(KEY_TASKS_ALERT_TS_MS, alertTimestampMs)
+                .apply()
+        }
+    }
+
+    fun getTasksAlertTimestampMs(): Long {
+        return prefs.getLong(KEY_TASKS_ALERT_TS_MS, 0L)
+    }
+
+    fun recordObservedTaskNotification(
+        title: String,
+        sourceLabel: String,
+        dueHHMM: String = "",
+        timestampMs: Long = System.currentTimeMillis()
+    ) {
+        val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
+        val resolvedDue = dueHHMM.ifBlank {
+            java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(timestampMs))
+        }
+        try {
+            val existingArr = org.json.JSONArray(getTasksJson())
+            val nextArr = org.json.JSONArray()
+            nextArr.put(
+                org.json.JSONObject().apply {
+                    put("id", "task_$timestampMs")
+                    put("title", cleanTitle)
+                    put("dueHHMM", resolvedDue)
+                    put("sourceLabel", sourceLabel)
+                    put("completed", false)
+                }
+            )
+            for (i in 0 until existingArr.length()) {
+                val obj = existingArr.optJSONObject(i) ?: continue
+                if (!obj.optString("title", "").equals(cleanTitle, ignoreCase = true) && nextArr.length() < 6) {
+                    nextArr.put(obj)
+                }
+            }
+            prefs.edit()
+                .putString(KEY_TASKS_JSON, nextArr.toString())
+                .putLong(KEY_TASKS_ALERT_TS_MS, timestampMs)
+                .apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun getTasksSummaryLabel(): String {
+        return try {
+            val arr = org.json.JSONArray(getTasksJson())
+            var pending = 0
+            var firstTitle = ""
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val done = obj.optBoolean("completed", false)
+                if (!done) {
+                    pending++
+                    if (firstTitle.isBlank()) {
+                        firstTitle = obj.optString("title", "")
+                    }
+                }
+            }
+            if (firstTitle.isNotBlank()) {
+                "$pending pendente(s) • Próxima: $firstTitle"
+            } else {
+                "$pending tarefa(s) pendente(s) (Samsung Reminder / Google Tasks)"
+            }
+        } catch (_: Exception) {
+            "2 pendente(s) (Samsung Reminder / Google Tasks)"
+        }
+    }
+
     fun isHighFreq15MinRuleEnabled(): Boolean {
         return prefs.getBoolean(KEY_HIGH_FREQ_15MIN_RULE, true)
     }
@@ -538,7 +629,15 @@ class SyncPreferences(context: Context) {
         private const val KEY_SLEEP_WAKE_HHMM = "sleep_wake_hhmm"
         private const val KEY_SLEEP_STAGES_CSV = "sleep_stages_csv"
         private const val KEY_SLEEP_WAKE_TS_MS = "sleep_wake_ts_ms"
+        private const val KEY_TASKS_SYNC_ENABLED = "tasks_sync_enabled"
+        private const val KEY_TASKS_JSON = "tasks_json"
+        private const val KEY_TASKS_ALERT_TS_MS = "tasks_alert_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"
+        const val DEFAULT_TASKS_JSON = """[
+            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Reminder","completed":false},
+            {"id":"t2","title":"Pagar fatura do cartão","dueHHMM":"16:30","sourceLabel":"Tasks","completed":false},
+            {"id":"t3","title":"Comprar café em grãos","dueHHMM":"18:00","sourceLabel":"Reminder","completed":true}
+        ]"""
         private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"
         private const val KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED = "phone_weather_auto_check_enabled"
         private const val KEY_PHONE_WEATHER_CHECK_INTERVAL_MIN = "phone_weather_check_interval_min"

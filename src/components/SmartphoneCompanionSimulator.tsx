@@ -4,6 +4,7 @@ import {
   CalendarEventItem,
   SyncConfiguration,
   WEATHER_TRIGGER_CATALOG,
+  DEFAULT_TASKS_LIST,
   formatCompactWeatherLocation,
 } from '../utils/calendarSyncEngine';
 import {
@@ -18,6 +19,7 @@ import {
   Trash2,
   AlertTriangle,
   CloudRain,
+  CheckSquare,
 } from 'lucide-react';
 
 interface SmartphoneCompanionSimulatorProps {
@@ -200,6 +202,7 @@ export const SmartphoneCompanionSimulator: React.FC<
   const contextModeOptions = [
     { id: 'DYNAMIC', label: 'Auto' },
     { id: 'EVENTS', label: 'Agenda' },
+    { id: 'TASKS', label: 'Tarefas' },
     { id: 'WEATHER', label: 'Clima' },
     { id: 'STEPS', label: 'Passos' },
     { id: 'SUN', label: 'Sol' },
@@ -208,6 +211,7 @@ export const SmartphoneCompanionSimulator: React.FC<
 
   const autoPrimaryOptions = [
     { id: 'EVENTS', label: 'Agenda' },
+    { id: 'TASKS', label: 'Tarefas' },
     { id: 'WEATHER', label: 'Clima' },
     { id: 'SUN', label: 'Sol' },
     { id: 'STEPS', label: 'Passos' },
@@ -323,7 +327,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                         : 'Padrão Screen-On'}
                   </span>
                 </div>
-                <div className="grid grid-cols-6 gap-1">
+                <div className="grid grid-cols-7 gap-1">
                   {contextModeOptions.map((mode) => (
                     <button
                       key={mode.id}
@@ -527,7 +531,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                 <span className="text-xs font-bold text-slate-200 block">
                   Canvas Padrão Principal (Aparência Padrão de Retorno)
                 </span>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-6 gap-1.5">
                   {autoPrimaryOptions.map((opt) => (
                     <button
                       key={opt.id}
@@ -892,10 +896,56 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 5: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH) */}
+            {/* SEÇÃO 5: TAREFAS (SAMSUNG REMINDER E GOOGLE TASKS) */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                5. Monitoramento de Sono (Health Connect / Samsung Health)
+                5. Tarefas (Samsung Reminder e Google Tasks)
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Sincronizar Tarefas (Reminder e Google Tasks)
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Intercepta lembretes do Samsung Reminder (com.samsung.android.app.reminder) e Google Tasks (com.google.android.apps.tasks) e exibe o checklist no Canvas
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.tasksSyncEnabled ?? true}
+                  ariaLabel="Sincronizar Tarefas"
+                  onChange={() =>
+                    onUpdateConfig({
+                      tasksSyncEnabled: !(config.tasksSyncEnabled ?? true),
+                    })
+                  }
+                />
+              </div>
+
+              <button
+                type="button"
+                data-testid="phone-sync-tasks-now"
+                onClick={() => {
+                  onUpdateConfig({
+                    tasksSyncEnabled: true,
+                    tasks: config.tasks ?? DEFAULT_TASKS_LIST,
+                    hasActiveWatchTaskAlert: true,
+                  });
+                  onTriggerManualSync();
+                }}
+                className="w-full py-2 px-4 rounded-2xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-emerald-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <CheckSquare className="w-4 h-4 text-emerald-400" />
+                <span>
+                  Sincronizar Tarefas (Reminder / Google Tasks) Agora
+                </span>
+              </button>
+            </div>
+
+            {/* SEÇÃO 6: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH) */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                6. Monitoramento de Sono (Health Connect / Samsung Health)
               </div>
 
               <div className="flex items-center justify-between gap-4">
@@ -919,10 +969,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 6: SERVIÇO EM SEGUNDO PLANO */}
+            {/* SEÇÃO 7: SERVIÇO EM SEGUNDO PLANO */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-2.5 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                6. Serviço em Segundo Plano
+                7. Serviço em Segundo Plano
               </div>
 
               <div className="flex items-center justify-between gap-4">

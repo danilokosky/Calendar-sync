@@ -74,6 +74,21 @@ data class SleepSnapshot(
     val stagesMinutes: List<Int>
 )
 
+data class CachedWearTask(
+    val id: String,
+    val title: String,
+    val dueHHMM: String,
+    val sourceLabel: String,
+    val completed: Boolean = false
+)
+
+data class TasksSnapshot(
+    val pendingCount: Int,
+    val completedCount: Int,
+    val tasks: List<CachedWearTask>,
+    val triggeredByTaskAlert: Boolean
+)
+
 class WatchAutonomousRepository private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "chronowear_autonomous.db", null, 1) {
 
@@ -140,7 +155,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
         sleepBedtimeHHMM: String? = null,
         sleepWakeHHMM: String? = null,
         sleepStagesCsv: String? = null,
-        sleepWakeTimestampMs: Long? = null
+        sleepWakeTimestampMs: Long? = null,
+        tasksSyncEnabled: Boolean? = null,
+        tasksJson: String? = null,
+        tasksAlertTimestampMs: Long? = null
     ) {
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
@@ -254,6 +272,21 @@ class WatchAutonomousRepository private constructor(context: Context) :
             if (sleepWakeTimestampMs > currentWakeTs) {
                 editor.putLong("sleep_wake_timestamp_ms", sleepWakeTimestampMs)
                 // Novo registro de despertar/sono tem prioridade máxima: cancela toque manual
+                editor.remove("tap_override_context_mode")
+                editor.putLong("tap_override_timestamp_ms", 0L)
+            }
+        }
+        if (tasksSyncEnabled != null) {
+            editor.putBoolean("tasks_sync_enabled", tasksSyncEnabled)
+        }
+        if (!tasksJson.isNullOrBlank()) {
+            editor.putString("cached_tasks_json", tasksJson)
+        }
+        if (tasksAlertTimestampMs != null && tasksAlertTimestampMs > 0L) {
+            val currentTaskTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
+            if (tasksAlertTimestampMs > currentTaskTs) {
+                editor.putLong("tasks_alert_timestamp_ms", tasksAlertTimestampMs)
+                // Alerta de Tarefa (Samsung Reminder / Google Tasks) tem prioridade máxima
                 editor.remove("tap_override_context_mode")
                 editor.putLong("tap_override_timestamp_ms", 0L)
             }
@@ -689,6 +722,122 @@ class WatchAutonomousRepository private constructor(context: Context) :
         )
     }
 
+    fun isTasksSyncEnabled(): Boolean {
+        return prefs.getBoolean("tasks_sync_enabled", true)
+    }
+
+    fun setTasksSyncEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("tasks_sync_enabled", enabled).commit()
+    }
+
+    fun recordWatchTaskNotification(
+        title: String,
+        sourceLabel: String = "Reminder",
+        dueHHMM: String = "",
+        nowMs: Long = System.currentTimeMillis()
+    ) {
+        val currentTasks = getTasksSnapshot(nowMs).tasks.toMutableList()
+        val formattedDue = dueHHMM.ifBlank {
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nowMs))
+        }
+        val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
+        currentTasks.removeAll { it.title.equals(cleanTitle, ignoreCase = true) }
+        currentTasks.add(
+            0,
+            CachedWearTask(
+                id = "task-${nowMs}",
+                title = cleanTitle,
+                dueHHMM = formattedDue,
+                sourceLabel = sourceLabel,
+                completed = false
+            )
+        )
+        val arr = JSONArray()
+        currentTasks.take(6).forEach { t ->
+            val obj = org.json.JSONObject().apply {
+                put("id", t.id)
+                put("title", t.title)
+                put("dueHHMM", t.dueHHMM)
+                put("sourceLabel", t.sourceLabel)
+                put("completed", t.completed)
+            }
+            arr.put(obj)
+        }
+        prefs.edit()
+            .putString("cached_tasks_json", arr.toString())
+            .putLong("tasks_alert_timestamp_ms", nowMs)
+            .remove("tap_override_context_mode")
+            .putLong("tap_override_timestamp_ms", 0L)
+            .apply()
+    }
+
+    fun hasActiveTaskAlertOverride(
+        nowMs: Long,
+        windowMinutes: Long = getUnifiedCanvasHoldMinutes().toLong()
+    ): Boolean {
+        if (!isTasksSyncEnabled()) return false
+        val alertTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
+        if (alertTs <= 0L) return false
+        return (nowMs - alertTs) in 0..TimeUnit.MINUTES.toMillis(windowMinutes)
+    }
+
+    fun getTasksSnapshot(nowMs: Long = System.currentTimeMillis()): TasksSnapshot {
+        val defaultTasks = listOf(
+            CachedWearTask(
+                id = "t-1",
+                title = "Enviar relatório Sprint",
+                dueHHMM = "10:30",
+                sourceLabel = "Tasks",
+                completed = false
+            ),
+            CachedWearTask(
+                id = "t-2",
+                title = "Retornar cliente One UI",
+                dueHHMM = "14:00",
+                sourceLabel = "Reminder",
+                completed = false
+            ),
+            CachedWearTask(
+                id = "t-3",
+                title = "Revisar PR Watch Face",
+                dueHHMM = "16:30",
+                sourceLabel = "Tasks",
+                completed = true
+            )
+        )
+        val rawJson = prefs.getString("cached_tasks_json", "") ?: ""
+        val parsed = mutableListOf<CachedWearTask>()
+        if (rawJson.isNotBlank()) {
+            try {
+                val arr = JSONArray(rawJson)
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val title = obj.optString("title", "").trim()
+                    if (title.isBlank()) continue
+                    parsed.add(
+                        CachedWearTask(
+                            id = obj.optString("id", "t-$i"),
+                            title = title,
+                            dueHHMM = obj.optString("dueHHMM", "Hoje"),
+                            sourceLabel = obj.optString("sourceLabel", "Tasks"),
+                            completed = obj.optBoolean("completed", false)
+                        )
+                    )
+                }
+            } catch (_: Exception) {
+            }
+        }
+        val list = if (parsed.isNotEmpty()) parsed else defaultTasks
+        val pendingCount = list.count { !it.completed }
+        val completedCount = list.count { it.completed }
+        return TasksSnapshot(
+            pendingCount = pendingCount,
+            completedCount = completedCount,
+            tasks = list,
+            triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs)
+        )
+    }
+
     /**
      * Chamado quando o usuário toca diretamente na imagem do Canvas na Watch Face (Complication Tap Action).
      * - NÃO fica em definitivo: o próximo Canvas permanece fixo pelo Tempo Unificado configurado
@@ -699,6 +848,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
     fun cycleNextVisualCanvasOnTap(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
         val visualOrder = listOf(
             MODE_EVENTS,
+            MODE_TASKS,
             MODE_WEATHER,
             MODE_SUN,
             MODE_STEPS,
@@ -765,9 +915,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
      * Avalia se há uma mudança de contexto de PRIORIDADE MÁXIMA ativa agora:
      * 1. Compromisso da Agenda faltando 15 minutos ou menos (<= 15m): o Canvas troca para Agenda
      *    e (se ativado pelo usuário) gera notificação no relógio.
-     * 2. Mudança de Clima/Chuva: assume o Canvas pelo Tempo Fixo Unificado.
-     * 3. Nascer e Pôr do Sol: assume o Canvas na janela solar.
-     * 4. Dormir ou Acordar: assume o Canvas com o Resumo de Sono.
+     * 2. Lembrete / Tarefa ativa do Samsung Reminder ou Google Tasks: assume o Canvas pelo Tempo Fixo Unificado.
+     * 3. Mudança de Clima/Chuva: assume o Canvas pelo Tempo Fixo Unificado.
+     * 4. Nascer e Pôr do Sol: assume o Canvas na janela solar.
+     * 5. Dormir ou Acordar: assume o Canvas com o Resumo de Sono.
      * Retorna Pair(modoForcado, motivoParaNotificacao) ou null se nenhum gatilho prioritário estiver ativo.
      */
     fun evaluatePriorityContextOverride(
@@ -787,14 +938,27 @@ class WatchAutonomousRepository private constructor(context: Context) :
             }
         }
 
-        // 2. Mudança de Clima (Temperatura / Chuva / Alerta de App) — Prioridade Máxima se recente
+        // 2. Tarefa / Lembrete acionado (Samsung Reminder ou Google Tasks) — Prioridade Máxima se recente
+        val taskAlertTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
+        if (isTasksSyncEnabled() && taskAlertTs > 0L && (nowMs - taskAlertTs) in 0..unifiedHoldMs) {
+            val tasksSnap = getTasksSnapshot(nowMs)
+            val firstPending = tasksSnap.tasks.firstOrNull { !it.completed } ?: tasksSnap.tasks.firstOrNull()
+            val detail = if (firstPending != null) {
+                "${firstPending.sourceLabel}: ${firstPending.title} (${firstPending.dueHHMM})"
+            } else {
+                "${tasksSnap.pendingCount} tarefa(s) pendente(s)"
+            }
+            return MODE_TASKS to detail
+        }
+
+        // 3. Mudança de Clima (Temperatura / Chuva / Alerta de App) — Prioridade Máxima se recente
         val weatherAlertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
         if (weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..unifiedHoldMs) {
             val snap = getHourlyWeatherSnapshot(nowMs)
             return MODE_WEATHER to "${snap.weatherConditionLabel} (${snap.locationName}) • ${snap.alertHeadline}"
         }
 
-        // 3. Nascer e Pôr do Sol (dentro da janela unificada ao redor do evento solar)
+        // 4. Nascer e Pôr do Sol (dentro da janela unificada ao redor do evento solar)
         val solar = getSolarSnapshot(nowMs)
         val halfSunWindowMins = (unifiedHoldMin / 2).coerceAtLeast(5)
         val nearSunrise = abs(solar.currentMinutesOfDay - solar.sunriseMinutesOfDay) <= halfSunWindowMins
@@ -806,7 +970,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             return MODE_SUN to "Pôr do Sol às ${solar.sunsetHHMM} (Exposição ${unifiedHoldMin}m)"
         }
 
-        // 4. Dormir ou Acordar (Resumo de Sono)
+        // 5. Dormir ou Acordar (Resumo de Sono)
         if (hasActiveSleepWakeExposure(nowMs, unifiedHoldMin)) {
             val sleep = getSleepSnapshot()
             val h = sleep.durationMinutes / 60
@@ -819,7 +983,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     /**
      * Resolve qual contexto deve ser desenhado no Canvas agora:
-     * 1. Mudanças Reais de Contexto (Clima, Agenda, Pôr/Nascer do Sol, Acordar/Dormir) têm
+     * 1. Mudanças Reais de Contexto (Clima, Agenda, Tarefas, Pôr/Nascer do Sol, Acordar/Dormir) têm
      *    PRIORIDADE MÁXIMA quando ocorrem: se não houver toque manual mais recente que o gatilho,
      *    assumem o Canvas pelo Tempo Unificado (getUnifiedCanvasHoldMinutes()) e depois retornam
      *    ao Canvas Padrão Principal.
@@ -835,13 +999,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val tapOverride = getActiveTapOverrideMode(nowMs, unifiedHoldMin)
         val tapTs = prefs.getLong("tap_override_timestamp_ms", 0L)
 
-        // Verifica se há mudança prioritária de contexto (Clima, Agenda, Sol, Sono)
+        // Verifica se há mudança prioritária de contexto (Clima, Agenda, Tarefas, Sol, Sono)
         val priorityPair = evaluatePriorityContextOverride(nowMs, upcomingThree)
         if (priorityPair != null) {
             val (priorityMode, _) = priorityPair
             val weatherTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
             val sleepTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
-            val newestTriggerTs = maxOf(weatherTs, sleepTs)
+            val tasksTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
+            val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs)
 
             // Se não há toque manual ativo OU se a mudança de contexto aconteceu após o toque,
             // a mudança de contexto tem prioridade máxima!
@@ -908,6 +1073,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
     companion object {
         const val MODE_DYNAMIC = "DYNAMIC"
         const val MODE_EVENTS = "EVENTS"
+        const val MODE_TASKS = "TASKS"
         const val MODE_WEATHER = "WEATHER"
         const val MODE_STEPS = "STEPS"
         const val MODE_SUN = "SUN"

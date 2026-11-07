@@ -33,6 +33,7 @@ import com.chronowear.wear.data.CachedWearEvent
 import com.chronowear.wear.data.HourlyWeatherSnapshot
 import com.chronowear.wear.data.SleepSnapshot
 import com.chronowear.wear.data.SolarSnapshot
+import com.chronowear.wear.data.TasksSnapshot
 import com.chronowear.wear.data.WatchAutonomousRepository
 import com.chronowear.wear.data.WeeklyStepsSnapshot
 import java.util.concurrent.TimeUnit
@@ -75,6 +76,9 @@ object AgendaCardBitmapRenderer {
         val effectiveMode = repo.resolveEffectiveContextMode(nowMs, upcomingThree)
 
         return when (effectiveMode) {
+            WatchAutonomousRepository.MODE_TASKS -> {
+                renderTasksChecklistCanvas(repo.getTasksSnapshot(nowMs))
+            }
             WatchAutonomousRepository.MODE_WEATHER -> {
                 renderWeatherForecastCanvas(repo.getHourlyWeatherSnapshot(nowMs))
             }
@@ -806,6 +810,131 @@ object AgendaCardBitmapRenderer {
             val durText = if (sh > 0) "${sh}h${String.format("%02d", sm)}" else "${sm}m"
             canvas.drawText(stageNames[idx], cx, 198f, stageTitlePaint)
             canvas.drawText(durText, cx, 240f, stageValPaint)
+        }
+
+        return bmp
+    }
+
+    /**
+     * CONTEXTO 6: Tarefas (Samsung Reminder e Google Tasks — Checklist de Alto DPI)
+     */
+    private fun renderTasksChecklistCanvas(tasksSnap: TasksSnapshot): Bitmap {
+        val (bmp, canvas) = createBaseCardBitmap()
+
+        val emeraldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.parseColor("#34D399")
+        }
+        val checkStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 4.5f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            color = Color.parseColor("#080A0E")
+        }
+
+        // Ícone de Checklist no topo esquerdo
+        canvas.drawRoundRect(RectF(24f, 18f, 62f, 56f), 10f, 10f, emeraldPaint)
+        val headerCheckPath = Path().apply {
+            moveTo(33f, 38f)
+            lineTo(41f, 46f)
+            lineTo(54f, 29f)
+        }
+        canvas.drawPath(headerCheckPath, checkStrokePaint)
+
+        val headerTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#34D399")
+            textSize = 42f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("Tarefas", 76f, 51f, headerTitlePaint)
+
+        val rightCounterPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#67E8F9")
+            textSize = 31f
+            textAlign = Paint.Align.RIGHT
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText(
+            "${tasksSnap.pendingCount} pend. • Reminder/Tasks",
+            CARD_WIDTH - 24f,
+            49f,
+            rightCounterPaint
+        )
+
+        val pendingCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 4.2f
+            color = Color.parseColor("#F5C438")
+        }
+        val doneCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.parseColor("#34D399")
+        }
+        val timeColPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 36f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val taskTitlePendingPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#F8FAFC")
+            textSize = 38f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val taskTitleDonePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#94A3B8")
+            textSize = 36f
+            flags = Paint.ANTI_ALIAS_FLAG or Paint.STRIKE_THRU_TEXT_FLAG
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val sourceBadgePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#F5C438")
+            textSize = 27f
+            textAlign = Paint.Align.RIGHT
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        val rowYPositions = listOf(108f, 174f, 240f)
+        val displayTasks = tasksSnap.tasks.take(3)
+
+        rowYPositions.forEachIndexed { idx, baseY ->
+            val task = displayTasks.getOrNull(idx)
+            val centerY = baseY - 13f
+            if (task != null) {
+                if (task.completed) {
+                    canvas.drawCircle(38f, centerY, 13f, doneCirclePaint)
+                    val rowCheck = Path().apply {
+                        moveTo(31f, centerY)
+                        lineTo(36f, centerY + 5f)
+                        lineTo(45f, centerY - 6f)
+                    }
+                    canvas.drawPath(rowCheck, checkStrokePaint)
+                } else {
+                    canvas.drawCircle(38f, centerY, 12.5f, pendingCirclePaint)
+                }
+
+                canvas.drawText(task.dueHHMM.take(5), 64f, baseY, timeColPaint)
+
+                val activeTitlePaint = if (task.completed) taskTitleDonePaint else taskTitlePendingPaint
+                val ellipsizedTask = TextUtils.ellipsize(
+                    task.title,
+                    activeTitlePaint,
+                    295f,
+                    TextUtils.TruncateAt.END
+                ).toString()
+                canvas.drawText(ellipsizedTask, 174f, baseY, activeTitlePaint)
+
+                sourceBadgePaint.color = if (task.sourceLabel.contains("Reminder", ignoreCase = true)) {
+                    Color.parseColor("#67E8F9")
+                } else {
+                    Color.parseColor("#F5C438")
+                }
+                canvas.drawText(task.sourceLabel.take(8), CARD_WIDTH - 24f, baseY - 2f, sourceBadgePaint)
+            } else {
+                canvas.drawCircle(38f, centerY, 11f, pendingCirclePaint)
+                canvas.drawText("--:--", 64f, baseY, timeColPaint)
+                canvas.drawText("Sem tarefa pendente", 174f, baseY, taskTitleDonePaint)
+            }
         }
 
         return bmp

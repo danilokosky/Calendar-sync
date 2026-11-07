@@ -323,5 +323,34 @@ test('formatCompactWeatherLocation converts full state names to 2-letter UF sigl
   );
 });
 
+test('evaluateWatchAutonomousState supports TASKS context mode and prioritizes TASKS on Samsung Reminder / Google Tasks alert', () => {
+  const syncedEvents = buildSyncPayload(mockEvents, mockCalendars, baseTime, 7);
 
+  // Explicit TASKS mode
+  const fixedTasksCache: WatchCacheState = {
+    cachedEvents: syncedEvents,
+    lastSyncEpochMs: baseTime,
+    syncedHorizonDays: 7,
+    progressWindowMinutes: 60,
+    isBluetoothConnected: true,
+    contextWindowMode: 'TASKS',
+  };
+  const fixedState = evaluateWatchAutonomousState(fixedTasksCache, baseTime);
+  assert.equal(fixedState.effectiveContextMode, 'TASKS');
+
+  // Dynamic mode with active Samsung Reminder / Google Tasks alert overrides primary context to TASKS
+  const dynamicTaskAlertCache: WatchCacheState = {
+    cachedEvents: syncedEvents,
+    lastSyncEpochMs: baseTime,
+    syncedHorizonDays: 7,
+    progressWindowMinutes: 60,
+    isBluetoothConnected: true,
+    contextWindowMode: 'DYNAMIC',
+    autoPrimaryContext: 'WEATHER',
+    tasksSyncEnabled: true,
+    hasActiveWatchTaskAlert: true,
+  };
+  const alertState = evaluateWatchAutonomousState(dynamicTaskAlertCache, baseTime);
+  assert.equal(alertState.effectiveContextMode, 'TASKS');
+});
 

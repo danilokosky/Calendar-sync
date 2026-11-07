@@ -5,6 +5,8 @@ import {
   CalendarSource,
   SyncConfiguration,
   ContextWindowMode,
+  DEFAULT_TASKS_LIST,
+  TaskItem,
   formatTimeHHMM,
   formatDayRelative,
   computeSolarCurvePoint,
@@ -26,6 +28,7 @@ import {
   BellRing,
   Zap,
   Moon,
+  CheckSquare,
 } from 'lucide-react';
 
 interface WearOsSmartwatchSimulatorProps {
@@ -63,13 +66,32 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 }) => {
   const [watchScreenMode, setWatchScreenMode] = useState<'wff' | 'tile' | 'cache'>('wff');
   const [tapOverrideState, setTapOverrideState] = useState<{
-    mode: 'EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP';
+    mode: 'EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP';
     startedAtWatchMs: number;
   } | null>(null);
   const [dismissedNotifKey, setDismissedNotifKey] = useState<string | null>(null);
   const [weatherNotifSource, setWeatherNotifSource] = useState<
     'ChronoWear Auto (1h)' | 'App Clima (Escolhido)' | 'Relógio Stand-Alone (1h)'
   >('ChronoWear Auto (1h)');
+
+  const tasksList: TaskItem[] = config.tasks ?? DEFAULT_TASKS_LIST;
+  const pendingTasksCount = tasksList.filter((t) => !t.completed).length;
+
+  const handleToggleTaskItem = (taskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = tasksList.map((t) =>
+      t.id === taskId ? { ...t, completed: !t.completed } : t
+    );
+    onUpdateConfig({ tasks: updated });
+  };
+
+  const handleSimulateTaskReminderAlert = () => {
+    const nextAlert = !(config.hasActiveWatchTaskAlert ?? false);
+    onUpdateConfig({
+      tasksSyncEnabled: true,
+      hasActiveWatchTaskAlert: nextAlert,
+    });
+  };
 
   const ev1 = watchState.upcomingThree[0] || null;
   const ev2 = watchState.upcomingThree[1] || null;
@@ -91,7 +113,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     watchState.remainingMs > 0 &&
     watchState.remainingMs <= 15 * 60 * 1000;
 
-  // Prioridade máxima: qualquer gatilho real de contexto (Compromisso em <= 15m, Clima, Nascer/Pôr do Sol, Sono/Acordar)
+  // Prioridade máxima: qualquer gatilho real de contexto (Compromisso em <= 15m, Lembrete de Tarefa, Clima, Nascer/Pôr do Sol, Sono/Acordar)
   // tem prioridade máxima sobre o toque manual e assume o Canvas imediatamente.
   const isPriorityContextActive =
     config.contextWindowMode === 'DYNAMIC' &&
@@ -121,8 +143,12 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     ? tapOverrideState.mode
     : watchState.effectiveContextMode;
 
-  const contextLabels: Record<'EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP', string> = {
+  const contextLabels: Record<
+    'EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP',
+    string
+  > = {
     EVENTS: 'Agenda',
+    TASKS: 'Tarefas',
     WEATHER: 'Clima',
     SUN: 'Nascer/Pôr do Sol',
     STEPS: 'Passos',
@@ -133,7 +159,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   // - Respeita o switch geral do app do relógio (notifyWatchOnCanvasChange)
   // - Para compromissos da Agenda faltando 15 minutos, respeita também o switch opcional dedicado (notifyAgenda15MinEnabled)
   const forcedNotifKey = isPriorityContextActive
-    ? `${watchState.effectiveContextMode}-${hasActiveWatchWeatherAlert ? 'alert' : isEventWithin15Min ? `15m-${ev1?.id ?? ''}` : 'auto'}`
+    ? `${watchState.effectiveContextMode}-${hasActiveWatchWeatherAlert ? 'alert' : config.hasActiveWatchTaskAlert ? 'task-alert' : isEventWithin15Min ? `15m-${ev1?.id ?? ''}` : 'auto'}`
     : null;
   const isNotificationAllowedForMode =
     (config.notifyWatchOnCanvasChange ?? true) &&
@@ -149,6 +175,12 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   const forcedNotificationDetail = (() => {
     if (!isPriorityContextActive) return '';
     switch (watchState.effectiveContextMode) {
+      case 'TASKS': {
+        const nextPending = tasksList.find((t) => !t.completed) ?? tasksList[0];
+        return nextPending
+          ? `${nextPending.sourceLabel}: ${nextPending.title} (${nextPending.dueHHMM})`
+          : 'Lembrete Samsung Reminder / Google Tasks';
+      }
       case 'WEATHER':
         return `${formatCompactWeatherLocation(config.weatherLocationName ?? 'São Paulo, SP')} • ${
           hasActiveWatchWeatherAlert
@@ -193,8 +225,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   };
 
   const handleTapCanvasToCycle = () => {
-    const order: ('EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP')[] = [
+    const order: ('EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP')[] = [
       'EVENTS',
+      'TASKS',
       'WEATHER',
       'SUN',
       'STEPS',
@@ -220,6 +253,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   const contextModes: { id: ContextWindowMode; label: string }[] = [
     { id: 'DYNAMIC', label: 'Auto' },
     { id: 'EVENTS', label: 'Agenda' },
+    { id: 'TASKS', label: 'Tarefas' },
     { id: 'WEATHER', label: 'Clima' },
     { id: 'STEPS', label: 'Passos' },
     { id: 'SUN', label: 'Sol' },
@@ -384,23 +418,44 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={handleCycleWeatherNotif}
-            title="Testa os gatilhos de mudança de temperatura e condição climática (chuva/tempestade)"
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
-              hasActiveWatchWeatherAlert
-                ? 'bg-sky-500/20 border-sky-400 text-sky-300'
-                : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
-            }`}
-          >
-            <BellRing className="w-3 h-3 text-sky-400" />
-            <span>
-              {hasActiveWatchWeatherAlert
-                ? `${weatherNotifSource}: ATIVO`
-                : 'Simular Gatilho de Clima'}
-            </span>
-          </button>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              data-testid="watch-simulate-task-alert"
+              onClick={handleSimulateTaskReminderAlert}
+              title="Simula um lembrete disparado pelo Samsung Reminder ou Google Tasks"
+              className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 border transition-colors cursor-pointer ${
+                config.hasActiveWatchTaskAlert
+                  ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+              }`}
+            >
+              <CheckSquare className="w-3 h-3 text-emerald-400" />
+              <span>
+                {config.hasActiveWatchTaskAlert
+                  ? 'Alerta Reminder/Tasks: ATIVO'
+                  : 'Simular Lembrete Tarefa'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCycleWeatherNotif}
+              title="Testa os gatilhos de mudança de temperatura e condição climática (chuva/tempestade)"
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
+                hasActiveWatchWeatherAlert
+                  ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+              }`}
+            >
+              <BellRing className="w-3 h-3 text-sky-400" />
+              <span>
+                {hasActiveWatchWeatherAlert
+                  ? `${weatherNotifSource}: ATIVO`
+                  : 'Simular Gatilho de Clima'}
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Opções Diretas do App do Relógio (:wear): Ativar/Desativar Notificação do Canvas, Notificação Agenda 15m e Atualizar Localização */}
@@ -1039,6 +1094,72 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       <span className="text-[#38BDF8]">● REM</span>
                       <span className="text-[#60A5FA]">● Leve</span>
                       <span className="text-[#818CF8]">● Prof.</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODO 6: QUADRO DE TAREFAS (TASKS — Samsung Reminder & Google Tasks) */}
+                {effectiveMode === 'TASKS' && (
+                  <div
+                    data-testid="tasks-context-canvas"
+                    className="flex flex-col justify-between h-full py-0.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <CheckSquare className="w-4 h-4 text-[#22C55E] shrink-0" />
+                        <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
+                          Tarefas
+                        </span>
+                      </div>
+                      <span className="text-[10.5px] font-mono font-bold text-[#67E8F9]">
+                        {pendingTasksCount} pend. • Reminder/Tasks
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col justify-between flex-1 pt-1 space-y-1">
+                      {tasksList.slice(0, 3).map((task, idx) => (
+                        <div
+                          key={task.id}
+                          onClick={(e) => handleToggleTaskItem(task.id, e)}
+                          title="Clique na tarefa para marcar/desmarcar como concluída"
+                          className="flex items-center justify-between gap-1.5 text-[12px] leading-tight hover:bg-white/5 rounded px-0.5 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span
+                              className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                                task.completed
+                                  ? 'bg-[#22C55E] border-[#22C55E] text-slate-950'
+                                  : 'border-[#67E8F9] text-transparent'
+                              }`}
+                            >
+                              ✓
+                            </span>
+                            <span className="text-[11px] font-mono font-bold text-white shrink-0">
+                              {task.dueHHMM}
+                            </span>
+                            <span
+                              className={`truncate font-bold ${
+                                task.completed
+                                  ? 'text-slate-500 line-through'
+                                  : idx === 0
+                                  ? 'text-[#F5C438]'
+                                  : 'text-slate-100'
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded shrink-0 ${
+                              task.sourceLabel === 'Reminder'
+                                ? 'bg-sky-500/20 text-sky-300'
+                                : 'bg-amber-500/20 text-amber-300'
+                            }`}
+                          >
+                            {task.sourceLabel}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

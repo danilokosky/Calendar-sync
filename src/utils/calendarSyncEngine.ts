@@ -21,8 +21,46 @@ export type ProgressWindowMinutes = 30 | 60 | 120 | 180;
 export type SyncIntervalMinutes = 15 | 30 | 60;
 export type PhoneWeatherCheckIntervalMinutes = 30 | 60 | 120 | 180;
 export type AutoExposureMinutes = 5 | 15 | 30 | 45 | 60;
-export type PrimaryContextMode = 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN' | 'SLEEP';
+export type PrimaryContextMode =
+  | 'EVENTS'
+  | 'TASKS'
+  | 'WEATHER'
+  | 'STEPS'
+  | 'SUN'
+  | 'SLEEP';
 export type ContextWindowMode = 'DYNAMIC' | PrimaryContextMode;
+
+export interface TaskItem {
+  id: string;
+  title: string;
+  dueHHMM: string;
+  sourceLabel: 'Reminder' | 'Tasks';
+  completed: boolean;
+}
+
+export const DEFAULT_TASKS_LIST: TaskItem[] = [
+  {
+    id: 't1',
+    title: 'Enviar relatório trimestral',
+    dueHHMM: '14:00',
+    sourceLabel: 'Reminder',
+    completed: false,
+  },
+  {
+    id: 't2',
+    title: 'Pagar fatura do cartão',
+    dueHHMM: '16:30',
+    sourceLabel: 'Tasks',
+    completed: false,
+  },
+  {
+    id: 't3',
+    title: 'Comprar café em grãos',
+    dueHHMM: '18:00',
+    sourceLabel: 'Reminder',
+    completed: true,
+  },
+];
 
 export interface WeatherTriggerAppItem {
   packageName: string;
@@ -115,6 +153,9 @@ export interface SyncConfiguration {
   sleepScore?: number;
   sleepBedtimeHHMM?: string;
   sleepWakeHHMM?: string;
+  tasksSyncEnabled?: boolean;
+  tasks?: TaskItem[];
+  hasActiveWatchTaskAlert?: boolean;
 }
 
 export interface WatchCacheState {
@@ -137,6 +178,9 @@ export interface WatchCacheState {
   highFreq15MinRule?: boolean;
   updateOnScreenWake?: boolean;
   hasActiveWatchWeatherAlert?: boolean;
+  hasActiveWatchTaskAlert?: boolean;
+  tasksSyncEnabled?: boolean;
+  tasks?: TaskItem[];
   watchStandaloneWeatherEnabled?: boolean;
   watchStandaloneSolarEnabled?: boolean;
   solarSunriseHHMM?: string;
@@ -406,6 +450,8 @@ export interface AutoModeResolutionOptions {
   sleepSyncEnabled?: boolean;
   bedtimeMinutesOfDay?: number;
   wakeMinutesOfDay?: number;
+  tasksSyncEnabled?: boolean;
+  hasActiveWatchTaskAlert?: boolean;
 }
 
 export function resolveEffectiveWatchContextMode(
@@ -434,7 +480,12 @@ export function resolveEffectiveWatchContextMode(
     return 'EVENTS';
   }
 
-  // 2. Prioridade Máxima: Mudança Climática / Chuva ou Alerta de Clima Ativo
+  // 2. Prioridade Máxima: Lembrete de Tarefa (Samsung Reminder / Google Tasks)
+  if ((options?.tasksSyncEnabled ?? true) && options?.hasActiveWatchTaskAlert) {
+    return 'TASKS';
+  }
+
+  // 3. Prioridade Máxima: Mudança Climática / Chuva ou Alerta de Clima Ativo
   if (hasActiveWatchWeatherAlert) {
     return 'WEATHER';
   }
@@ -527,6 +578,8 @@ export function evaluateWatchAutonomousState(
     sleepSyncEnabled: cache.sleepSyncEnabled ?? true,
     bedtimeMinutesOfDay: parseHHMMToMinutesOfDay(cache.sleepBedtimeHHMM, 1398),
     wakeMinutesOfDay: parseHHMMToMinutesOfDay(cache.sleepWakeHHMM, 420),
+    tasksSyncEnabled: cache.tasksSyncEnabled ?? true,
+    hasActiveWatchTaskAlert: cache.hasActiveWatchTaskAlert ?? false,
   };
 
   if (!nextEvent) {

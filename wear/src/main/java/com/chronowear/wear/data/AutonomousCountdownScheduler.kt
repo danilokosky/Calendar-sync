@@ -98,6 +98,7 @@ object AutonomousCountdownScheduler {
         val modeTitle = when (forcedMode) {
             WatchAutonomousRepository.MODE_WEATHER -> "Canvas • Clima"
             WatchAutonomousRepository.MODE_EVENTS -> "Canvas • Agenda (15 min)"
+            WatchAutonomousRepository.MODE_TASKS -> "Canvas • Tarefas"
             WatchAutonomousRepository.MODE_SUN -> "Canvas • Nascer e Pôr do Sol"
             WatchAutonomousRepository.MODE_SLEEP -> "Canvas • Sono"
             WatchAutonomousRepository.MODE_STEPS -> "Canvas • Passos"
@@ -110,6 +111,7 @@ object AutonomousCountdownScheduler {
         }
         val primaryLabel = when (repo.getAutoPrimaryContext()) {
             WatchAutonomousRepository.MODE_EVENTS -> "Agenda"
+            WatchAutonomousRepository.MODE_TASKS -> "Tarefas"
             WatchAutonomousRepository.MODE_WEATHER -> "Clima"
             WatchAutonomousRepository.MODE_SUN -> "Sol"
             WatchAutonomousRepository.MODE_STEPS -> "Passos"
