@@ -7,6 +7,7 @@ import {
   ContextWindowMode,
   formatTimeHHMM,
   formatDayRelative,
+  computeSolarCurvePoint,
 } from '../utils/calendarSyncEngine';
 import {
   Bluetooth,
@@ -23,6 +24,7 @@ import {
   Sparkles,
   BellRing,
   Zap,
+  Moon,
 } from 'lucide-react';
 
 interface WearOsSmartwatchSimulatorProps {
@@ -37,6 +39,13 @@ interface WearOsSmartwatchSimulatorProps {
   onToggleBluetooth: () => void;
   onAdvanceTimeMinutes: (minutes: number) => void;
   onResetTime: () => void;
+}
+
+function parseMinutesHHMM(hhmm: string | undefined, fallbackMins: number): number {
+  if (!hhmm || !hhmm.includes(':')) return fallbackMins;
+  const [h, m] = hhmm.split(':').map((v) => parseInt(v, 10));
+  if (Number.isNaN(h) || Number.isNaN(m)) return fallbackMins;
+  return h * 60 + m;
 }
 
 export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps> = ({
@@ -74,6 +83,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     { id: 'WEATHER', label: 'Clima' },
     { id: 'STEPS', label: 'Passos' },
     { id: 'SUN', label: 'Sol' },
+    { id: 'SLEEP', label: 'Sono' },
   ];
 
   const weeklyStepsData = [
@@ -100,13 +110,32 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     }
   };
 
-  // Cálculo da posição atual do sol na curva cosseno (0h..24h) para o modo SUN
+  // Cálculo da posição atual do sol na curva cosseno completa (dia acima do horizonte + noite abaixo do horizonte)
   const currentMinutesOfDay =
     watchDate.getHours() * 60 + watchDate.getMinutes();
-  const sunProgressRatio = Math.min(
-    1,
-    Math.max(0, currentMinutesOfDay / (24 * 60))
+  const sunriseMins = parseMinutesHHMM(config.solarSunriseHHMM, 5 * 60 + 27);
+  const sunsetMins = parseMinutesHHMM(config.solarSunsetHHMM, 17 * 60 + 40);
+  const solarPoint = computeSolarCurvePoint(
+    currentMinutesOfDay,
+    sunriseMins,
+    sunsetMins
   );
+
+  // Gera os pontos exatos da curva cosseno (x=2..258) cruzando y=44 em x=66 e x=194 e descendo até y=66 à noite
+  const solarCurvePathD = (() => {
+    const pts: string[] = [];
+    const steps = 64;
+    for (let i = 0; i <= steps; i++) {
+      const x = 2 + (i / steps) * 256;
+      const cosVal = Math.cos((Math.PI / 2) * ((x - 130) / 64));
+      const y =
+        cosVal >= 0 ? 44 - cosVal * 32 : 44 - cosVal * 22;
+      pts.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`);
+    }
+    return pts.join(' ');
+  })();
+
+  const progressPercent = Math.round(watchState.progressRatio * 100);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col h-full justify-between">
@@ -114,13 +143,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="text-xs font-mono text-sky-400 tracking-wide">
-            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.2)
+            MÓDULOS :wear &amp; :watchface · JANELA DE CONTEXTO CANVAS (v1.1.3)
           </div>
           <h2 className="text-lg font-bold text-slate-100 mt-0.5">
             Smartwatch &amp; Watch Face Format (WFF)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            DPI Ampliado · Cabeçalho &quot;Clima&quot; Limpo · Condições Climáticas · Nascer e Pôr do Sol
+            Sol Dia/Noite Abaixo do Horizonte · Progresso 0%→100% ({config.progressWindowMinutes === 30 ? '30m' : `${config.progressWindowMinutes / 60}h`}) · Modo Auto &amp; Sono
           </p>
         </div>
 
@@ -161,7 +190,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             }`}
           >
             <Watch className="w-3.5 h-3.5" />
-            <span>Watch Face v1.1.2</span>
+            <span>Watch Face v1.1.3</span>
           </button>
           <button
             type="button"
@@ -191,7 +220,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 
         {/* Seletor Rápido da Janela de Contexto + Simulador dos 3 Gatilhos de Mudança de Clima */}
         <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/90 border border-slate-800/80 rounded-xl px-3 py-2">
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <span className="text-[11px] font-mono text-slate-400 mr-1">Janela:</span>
             {contextModes.map((m) => {
               const active = config.contextWindowMode === m.id;
@@ -200,7 +229,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   key={m.id}
                   type="button"
                   onClick={() => onUpdateConfig({ contextWindowMode: m.id })}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                  className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                     active
                       ? 'bg-amber-400 text-slate-950'
                       : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
@@ -366,7 +395,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 data-testid="watch-context-canvas"
                 className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
               >
-                {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — DPI Ampliado) */}
+                {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — Barra de Progresso fiel 0% → 100% na janela configurada) */}
                 {effectiveMode === 'EVENTS' && (
                   <>
                     <div className="flex items-center justify-between">
@@ -376,15 +405,19 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                           Hoje
                         </span>
                       </div>
-                      {watchState.isWithinTurbo15MinWindow && (
+                      {watchState.isWithinTurbo15MinWindow ? (
                         <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 flex items-center gap-0.5">
                           <Zap className="w-2.5 h-2.5" />
                           1m Turbo
                         </span>
+                      ) : (
+                        <span className="text-[10px] font-mono text-slate-400">
+                          Janela {config.progressWindowMinutes === 30 ? '30m' : `${config.progressWindowMinutes / 60}h`} ({progressPercent}%)
+                        </span>
                       )}
                     </div>
 
-                    {/* LINHA 1: Hora Branca + Nome Dourado + Timer Ciano + Barra 5px */}
+                    {/* LINHA 1: Hora Branca + Nome Dourado + Timer Ciano + Barra 5px (0% a 100%) */}
                     <div className="w-full space-y-1">
                       <div className="flex items-center justify-between gap-1 text-[14.5px] leading-tight">
                         <div className="flex items-center min-w-0">
@@ -403,9 +436,10 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       </div>
                       <div className="w-full h-[5px] bg-[#252E3A] rounded-full overflow-hidden">
                         <div
+                          data-testid="event-progress-fill"
                           className="h-full bg-[#F5C438] rounded-full transition-all duration-200"
                           style={{
-                            width: `${Math.max(10, Math.round(watchState.progressRatio * 100))}%`,
+                            width: `${progressPercent}%`,
                           }}
                         />
                       </div>
@@ -577,7 +611,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </>
                 )}
 
-                {/* MODO 4: NASCER E PÔR DO SOL (SUN — Fiel à imagem de referência One UI Watch) */}
+                {/* MODO 4: NASCER E PÔR DO SOL (SUN — Com curva noturna abaixo do horizonte fiel à imagem One UI Watch) */}
                 {effectiveMode === 'SUN' && (
                   <div
                     data-testid="sun-context-canvas"
@@ -622,7 +656,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       </div>
                     </div>
 
-                    {/* Gráfico Solar Astronômico com Gradiente Crepuscular, Horizonte Azul, 3 Pontilhados e Símbolos ↑ ☼ ↓ */}
+                    {/* Gráfico Solar Astronômico com Gradiente Crepuscular, Horizonte Azul, Curva Dia+Noite e Símbolos ↑ ☼ ↓ */}
                     <div className="relative w-full flex-1 mt-0.5">
                       <svg viewBox="0 0 260 72" className="w-full h-full overflow-visible">
                         <defs>
@@ -635,9 +669,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 
                         {/* Faixa de gradiente crepuscular acima da linha do horizonte */}
                         <rect
-                          x="4"
+                          x="2"
                           y="10"
-                          width="252"
+                          width="256"
                           height="34"
                           fill="url(#twilightGrad)"
                         />
@@ -657,20 +691,20 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                           />
                         ))}
 
-                        {/* Linha horizontal azul-clara do horizonte */}
+                        {/* Linha horizontal azul-clara do horizonte (y=44) */}
                         <line
-                          x1="4"
+                          x1="2"
                           y1="44"
-                          x2="256"
+                          x2="258"
                           y2="44"
                           stroke="#8EB2F2"
                           strokeWidth="3.2"
                           strokeLinecap="round"
                         />
 
-                        {/* Curva Cosseno Branca da Trajetória Solar */}
+                        {/* Curva Cosseno Branca da Trajetória Solar (Cruza y=44 em x=66 e x=194 e desce abaixo do horizonte à noite até y=66) */}
                         <path
-                          d="M 4 65 C 32 65, 48 44, 66 44 C 86 20, 106 10, 130 10 C 154 10, 174 20, 194 44 C 212 44, 228 65, 256 65"
+                          d={solarCurvePathD}
                           fill="none"
                           stroke="#FFFFFF"
                           strokeWidth="3.2"
@@ -698,26 +732,66 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                           <polyline points="189,63 194,68 199,63" />
                         </g>
 
-                        {/* Ponto luminoso do Sol na trajetória atual */}
-                        {(() => {
-                          const sunX = 4 + sunProgressRatio * 252;
-                          const phase = (sunProgressRatio - 0.5) * 2 * Math.PI;
-                          const cosVal = Math.cos(phase);
-                          const sunY = 37.5 - cosVal * 27.5;
-                          return (
-                            <g>
-                              <circle
-                                cx={sunX}
-                                cy={sunY}
-                                r="7"
-                                fill="#FFF2CC"
-                                opacity="0.38"
-                              />
-                              <circle cx={sunX} cy={sunY} r="4.2" fill="#FFFDF5" />
-                            </g>
-                          );
-                        })()}
+                        {/* Ponto luminoso do Sol na trajetória atual (acima do horizonte de dia, abaixo do horizonte à noite) */}
+                        <g data-testid="sun-position-dot" data-below-horizon={solarPoint.isBelowHorizon}>
+                          <circle
+                            cx={solarPoint.sunX}
+                            cy={solarPoint.sunY}
+                            r="8"
+                            fill="#FFE699"
+                            opacity="0.32"
+                          />
+                          <circle
+                            cx={solarPoint.sunX}
+                            cy={solarPoint.sunY}
+                            r="5.5"
+                            fill="#FFF2CC"
+                            opacity="0.65"
+                          />
+                          <circle cx={solarPoint.sunX} cy={solarPoint.sunY} r="3.8" fill="#FFFDF5" />
+                        </g>
                       </svg>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODO 5: RESUMO DE SONO (SLEEP — Hipnograma Health Connect / Samsung Health) */}
+                {effectiveMode === 'SLEEP' && (
+                  <div
+                    data-testid="sleep-context-canvas"
+                    className="flex flex-col justify-between h-full py-0.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Moon className="w-4 h-4 text-[#A78BFA] shrink-0" />
+                        <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
+                          Sono
+                        </span>
+                      </div>
+                      <span className="text-[12.5px] font-mono font-bold text-[#67E8F9]">
+                        7h 42m • {config.sleepScore ?? 86} pts
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] font-semibold text-slate-300 leading-none">
+                      {config.sleepBedtimeHHMM ?? '23:18'} → {config.sleepWakeHHMM ?? '07:00'} • Excelente
+                    </div>
+
+                    {/* Barra de Estágios do Sono (Hipnograma: Acordado, REM, Leve, Profundo) */}
+                    <div className="w-full h-[20px] rounded-md overflow-hidden flex gap-[2px] bg-[#131B26] p-[2px]">
+                      <div className="h-full w-[5%] bg-[#FB7185] rounded-xs" title="Acordado" />
+                      <div className="h-full w-[22%] bg-[#60A5FA] rounded-xs" title="Sono Leve" />
+                      <div className="h-full w-[19%] bg-[#6366F1] rounded-xs" title="Sono Profundo" />
+                      <div className="h-full w-[18%] bg-[#38BDF8] rounded-xs" title="REM" />
+                      <div className="h-full w-[21%] bg-[#60A5FA] rounded-xs" title="Sono Leve" />
+                      <div className="h-full w-[15%] bg-[#6366F1] rounded-xs" title="Sono Profundo" />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-mono font-bold px-0.5 leading-none">
+                      <span className="text-[#FB7185]">● Acord.</span>
+                      <span className="text-[#38BDF8]">● REM</span>
+                      <span className="text-[#60A5FA]">● Leve</span>
+                      <span className="text-[#818CF8]">● Prof.</span>
                     </div>
                   </div>
                 )}
@@ -796,7 +870,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 </div>
                 <div>Contexto Ativo: {effectiveMode}</div>
                 <div>
-                  Turbo ≤15m (1 min): {watchState.isWithinTurbo15MinWindow ? 'ATIVO' : 'Aguardando'}
+                  Progresso ({config.progressWindowMinutes}m): {progressPercent}%
                 </div>
                 <div className="text-amber-300 truncate">
                   1º: {watchState.nextEvent?.title || 'Nenhum'}
@@ -812,7 +886,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Simulador de Passagem de Tempo (Teste Regra ≤15 min = 1 min)</span>
+            <span>Simulador de Passagem de Tempo (Progresso 0%→100% e Sol Noturno)</span>
           </span>
           <button
             type="button"
@@ -824,11 +898,11 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-5 gap-1.5">
           <button
             type="button"
             onClick={() => onAdvanceTimeMinutes(15)}
-            className="py-2 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+            className="py-2 px-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
           >
             <FastForward className="w-3 h-3 text-amber-400" />
             <span>+15 min</span>
@@ -836,8 +910,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           <button
             type="button"
             onClick={() => onAdvanceTimeMinutes(25)}
-            title="Avança para dentro da janela de ≤15 min antes do próximo evento"
-            className="py-2 px-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-lg text-xs font-mono text-amber-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+            title="Avança para dentro da janela antes do próximo evento"
+            className="py-2 px-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 rounded-lg text-xs font-mono text-amber-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
           >
             <Zap className="w-3 h-3 text-amber-400" />
             <span>Ir p/ ≤15m</span>
@@ -845,7 +919,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           <button
             type="button"
             onClick={() => onAdvanceTimeMinutes(1)}
-            className="py-2 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+            className="py-2 px-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
           >
             <FastForward className="w-3 h-3 text-sky-400" />
             <span>+1 min</span>
@@ -853,10 +927,28 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           <button
             type="button"
             onClick={() => onAdvanceTimeMinutes(360)}
-            className="py-2 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+            className="py-2 px-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
           >
             <FastForward className="w-3 h-3 text-sky-400" />
             <span>+6 horas</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onUpdateConfig({ contextWindowMode: 'SUN' });
+              const currentMins = watchDate.getHours() * 60 + watchDate.getMinutes();
+              const targetMins = 22 * 60 + 42; // 22:42 (Noite)
+              const delta =
+                targetMins >= currentMins
+                  ? targetMins - currentMins
+                  : 24 * 60 - currentMins + targetMins;
+              onAdvanceTimeMinutes(delta);
+            }}
+            title="Avança o relógio para 22:42 e abre o contexto Sol para ver o sol abaixo da linha do horizonte"
+            className="py-2 px-2 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/40 rounded-lg text-xs font-mono text-indigo-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+          >
+            <Moon className="w-3 h-3 text-indigo-400" />
+            <span>Noite 22:42</span>
           </button>
         </div>
       </div>

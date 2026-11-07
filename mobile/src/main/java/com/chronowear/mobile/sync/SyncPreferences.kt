@@ -113,6 +113,108 @@ class SyncPreferences(context: Context) {
         prefs.edit().putString(KEY_CONTEXT_WINDOW_MODE, mode).commit()
     }
 
+    /**
+     * REGRAS DO MODO AUTOMÁTICO (DYNAMIC):
+     * - Contexto Principal (EVENTS, WEATHER, SUN, STEPS, SLEEP)
+     * - Tempo de exposição da Agenda quando não for a principal (15, 30, 45, 60 min antes do evento)
+     * - Tempo de exposição do Clima ao detectar mudança/chuva (15, 30, 45, 60 min)
+     * - Tempo de exposição do Nascer/Pôr do Sol (15, 30, 45, 60 min)
+     * - Tempo de exposição do Sono ao acordar (15, 30, 45, 60 min)
+     */
+    fun getAutoPrimaryContext(): String {
+        return prefs.getString(KEY_AUTO_PRIMARY_CONTEXT, "EVENTS") ?: "EVENTS"
+    }
+
+    fun setAutoPrimaryContext(mode: String) {
+        prefs.edit().putString(KEY_AUTO_PRIMARY_CONTEXT, mode).commit()
+    }
+
+    fun getAutoAgendaExposureMinutes(): Int {
+        return prefs.getInt(KEY_AUTO_AGENDA_EXPOSURE_MIN, 30).coerceIn(15, 180)
+    }
+
+    fun setAutoAgendaExposureMinutes(minutes: Int) {
+        prefs.edit().putInt(KEY_AUTO_AGENDA_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
+    }
+
+    fun getAutoWeatherExposureMinutes(): Int {
+        return prefs.getInt(KEY_AUTO_WEATHER_EXPOSURE_MIN, 30).coerceIn(15, 180)
+    }
+
+    fun setAutoWeatherExposureMinutes(minutes: Int) {
+        prefs.edit().putInt(KEY_AUTO_WEATHER_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
+    }
+
+    fun getAutoSunExposureMinutes(): Int {
+        return prefs.getInt(KEY_AUTO_SUN_EXPOSURE_MIN, 30).coerceIn(15, 180)
+    }
+
+    fun setAutoSunExposureMinutes(minutes: Int) {
+        prefs.edit().putInt(KEY_AUTO_SUN_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
+    }
+
+    fun getAutoSleepExposureMinutes(): Int {
+        return prefs.getInt(KEY_AUTO_SLEEP_EXPOSURE_MIN, 30).coerceIn(15, 180)
+    }
+
+    fun setAutoSleepExposureMinutes(minutes: Int) {
+        prefs.edit().putInt(KEY_AUTO_SLEEP_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
+    }
+
+    /**
+     * DADOS DE SONO (Health Connect / Samsung Health / Monitoramento Noturno)
+     */
+    fun isSleepSyncEnabled(): Boolean {
+        return prefs.getBoolean(KEY_SLEEP_SYNC_ENABLED, true)
+    }
+
+    fun setSleepSyncEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SLEEP_SYNC_ENABLED, enabled).commit()
+    }
+
+    fun saveSleepSnapshot(
+        totalDurationMinutes: Int,
+        sleepScore: Int,
+        bedtimeHHMM: String,
+        wakeHHMM: String,
+        stagesMinutesCsv: String,
+        wakeTimestampMs: Long = System.currentTimeMillis()
+    ) {
+        prefs.edit()
+            .putInt(KEY_SLEEP_DURATION_MIN, totalDurationMinutes.coerceIn(60, 960))
+            .putInt(KEY_SLEEP_SCORE, sleepScore.coerceIn(1, 100))
+            .putString(KEY_SLEEP_BEDTIME_HHMM, bedtimeHHMM)
+            .putString(KEY_SLEEP_WAKE_HHMM, wakeHHMM)
+            .putString(KEY_SLEEP_STAGES_CSV, stagesMinutesCsv)
+            .putLong(KEY_SLEEP_WAKE_TS_MS, wakeTimestampMs)
+            .apply()
+    }
+
+    fun getSleepDurationMinutes(): Int {
+        return prefs.getInt(KEY_SLEEP_DURATION_MIN, 462) // 7h 42m
+    }
+
+    fun getSleepScore(): Int {
+        return prefs.getInt(KEY_SLEEP_SCORE, 86)
+    }
+
+    fun getSleepBedtimeHHMM(): String {
+        return prefs.getString(KEY_SLEEP_BEDTIME_HHMM, "23:18") ?: "23:18"
+    }
+
+    fun getSleepWakeHHMM(): String {
+        return prefs.getString(KEY_SLEEP_WAKE_HHMM, "07:00") ?: "07:00"
+    }
+
+    fun getSleepStagesCsv(): String {
+        // Acordado, REM, Leve, Profundo (em minutos)
+        return prefs.getString(KEY_SLEEP_STAGES_CSV, "18,110,229,105") ?: "18,110,229,105"
+    }
+
+    fun getSleepWakeTimestampMs(): Long {
+        return prefs.getLong(KEY_SLEEP_WAKE_TS_MS, 0L)
+    }
+
     fun isHighFreq15MinRuleEnabled(): Boolean {
         return prefs.getBoolean(KEY_HIGH_FREQ_15MIN_RULE, true)
     }
@@ -214,12 +316,6 @@ class SyncPreferences(context: Context) {
         return prefs.getString(KEY_SOLAR_SUNSET_HHMM, "17:40") ?: "17:40"
     }
 
-    /**
-     * Salva a previsão horária buscada pelo próprio app do telefone e avalia automaticamente
-     * se há uma mudança de temperatura nas próximas horas OU mudança climática (chuva, tempestade,
-     * garoa, neblina ou transição de condição meteorológica WMO).
-     * Se detectar mudança, registra o alerta dinâmico para notificar o relógio a mudar o Canvas!
-     */
     fun savePhoneFetchedWeatherAndDetectShift(
         pickedTemps: List<Int>,
         pickedLabels: List<String>,
@@ -297,10 +393,6 @@ class SyncPreferences(context: Context) {
         return prefs.getLong(KEY_WEATHER_LAST_FETCH_MS, 0L)
     }
 
-    /**
-     * Registra quando o telefone observa uma notificação sobre clima vinda de um App de terceiro
-     * escolhido pelo usuário nas configurações.
-     */
     fun recordObservedWeatherNotification(
         sourceAppLabel: String,
         headline: String,
@@ -382,6 +474,18 @@ class SyncPreferences(context: Context) {
         private const val KEY_AUTO_SYNC_ON_CHANGE = "auto_sync_on_calendar_change"
         private const val KEY_CHANGE_DEBOUNCE_SEC = "change_debounce_seconds"
         private const val KEY_CONTEXT_WINDOW_MODE = "context_window_mode"
+        private const val KEY_AUTO_PRIMARY_CONTEXT = "auto_primary_context"
+        private const val KEY_AUTO_AGENDA_EXPOSURE_MIN = "auto_agenda_exposure_min"
+        private const val KEY_AUTO_WEATHER_EXPOSURE_MIN = "auto_weather_exposure_min"
+        private const val KEY_AUTO_SUN_EXPOSURE_MIN = "auto_sun_exposure_min"
+        private const val KEY_AUTO_SLEEP_EXPOSURE_MIN = "auto_sleep_exposure_min"
+        private const val KEY_SLEEP_SYNC_ENABLED = "sleep_sync_enabled"
+        private const val KEY_SLEEP_DURATION_MIN = "sleep_duration_min"
+        private const val KEY_SLEEP_SCORE = "sleep_score"
+        private const val KEY_SLEEP_BEDTIME_HHMM = "sleep_bedtime_hhmm"
+        private const val KEY_SLEEP_WAKE_HHMM = "sleep_wake_hhmm"
+        private const val KEY_SLEEP_STAGES_CSV = "sleep_stages_csv"
+        private const val KEY_SLEEP_WAKE_TS_MS = "sleep_wake_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"
         private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"
         private const val KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED = "phone_weather_auto_check_enabled"

@@ -64,6 +64,14 @@ data class SolarSnapshot(
     val sunsetMinutesOfDay: Int
 )
 
+data class SleepSnapshot(
+    val durationMinutes: Int,
+    val sleepScore: Int,
+    val bedtimeHHMM: String,
+    val wakeHHMM: String,
+    val stagesMinutes: List<Int>
+)
+
 class WatchAutonomousRepository private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "chronowear_autonomous.db", null, 1) {
 
@@ -99,6 +107,11 @@ class WatchAutonomousRepository private constructor(context: Context) :
         progressWindowMinutes: Int,
         cardPngBase64: String? = null,
         contextMode: String? = null,
+        autoPrimaryContext: String? = null,
+        autoAgendaExposureMin: Int? = null,
+        autoWeatherExposureMin: Int? = null,
+        autoSunExposureMin: Int? = null,
+        autoSleepExposureMin: Int? = null,
         highFreq15MinRule: Boolean? = null,
         updateOnScreenWake: Boolean? = null,
         weatherTempsCsv: String? = null,
@@ -113,7 +126,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
         selectedWeatherTriggerPackagesCsv: String? = null,
         solarSunriseHHMM: String? = null,
         solarSunsetHHMM: String? = null,
-        watchStandaloneSolarEnabled: Boolean? = null
+        watchStandaloneSolarEnabled: Boolean? = null,
+        sleepSyncEnabled: Boolean? = null,
+        sleepDurationMinutes: Int? = null,
+        sleepScore: Int? = null,
+        sleepBedtimeHHMM: String? = null,
+        sleepWakeHHMM: String? = null,
+        sleepStagesCsv: String? = null,
+        sleepWakeTimestampMs: Long? = null
     ) {
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
@@ -125,6 +145,21 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (!contextMode.isNullOrBlank()) {
             editor.putString("context_window_mode", contextMode)
+        }
+        if (!autoPrimaryContext.isNullOrBlank()) {
+            editor.putString("auto_primary_context", autoPrimaryContext)
+        }
+        if (autoAgendaExposureMin != null && autoAgendaExposureMin >= 5) {
+            editor.putInt("auto_agenda_exposure_min", autoAgendaExposureMin.coerceIn(5, 180))
+        }
+        if (autoWeatherExposureMin != null && autoWeatherExposureMin >= 5) {
+            editor.putInt("auto_weather_exposure_min", autoWeatherExposureMin.coerceIn(5, 180))
+        }
+        if (autoSunExposureMin != null && autoSunExposureMin >= 5) {
+            editor.putInt("auto_sun_exposure_min", autoSunExposureMin.coerceIn(5, 180))
+        }
+        if (autoSleepExposureMin != null && autoSleepExposureMin >= 5) {
+            editor.putInt("auto_sleep_exposure_min", autoSleepExposureMin.coerceIn(5, 180))
         }
         if (highFreq15MinRule != null) {
             editor.putBoolean("high_freq_15min_rule", highFreq15MinRule)
@@ -174,6 +209,30 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (watchStandaloneSolarEnabled != null) {
             editor.putBoolean("watch_standalone_solar_enabled", watchStandaloneSolarEnabled)
         }
+        if (sleepSyncEnabled != null) {
+            editor.putBoolean("sleep_sync_enabled", sleepSyncEnabled)
+        }
+        if (sleepDurationMinutes != null && sleepDurationMinutes > 0) {
+            editor.putInt("sleep_duration_minutes", sleepDurationMinutes.coerceIn(60, 960))
+        }
+        if (sleepScore != null && sleepScore > 0) {
+            editor.putInt("sleep_score", sleepScore.coerceIn(1, 100))
+        }
+        if (!sleepBedtimeHHMM.isNullOrBlank()) {
+            editor.putString("sleep_bedtime_hhmm", sleepBedtimeHHMM)
+        }
+        if (!sleepWakeHHMM.isNullOrBlank()) {
+            editor.putString("sleep_wake_hhmm", sleepWakeHHMM)
+        }
+        if (!sleepStagesCsv.isNullOrBlank()) {
+            editor.putString("sleep_stages_csv", sleepStagesCsv)
+        }
+        if (sleepWakeTimestampMs != null && sleepWakeTimestampMs > 0L) {
+            val currentWakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
+            if (sleepWakeTimestampMs > currentWakeTs) {
+                editor.putLong("sleep_wake_timestamp_ms", sleepWakeTimestampMs)
+            }
+        }
         editor.commit()
 
         val arr = JSONArray(eventsJson)
@@ -211,6 +270,81 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     fun setContextWindowMode(mode: String) {
         prefs.edit().putString("context_window_mode", mode).commit()
+    }
+
+    fun getAutoPrimaryContext(): String {
+        return prefs.getString("auto_primary_context", MODE_EVENTS) ?: MODE_EVENTS
+    }
+
+    fun getAutoAgendaExposureMinutes(): Int {
+        return prefs.getInt("auto_agenda_exposure_min", 30).coerceIn(5, 180)
+    }
+
+    fun getAutoWeatherExposureMinutes(): Int {
+        return prefs.getInt("auto_weather_exposure_min", 30).coerceIn(5, 180)
+    }
+
+    fun getAutoSunExposureMinutes(): Int {
+        return prefs.getInt("auto_sun_exposure_min", 30).coerceIn(5, 180)
+    }
+
+    fun getAutoSleepExposureMinutes(): Int {
+        return prefs.getInt("auto_sleep_exposure_min", 30).coerceIn(5, 180)
+    }
+
+    fun isSleepSyncEnabled(): Boolean {
+        return prefs.getBoolean("sleep_sync_enabled", true)
+    }
+
+    fun getSleepSnapshot(): SleepSnapshot {
+        val dur = prefs.getInt("sleep_duration_minutes", 462)
+        val score = prefs.getInt("sleep_score", 86)
+        val bed = prefs.getString("sleep_bedtime_hhmm", "23:18") ?: "23:18"
+        val wake = prefs.getString("sleep_wake_hhmm", "07:00") ?: "07:00"
+        val stagesStr = prefs.getString("sleep_stages_csv", "18,95,244,105") ?: "18,95,244,105"
+        val stages = stagesStr.split(",").mapNotNull { it.trim().toIntOrNull() }
+            .ifEmpty { listOf(18, 95, 244, 105) }
+        return SleepSnapshot(
+            durationMinutes = dur,
+            sleepScore = score,
+            bedtimeHHMM = bed,
+            wakeHHMM = wake,
+            stagesMinutes = stages
+        )
+    }
+
+    fun recordWatchSleepNotification(
+        durationMinutes: Int = 462,
+        sleepScore: Int = 86,
+        nowMs: Long = System.currentTimeMillis()
+    ) {
+        prefs.edit()
+            .putInt("sleep_duration_minutes", durationMinutes.coerceIn(60, 960))
+            .putInt("sleep_score", sleepScore.coerceIn(1, 100))
+            .putLong("sleep_wake_timestamp_ms", nowMs)
+            .apply()
+    }
+
+    fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getAutoSleepExposureMinutes()): Boolean {
+        if (!isSleepSyncEnabled()) return false
+        val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
+        val windowMs = TimeUnit.MINUTES.toMillis(exposureMinutes.toLong())
+        if (wakeTs > 0L && (nowMs - wakeTs) in 0..windowMs) {
+            return true
+        }
+        val sleep = getSleepSnapshot()
+        val parts = sleep.wakeHHMM.split(":")
+        if (parts.size == 2) {
+            val wh = parts[0].trim().toIntOrNull() ?: 7
+            val wm = parts[1].trim().toIntOrNull() ?: 0
+            val wakeMinsOfDay = wh * 60 + wm
+            val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
+            val curMinsOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+            if (curMinsOfDay in wakeMinsOfDay..(wakeMinsOfDay + exposureMinutes)) {
+                return true
+            }
+        }
+        return false
     }
 
     fun isHighFreq15MinRuleEnabled(): Boolean {
@@ -384,7 +518,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
         editor.apply()
     }
 
-    fun hasActiveWeatherNotificationOverride(nowMs: Long, windowMinutes: Long = 45L): Boolean {
+    fun hasActiveWeatherNotificationOverride(
+        nowMs: Long,
+        windowMinutes: Long = getAutoWeatherExposureMinutes().toLong()
+    ): Boolean {
         val alertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
         if (alertTs <= 0L) return false
         return (nowMs - alertTs) in 0..TimeUnit.MINUTES.toMillis(windowMinutes)
@@ -431,33 +568,71 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Resolve qual contexto deve ser desenhado no Canvas agora:
-     * - Se o usuário fixou EVENTS, WEATHER, STEPS ou SUN, respeita a escolha.
+     * Resolve qual contexto deve ser desenhado no Canvas agora com base nas regras programadas
+     * pelo usuário para o Modo Automático (DYNAMIC):
+     * - Se o usuário fixou EVENTS, WEATHER, STEPS, SUN ou SLEEP, respeita a escolha fixa.
      * - Se escolheu DYNAMIC (Auto):
-     *   1. Faltando <= 15 min para um compromisso -> prioriza EVENTS (com atualização a cada 1 min!)
-     *   2. Se houve mudança climática / chuva / notificação de clima -> exibe WEATHER!
-     *   3. Se estiver próximo ao Nascer ou Pôr do Sol (±25 min) -> exibe SUN (Nascer e Pôr do Sol)!
-     *   4. Caso contrário -> exibe EVENTS (ou WEATHER se a agenda estiver vazia).
+     *   1. Prioridade de Evento Próximo:
+     *      - Se Agenda é o Contexto Principal: faltando <= 15m (Turbo) garante foco em EVENTS.
+     *      - Se Agenda NÃO é o Contexto Principal: faltando <= autoAgendaExposureMinutes (ex: 30m)
+     *        exibe EVENTS temporariamente até o início do compromisso.
+     *   2. Exposição de Mudança Climática (WEATHER):
+     *      - Se houve alerta/mudança de temperatura ou chuva nos últimos autoWeatherExposureMinutes (ex: 30m),
+     *        exibe WEATHER pelo tempo configurado.
+     *   3. Exposição de Nascer e Pôr do Sol (SUN):
+     *      - Dentro da janela total autoSunExposureMinutes (ex: 30m -> ±15m do nascer ou pôr do sol),
+     *        exibe SUN.
+     *   4. Exposição de Resumo de Sono (SLEEP):
+     *      - Ao acordar / receber resumo do Health Connect ou Samsung Health, exibe SLEEP por
+     *        autoSleepExposureMinutes (ex: 30m).
+     *   5. Contexto Principal (Padrão):
+     *      - Retorna autoPrimaryContext (padrão EVENTS; se EVENTS e agenda vazia, exibe WEATHER).
      */
     fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
         val configured = getContextWindowMode()
         if (configured != MODE_DYNAMIC) return configured
 
+        val primaryContext = getAutoPrimaryContext()
         val nextEvent = upcomingThree.firstOrNull()
-        val fifteenMinMs = TimeUnit.MINUTES.toMillis(15L)
-        if (nextEvent != null && (nextEvent.startEpochMs - nowMs) in 1..fifteenMinMs) {
-            return MODE_EVENTS
+
+        // 1. Prioridade de Evento iminente
+        if (nextEvent != null) {
+            val remMs = nextEvent.startEpochMs - nowMs
+            val agendaExposureMs = if (primaryContext == MODE_EVENTS) {
+                TimeUnit.MINUTES.toMillis(15L)
+            } else {
+                TimeUnit.MINUTES.toMillis(getAutoAgendaExposureMinutes().toLong())
+            }
+            if (remMs in 1..agendaExposureMs) {
+                return MODE_EVENTS
+            }
         }
-        if (hasActiveWeatherNotificationOverride(nowMs)) {
+
+        // 2. Exposição temporária de Clima após mudança de temperatura/chuva
+        if (hasActiveWeatherNotificationOverride(nowMs, getAutoWeatherExposureMinutes().toLong())) {
             return MODE_WEATHER
         }
+
+        // 3. Exposição temporária de Nascer / Pôr do Sol
         val solar = getSolarSnapshot(nowMs)
-        val nearSunrise = abs(solar.currentMinutesOfDay - solar.sunriseMinutesOfDay) <= 25
-        val nearSunset = abs(solar.currentMinutesOfDay - solar.sunsetMinutesOfDay) <= 25
+        val halfSunWindowMins = (getAutoSunExposureMinutes() / 2).coerceAtLeast(5)
+        val nearSunrise = abs(solar.currentMinutesOfDay - solar.sunriseMinutesOfDay) <= halfSunWindowMins
+        val nearSunset = abs(solar.currentMinutesOfDay - solar.sunsetMinutesOfDay) <= halfSunWindowMins
         if (nearSunrise || nearSunset) {
             return MODE_SUN
         }
-        return if (upcomingThree.isNotEmpty()) MODE_EVENTS else MODE_WEATHER
+
+        // 4. Exposição temporária de Sono após acordar
+        if (hasActiveSleepWakeExposure(nowMs, getAutoSleepExposureMinutes())) {
+            return MODE_SLEEP
+        }
+
+        // 5. Contexto Principal configurado pelo usuário
+        return if (primaryContext == MODE_EVENTS && upcomingThree.isEmpty()) {
+            MODE_WEATHER
+        } else {
+            primaryContext
+        }
     }
 
     fun getNextThreeUpcomingEvents(nowMs: Long): List<CachedWearEvent> {
@@ -507,6 +682,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val MODE_WEATHER = "WEATHER"
         const val MODE_STEPS = "STEPS"
         const val MODE_SUN = "SUN"
+        const val MODE_SLEEP = "SLEEP"
 
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"

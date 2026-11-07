@@ -20,7 +20,9 @@ export type SyncHorizonDays = 2 | 3 | 5 | 7;
 export type ProgressWindowMinutes = 30 | 60 | 120 | 180;
 export type SyncIntervalMinutes = 15 | 30 | 60;
 export type PhoneWeatherCheckIntervalMinutes = 30 | 60 | 120 | 180;
-export type ContextWindowMode = 'DYNAMIC' | 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN';
+export type AutoExposureMinutes = 15 | 30 | 45 | 60;
+export type PrimaryContextMode = 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN' | 'SLEEP';
+export type ContextWindowMode = 'DYNAMIC' | PrimaryContextMode;
 
 export interface WeatherTriggerAppItem {
   packageName: string;
@@ -88,6 +90,11 @@ export interface SyncConfiguration {
   syncIntervalMinutes: SyncIntervalMinutes;
   autoSyncOnCalendarChange: boolean;
   contextWindowMode: ContextWindowMode;
+  autoPrimaryContext?: PrimaryContextMode;
+  autoAgendaExposureMinutes?: AutoExposureMinutes;
+  autoWeatherExposureMinutes?: AutoExposureMinutes;
+  autoSunExposureMinutes?: AutoExposureMinutes;
+  autoSleepExposureMinutes?: AutoExposureMinutes;
   highFreq15MinRule: boolean;
   updateOnScreenWake: boolean;
   phoneWeatherAutoCheckEnabled?: boolean;
@@ -98,6 +105,11 @@ export interface SyncConfiguration {
   watchStandaloneSolarEnabled?: boolean;
   solarSunriseHHMM?: string;
   solarSunsetHHMM?: string;
+  sleepSyncEnabled?: boolean;
+  sleepDurationMinutes?: number;
+  sleepScore?: number;
+  sleepBedtimeHHMM?: string;
+  sleepWakeHHMM?: string;
 }
 
 export interface WatchCacheState {
@@ -107,11 +119,20 @@ export interface WatchCacheState {
   progressWindowMinutes: ProgressWindowMinutes;
   isBluetoothConnected: boolean;
   contextWindowMode?: ContextWindowMode;
+  autoPrimaryContext?: PrimaryContextMode;
+  autoAgendaExposureMinutes?: AutoExposureMinutes;
+  autoWeatherExposureMinutes?: AutoExposureMinutes;
+  autoSunExposureMinutes?: AutoExposureMinutes;
+  autoSleepExposureMinutes?: AutoExposureMinutes;
   highFreq15MinRule?: boolean;
   updateOnScreenWake?: boolean;
   hasActiveWatchWeatherAlert?: boolean;
   watchStandaloneWeatherEnabled?: boolean;
   watchStandaloneSolarEnabled?: boolean;
+  solarSunriseHHMM?: string;
+  solarSunsetHHMM?: string;
+  sleepSyncEnabled?: boolean;
+  sleepWakeHHMM?: string;
 }
 
 export interface ComplicationProgressState {
@@ -124,10 +145,79 @@ export interface ComplicationProgressState {
   progressRatio: number; // 0.0 to 1.0
   isWithinProgressWindow: boolean;
   isWithinTurbo15MinWindow: boolean;
-  effectiveContextMode: 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN';
+  effectiveContextMode: PrimaryContextMode;
   isOngoing: boolean;
   autonomousCacheValidUntilMs: number;
   isOperatingAutonomously: boolean;
+}
+
+export function parseHHMMToMinutesOfDay(hhmm: string | undefined, fallbackMinutes: number): number {
+  if (!hhmm) return fallbackMinutes;
+  const parts = hhmm.split(':');
+  if (parts.length !== 2) return fallbackMinutes;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (Number.isNaN(h) || Number.isNaN(m)) return fallbackMinutes;
+  return Math.max(0, Math.min(1439, h * 60 + m));
+}
+
+/**
+ * Calcula a posição (x, y) do Sol na curva astronômica de 24h (Dia acima do horizonte e Noite abaixo do horizonte):
+ * - A curva cruza a linha do horizonte (horizonY = 44) exatamente em sunriseX = 66 e sunsetX = 194.
+ * - No meio-dia solar (noonX = 130), atinge o pico em y = 18.
+ * - À noite (antes do nascer [2..66] e após o pôr do sol [194..258]), a curva desce abaixo do horizonte até y = 66.
+ */
+export function computeSolarCurvePoint(
+  currentMinutesOfDay: number,
+  sunriseMinutesOfDay = 327, // 05:27
+  sunsetMinutesOfDay = 1060  // 17:40
+): {
+  sunX: number;
+  sunY: number;
+  horizonY: number;
+  sunriseX: number;
+  noonX: number;
+  sunsetX: number;
+  isBelowHorizon: boolean;
+} {
+  const graphLeft = 2;
+  const sunriseX = 66;
+  const noonX = 130;
+  const sunsetX = 194;
+  const graphRight = 258;
+  const horizonY = 44;
+  const amplitude = 22;
+  const halfDaySpan = sunsetX - noonX; // 64px
+
+  const safeRise = Math.max(1, sunriseMinutesOfDay);
+  const safeSet = Math.max(safeRise + 60, sunsetMinutesOfDay);
+  const cur = Math.max(0, Math.min(1440, currentMinutesOfDay));
+
+  let sunX: number;
+  if (cur <= safeRise) {
+    const frac = cur / safeRise;
+    sunX = graphLeft + frac * (sunriseX - graphLeft);
+  } else if (cur <= safeSet) {
+    const frac = (cur - safeRise) / (safeSet - safeRise);
+    sunX = sunriseX + frac * (sunsetX - sunriseX);
+  } else {
+    const remNight = Math.max(1, 1440 - safeSet);
+    const frac = (cur - safeSet) / remNight;
+    sunX = sunsetX + frac * (graphRight - sunsetX);
+  }
+
+  const angle = (Math.PI / 2) * ((sunX - noonX) / halfDaySpan);
+  const sunY = Number((horizonY - amplitude * Math.cos(angle)).toFixed(2));
+
+  return {
+    sunX: Number(sunX.toFixed(2)),
+    sunY,
+    horizonY,
+    sunriseX,
+    noonX,
+    sunsetX,
+    isBelowHorizon: sunY > horizonY,
+  };
 }
 
 /**
@@ -168,23 +258,73 @@ export function detectHourlyWeatherShift(
   return { hasShift, summary };
 }
 
+export interface AutoModeResolutionOptions {
+  autoPrimaryContext?: PrimaryContextMode;
+  autoAgendaExposureMinutes?: AutoExposureMinutes;
+  autoWeatherExposureMinutes?: AutoExposureMinutes;
+  autoSunExposureMinutes?: AutoExposureMinutes;
+  autoSleepExposureMinutes?: AutoExposureMinutes;
+  currentMinutesOfDay?: number;
+  sunriseMinutesOfDay?: number;
+  sunsetMinutesOfDay?: number;
+  sleepSyncEnabled?: boolean;
+  wakeMinutesOfDay?: number;
+}
+
 export function resolveEffectiveWatchContextMode(
   configuredMode: ContextWindowMode,
   hasUpcomingEvent: boolean,
   remainingMs: number,
-  hasActiveWatchWeatherAlert: boolean
-): 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN' {
+  hasActiveWatchWeatherAlert: boolean,
+  options?: AutoModeResolutionOptions
+): PrimaryContextMode {
   if (configuredMode !== 'DYNAMIC') {
     return configuredMode;
   }
-  const fifteenMinMs = 15 * 60 * 1000;
-  if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= fifteenMinMs) {
+
+  const primaryContext: PrimaryContextMode = options?.autoPrimaryContext ?? 'EVENTS';
+  const agendaExposureMs =
+    (primaryContext === 'EVENTS' ? 15 : options?.autoAgendaExposureMinutes ?? 30) *
+    60 *
+    1000;
+
+  // 1. Prioridade de Evento iminente
+  if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= agendaExposureMs) {
     return 'EVENTS';
   }
+
+  // 2. Exposição de Mudança Climática / Chuva
   if (hasActiveWatchWeatherAlert) {
     return 'WEATHER';
   }
-  return hasUpcomingEvent ? 'EVENTS' : 'WEATHER';
+
+  // 3. Exposição de Nascer e Pôr do Sol (dentro da janela configurada)
+  if (options?.currentMinutesOfDay != null) {
+    const curMins = options.currentMinutesOfDay;
+    const riseMins = options.sunriseMinutesOfDay ?? 327;
+    const setMins = options.sunsetMinutesOfDay ?? 1060;
+    const halfSunWin = Math.max(5, Math.floor((options.autoSunExposureMinutes ?? 30) / 2));
+    if (
+      Math.abs(curMins - riseMins) <= halfSunWin ||
+      Math.abs(curMins - setMins) <= halfSunWin
+    ) {
+      return 'SUN';
+    }
+
+    // 4. Exposição de Resumo de Sono ao acordar
+    const sleepEnabled = options.sleepSyncEnabled ?? true;
+    const wakeMins = options.wakeMinutesOfDay ?? 420; // 07:00
+    const sleepExp = options.autoSleepExposureMinutes ?? 30;
+    if (sleepEnabled && curMins >= wakeMins && curMins <= wakeMins + sleepExp) {
+      return 'SLEEP';
+    }
+  }
+
+  // 5. Contexto Principal configurado pelo usuário
+  if (primaryContext === 'EVENTS' && !hasUpcomingEvent) {
+    return 'WEATHER';
+  }
+  return primaryContext;
 }
 
 export function buildSyncPayload(
@@ -224,6 +364,21 @@ export function evaluateWatchAutonomousState(
   const highFreq15MinRule = cache.highFreq15MinRule ?? true;
   const hasWeatherAlert = cache.hasActiveWatchWeatherAlert ?? false;
 
+  const d = new Date(currentWatchTimeMs);
+  const currentMinutesOfDay = d.getHours() * 60 + d.getMinutes();
+  const autoOptions: AutoModeResolutionOptions = {
+    autoPrimaryContext: cache.autoPrimaryContext ?? 'EVENTS',
+    autoAgendaExposureMinutes: cache.autoAgendaExposureMinutes ?? 30,
+    autoWeatherExposureMinutes: cache.autoWeatherExposureMinutes ?? 30,
+    autoSunExposureMinutes: cache.autoSunExposureMinutes ?? 30,
+    autoSleepExposureMinutes: cache.autoSleepExposureMinutes ?? 30,
+    currentMinutesOfDay,
+    sunriseMinutesOfDay: parseHHMMToMinutesOfDay(cache.solarSunriseHHMM, 327),
+    sunsetMinutesOfDay: parseHHMMToMinutesOfDay(cache.solarSunsetHHMM, 1060),
+    sleepSyncEnabled: cache.sleepSyncEnabled ?? true,
+    wakeMinutesOfDay: parseHHMMToMinutesOfDay(cache.sleepWakeHHMM, 420),
+  };
+
   if (!nextEvent) {
     return {
       hasUpcomingEvent: false,
@@ -239,7 +394,8 @@ export function evaluateWatchAutonomousState(
         configuredMode,
         false,
         0,
-        hasWeatherAlert
+        hasWeatherAlert,
+        autoOptions
       ),
       isOngoing: false,
       autonomousCacheValidUntilMs,
@@ -276,7 +432,8 @@ export function evaluateWatchAutonomousState(
       configuredMode,
       true,
       remainingMs,
-      hasWeatherAlert
+      hasWeatherAlert,
+      autoOptions
     ),
     isOngoing: false,
     autonomousCacheValidUntilMs,

@@ -5,6 +5,8 @@ import {
   evaluateWatchAutonomousState,
   formatCountdownText,
   detectHourlyWeatherShift,
+  computeSolarCurvePoint,
+  resolveEffectiveWatchContextMode,
   CalendarSource,
   CalendarEventItem,
   WatchCacheState,
@@ -167,7 +169,7 @@ test('detectHourlyWeatherShift detects temperature shifts and rain across period
   assert.equal(conditionShift.hasShift, true);
 });
 
-test('evaluateWatchAutonomousState supports SUN (Sunrise/Sunset) context mode', () => {
+test('evaluateWatchAutonomousState supports SUN (Sunrise/Sunset) and SLEEP context modes', () => {
   const syncedEvents = buildSyncPayload(mockEvents, mockCalendars, baseTime, 7);
   const sunCache: WatchCacheState = {
     cachedEvents: syncedEvents,
@@ -180,6 +182,109 @@ test('evaluateWatchAutonomousState supports SUN (Sunrise/Sunset) context mode', 
 
   const state = evaluateWatchAutonomousState(sunCache, baseTime);
   assert.equal(state.effectiveContextMode, 'SUN');
+
+  const sleepCache: WatchCacheState = {
+    ...sunCache,
+    contextWindowMode: 'SLEEP',
+  };
+  const sleepState = evaluateWatchAutonomousState(sleepCache, baseTime);
+  assert.equal(sleepState.effectiveContextMode, 'SLEEP');
 });
+
+test('computeSolarCurvePoint places sun on horizon at sunrise/sunset and below horizon at night (pre-dawn and evening)', () => {
+  const sunriseMins = 5 * 60 + 27; // 05:27 (327m)
+  const sunsetMins = 17 * 60 + 40; // 17:40 (1060m)
+
+  // At exact sunrise (05:27), sun crosses horizon line
+  const atSunrise = computeSolarCurvePoint(sunriseMins, sunriseMins, sunsetMins);
+  assert.equal(atSunrise.sunX, atSunrise.sunriseX);
+  assert.equal(atSunrise.sunY, atSunrise.horizonY);
+
+  // At exact sunset (17:40), sun crosses horizon line
+  const atSunset = computeSolarCurvePoint(sunsetMins, sunriseMins, sunsetMins);
+  assert.equal(atSunset.sunX, atSunset.sunsetX);
+  assert.equal(atSunset.sunY, atSunset.horizonY);
+
+  // At 22:42 (1362m -> night after sunset), sun is BELOW the horizon line (sunY > horizonY)
+  const atNightEvening = computeSolarCurvePoint(22 * 60 + 42, sunriseMins, sunsetMins);
+  assert.equal(atNightEvening.isBelowHorizon, true);
+  assert.ok(atNightEvening.sunY > atNightEvening.horizonY);
+
+  // At 03:30 (210m -> pre-dawn before sunrise), sun is BELOW the horizon line climbing toward sunrise
+  const atPreDawn = computeSolarCurvePoint(3 * 60 + 30, sunriseMins, sunsetMins);
+  assert.equal(atPreDawn.isBelowHorizon, true);
+  assert.ok(atPreDawn.sunY > atPreDawn.horizonY);
+});
+
+test('progress bar stays at 0% outside configured window and grows linearly from 0% to 100% inside window (30m, 1h, 2h, 3h)', () => {
+  const syncedEvents = buildSyncPayload(mockEvents, mockCalendars, baseTime, 7);
+  // ev-1 starts at baseTime + 45m. If user configured a 30m window, at baseTime (45m before event) progress MUST be 0%!
+  const cache30m: WatchCacheState = {
+    cachedEvents: syncedEvents,
+    lastSyncEpochMs: baseTime,
+    syncedHorizonDays: 7,
+    progressWindowMinutes: 30,
+    isBluetoothConnected: true,
+  };
+
+  const beforeWindow = evaluateWatchAutonomousState(cache30m, baseTime);
+  assert.equal(beforeWindow.isWithinProgressWindow, false);
+  assert.equal(beforeWindow.progressRatio, 0);
+
+  // At 15m before event (halfway through 30m window), progress MUST be 50% (0.5)
+  const halfway30m = evaluateWatchAutonomousState(cache30m, baseTime + 30 * 60 * 1000);
+  assert.equal(halfway30m.isWithinProgressWindow, true);
+  assert.equal(halfway30m.progressRatio, 0.5);
+});
+
+test('resolveEffectiveWatchContextMode respects programmable Automatic Mode primary context and exposure durations', () => {
+  // When primary context is STEPS and event is 25m away, autoAgendaExposureMinutes=30 exposes EVENTS temporarily
+  const modeAgendaExposed = resolveEffectiveWatchContextMode(
+    'DYNAMIC',
+    true,
+    25 * 60 * 1000,
+    false,
+    {
+      autoPrimaryContext: 'STEPS',
+      autoAgendaExposureMinutes: 30,
+      currentMinutesOfDay: 14 * 60,
+    }
+  );
+  assert.equal(modeAgendaExposed, 'EVENTS');
+
+  // When event is 50m away (outside 30m agenda exposure), near sunset (17:35 vs 17:40) exposes SUN
+  const modeNearSunset = resolveEffectiveWatchContextMode(
+    'DYNAMIC',
+    true,
+    50 * 60 * 1000,
+    false,
+    {
+      autoPrimaryContext: 'STEPS',
+      autoAgendaExposureMinutes: 30,
+      autoSunExposureMinutes: 30,
+      currentMinutesOfDay: 17 * 60 + 35,
+      sunriseMinutesOfDay: 327,
+      sunsetMinutesOfDay: 1060,
+    }
+  );
+  assert.equal(modeNearSunset, 'SUN');
+
+  // Upon waking up at 07:10 (within 30m of 07:00 wake time), exposes SLEEP
+  const modeMorningWake = resolveEffectiveWatchContextMode(
+    'DYNAMIC',
+    true,
+    120 * 60 * 1000,
+    false,
+    {
+      autoPrimaryContext: 'EVENTS',
+      autoSleepExposureMinutes: 30,
+      sleepSyncEnabled: true,
+      wakeMinutesOfDay: 420,
+      currentMinutesOfDay: 430,
+    }
+  );
+  assert.equal(modeMorningWake, 'SLEEP');
+});
+
 
 

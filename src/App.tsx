@@ -112,6 +112,11 @@ export default function App() {
     syncIntervalMinutes: 15,
     autoSyncOnCalendarChange: true,
     contextWindowMode: 'DYNAMIC',
+    autoPrimaryContext: 'EVENTS',
+    autoAgendaExposureMinutes: 30,
+    autoWeatherExposureMinutes: 30,
+    autoSunExposureMinutes: 30,
+    autoSleepExposureMinutes: 30,
     highFreq15MinRule: true,
     updateOnScreenWake: true,
     phoneWeatherAutoCheckEnabled: true,
@@ -127,6 +132,11 @@ export default function App() {
     watchStandaloneSolarEnabled: false,
     solarSunriseHHMM: '05:27',
     solarSunsetHHMM: '17:40',
+    sleepSyncEnabled: true,
+    sleepDurationMinutes: 462,
+    sleepScore: 86,
+    sleepBedtimeHHMM: '23:18',
+    sleepWakeHHMM: '07:00',
   });
 
   // Watch clock can be fast-forwarded to test autonomous offline behavior
@@ -150,6 +160,23 @@ export default function App() {
 
   // Effective Watch Cache State: if connected, reflects latest phone sync; if disconnected, uses frozen autonomous Room cache
   const watchCache: WatchCacheState = useMemo(() => {
+    const sharedSettings = {
+      contextWindowMode: config.contextWindowMode,
+      autoPrimaryContext: config.autoPrimaryContext,
+      autoAgendaExposureMinutes: config.autoAgendaExposureMinutes,
+      autoWeatherExposureMinutes: config.autoWeatherExposureMinutes,
+      autoSunExposureMinutes: config.autoSunExposureMinutes,
+      autoSleepExposureMinutes: config.autoSleepExposureMinutes,
+      highFreq15MinRule: config.highFreq15MinRule,
+      updateOnScreenWake: config.updateOnScreenWake,
+      hasActiveWatchWeatherAlert,
+      watchStandaloneWeatherEnabled: config.watchStandaloneWeatherEnabled,
+      watchStandaloneSolarEnabled: config.watchStandaloneSolarEnabled,
+      solarSunriseHHMM: config.solarSunriseHHMM,
+      solarSunsetHHMM: config.solarSunsetHHMM,
+      sleepSyncEnabled: config.sleepSyncEnabled,
+      sleepWakeHHMM: config.sleepWakeHHMM,
+    };
     if (isBluetoothConnected) {
       return {
         cachedEvents: liveSyncedEvents,
@@ -157,11 +184,7 @@ export default function App() {
         syncedHorizonDays: config.horizonDays,
         progressWindowMinutes: config.progressWindowMinutes,
         isBluetoothConnected: true,
-        contextWindowMode: config.contextWindowMode,
-        highFreq15MinRule: config.highFreq15MinRule,
-        updateOnScreenWake: config.updateOnScreenWake,
-        hasActiveWatchWeatherAlert,
-        watchStandaloneWeatherEnabled: config.watchStandaloneWeatherEnabled,
+        ...sharedSettings,
       };
     }
     return {
@@ -170,11 +193,7 @@ export default function App() {
       syncedHorizonDays: offlineFrozenHorizonDays,
       progressWindowMinutes: offlineFrozenProgressWindow,
       isBluetoothConnected: false,
-      contextWindowMode: config.contextWindowMode,
-      highFreq15MinRule: config.highFreq15MinRule,
-      updateOnScreenWake: config.updateOnScreenWake,
-      hasActiveWatchWeatherAlert,
-      watchStandaloneWeatherEnabled: config.watchStandaloneWeatherEnabled,
+      ...sharedSettings,
     };
   }, [
     isBluetoothConnected,
@@ -183,9 +202,19 @@ export default function App() {
     config.horizonDays,
     config.progressWindowMinutes,
     config.contextWindowMode,
+    config.autoPrimaryContext,
+    config.autoAgendaExposureMinutes,
+    config.autoWeatherExposureMinutes,
+    config.autoSunExposureMinutes,
+    config.autoSleepExposureMinutes,
     config.highFreq15MinRule,
     config.updateOnScreenWake,
     config.watchStandaloneWeatherEnabled,
+    config.watchStandaloneSolarEnabled,
+    config.solarSunriseHHMM,
+    config.solarSunsetHHMM,
+    config.sleepSyncEnabled,
+    config.sleepWakeHHMM,
     hasActiveWatchWeatherAlert,
     offlineFrozenCache,
     offlineFrozenHorizonDays,

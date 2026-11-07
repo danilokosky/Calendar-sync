@@ -30,6 +30,7 @@ import androidx.wear.watchface.complications.datasource.SuspendingComplicationDa
 import com.chronowear.wear.data.AutonomousCountdownScheduler
 import com.chronowear.wear.data.CachedWearEvent
 import com.chronowear.wear.data.HourlyWeatherSnapshot
+import com.chronowear.wear.data.SleepSnapshot
 import com.chronowear.wear.data.SolarSnapshot
 import com.chronowear.wear.data.WatchAutonomousRepository
 import com.chronowear.wear.data.WeeklyStepsSnapshot
@@ -52,11 +53,12 @@ object ChronoWearComplicationUpdater {
 /**
  * Motor Multi-Contexto de Renderização em Canvas 2D de Alto DPI (604x272px @2x Retina para 302x136px):
  * Renderiza com tipografia ampliada e alta legibilidade:
- * 1. EVENTS: Próximos 3 Eventos + Contagem Regressiva + Barra de Progresso
+ * 1. EVENTS: Próximos 3 Eventos + Contagem Regressiva + Barra de Progresso (0% a 100% fiel à janela escolhida)
  * 2. WEATHER: Título limpo "Clima", condição climática (Chuva, Tempestade, Garoa, Nublado, Céu limpo)
  *    e curva de mudança de temperatura nas próximas horas com números maiores
  * 3. STEPS: Gráfico de Passos Semanais (7 dias) + Meta Diária com barras e rótulos ampliados
- * 4. SUN: Curva Solar de Nascer e Pôr do Sol baseada na localização (fiel ao design One UI Watch)
+ * 4. SUN: Curva Solar Completa (Dia e Noite abaixo da linha do horizonte, fiel ao design One UI Watch)
+ * 5. SLEEP: Resumo de Sono (Hipnograma de Estágios REM/Leve/Profundo, duração e pontuação)
  */
 object AgendaCardBitmapRenderer {
 
@@ -81,30 +83,25 @@ object AgendaCardBitmapRenderer {
             WatchAutonomousRepository.MODE_SUN -> {
                 renderSunriseSunsetCanvas(repo.getSolarSnapshot(nowMs))
             }
+            WatchAutonomousRepository.MODE_SLEEP -> {
+                renderSleepSummaryCanvas(repo.getSleepSnapshot())
+            }
             else -> {
                 val primary = upcomingThree.firstOrNull()
-                val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.toLong())
-                val isInsideActiveProgressWindow = primary != null &&
-                    (primary.startEpochMs - nowMs) in 1..windowMs
+                val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.toLong()).toFloat()
 
-                if (!isInsideActiveProgressWindow && repo.getContextWindowMode() == WatchAutonomousRepository.MODE_EVENTS) {
-                    val phoneB64 = repo.getPhoneRenderedCardBase64IfFresh(nowMs)
-                    if (!phoneB64.isNullOrBlank()) {
-                        try {
-                            val bytes = Base64.decode(phoneB64, Base64.DEFAULT)
-                            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                            if (decoded != null) return decoded
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
-
-                val progressFraction = if (primary == null) {
+                // Barra de progresso fiel à configuração do usuário (30m, 1h, 2h, 3h antes do evento):
+                // Antes de entrar na janela configurada -> 0% (vazia).
+                // Dentro da janela configurada -> cresce linearmente de 0% até 100% na hora do evento.
+                val progressFraction = if (primary == null || windowMs <= 0f) {
                     0f
                 } else {
-                    val rem = (primary.startEpochMs - nowMs).coerceAtLeast(0L).toFloat()
-                    if (rem >= windowMs.toFloat()) 0.06f
-                    else (1f - (rem / windowMs.toFloat())).coerceIn(0.06f, 1f)
+                    val remMs = (primary.startEpochMs - nowMs).coerceAtLeast(0L).toFloat()
+                    if (remMs >= windowMs) {
+                        0f
+                    } else {
+                        ((windowMs - remMs) / windowMs).coerceIn(0f, 1f)
+                    }
                 }
 
                 val rows = listOf(
@@ -169,7 +166,7 @@ object AgendaCardBitmapRenderer {
     }
 
     /**
-     * CONTEXTO 1: Próximos 3 Eventos + Contagem Regressiva + Barra de Progresso (Alto DPI)
+     * CONTEXTO 1: Próximos 3 Eventos + Contagem Regressiva + Barra de Progresso (0% a 100%)
      */
     private fun renderEventsCardCanvas(
         headerTitle: String,
@@ -245,13 +242,15 @@ object AgendaCardBitmapRenderer {
         val barRight = CARD_WIDTH - 24f
         canvas.drawRoundRect(RectF(barLeft, barTop, barRight, barBottom), 6.5f, 6.5f, trackPaint)
 
-        val fillWidth = ((barRight - barLeft) * progressFraction.coerceIn(0.05f, 1f))
-        canvas.drawRoundRect(
-            RectF(barLeft, barTop, barLeft + fillWidth, barBottom),
-            6.5f,
-            6.5f,
-            goldPaint
-        )
+        if (progressFraction > 0f) {
+            val fillWidth = ((barRight - barLeft) * progressFraction.coerceIn(0f, 1f)).coerceAtLeast(13f)
+            canvas.drawRoundRect(
+                RectF(barLeft, barTop, barLeft + fillWidth, barBottom),
+                6.5f,
+                6.5f,
+                goldPaint
+            )
+        }
 
         val row2 = rows.getOrNull(1) ?: Triple("--:--", "Livre", "")
         canvas.drawText(row2.first, 24f, 188f, timePaint)
@@ -295,7 +294,7 @@ object AgendaCardBitmapRenderer {
         canvas.drawCircle(38f, 34f, 12f, goldPaint)
         canvas.drawRoundRect(RectF(34f, 32f, 68f, 52f), 10f, 10f, cyanPaint)
 
-        // Título limpo: apenas "Clima" (sem sobreposição e mais legível)
+        // Título limpo: apenas "Clima"
         val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#F5C438")
             textSize = 42f
@@ -471,7 +470,12 @@ object AgendaCardBitmapRenderer {
     }
 
     /**
-     * CONTEXTO 4: Nascer e Pôr do Sol (Curva Solar Fiel ao Design One UI Watch — Screenshot 4)
+     * CONTEXTO 4: Nascer e Pôr do Sol (Curva Solar Completa Dia e Noite — Fiel ao Design One UI Watch)
+     * - A curva branca cruza a linha azul do horizonte exatamente nas linhas pontilhadas de
+     *   Nascer do Sol (sunriseX = 164f) e Pôr do Sol (sunsetX = 440f).
+     * - Durante a noite (antes do nascer [26f..164f] e após o pôr do sol [440f..578f]), a curva
+     *   desce ABAIXO da linha do horizonte (até y = 236f) e o ponto luminoso do sol acompanha
+     *   o trajeto noturno para mostrar quanto falta para o sol cruzar a linha do horizonte.
      */
     private fun renderSunriseSunsetCanvas(solar: SolarSnapshot): Bitmap {
         val (bmp, canvas) = createBaseCardBitmap()
@@ -491,13 +495,13 @@ object AgendaCardBitmapRenderer {
             strokeCap = Paint.Cap.ROUND
             color = Color.parseColor("#84CC16")
         }
-        canvas.drawCircle(52f, 44f, 22f, limeGlowPaint)
-        canvas.drawCircle(52f, 44f, 15f, limeCorePaint)
+        canvas.drawCircle(52f, 42f, 21f, limeGlowPaint)
+        canvas.drawCircle(52f, 42f, 14f, limeCorePaint)
         val riseHorizonPath = Path().apply {
-            moveTo(24f, 58f)
-            lineTo(42f, 58f)
-            quadTo(52f, 46f, 62f, 58f)
-            lineTo(80f, 58f)
+            moveTo(24f, 56f)
+            lineTo(42f, 56f)
+            quadTo(52f, 44f, 62f, 56f)
+            lineTo(80f, 56f)
         }
         canvas.drawPath(riseHorizonPath, limeLinePaint)
 
@@ -506,7 +510,7 @@ object AgendaCardBitmapRenderer {
             textSize = 46f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText(solar.sunriseHHMM, 94f, 58f, timeTopPaint)
+        canvas.drawText(solar.sunriseHHMM, 94f, 56f, timeTopPaint)
 
         // 2. Horário Pôr do Sol (17:40) + Ícone de Pôr do Sol (Azul Suave no topo direito)
         val sunsetRightTimePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -515,7 +519,7 @@ object AgendaCardBitmapRenderer {
             textAlign = Paint.Align.RIGHT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText(solar.sunsetHHMM, CARD_WIDTH - 94f, 58f, sunsetRightTimePaint)
+        canvas.drawText(solar.sunsetHHMM, CARD_WIDTH - 94f, 56f, sunsetRightTimePaint)
 
         val blueGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -533,22 +537,25 @@ object AgendaCardBitmapRenderer {
             color = Color.parseColor("#93C5FD")
         }
         val iconRightCx = CARD_WIDTH - 52f
-        canvas.drawCircle(iconRightCx, 44f, 22f, blueGlowPaint)
-        canvas.drawCircle(iconRightCx, 44f, 15f, blueCorePaint)
+        canvas.drawCircle(iconRightCx, 42f, 21f, blueGlowPaint)
+        canvas.drawCircle(iconRightCx, 42f, 14f, blueCorePaint)
         val setHorizonPath = Path().apply {
-            moveTo(iconRightCx - 28f, 56f)
-            lineTo(iconRightCx - 10f, 56f)
-            quadTo(iconRightCx, 68f, iconRightCx + 10f, 56f)
-            lineTo(iconRightCx + 28f, 56f)
+            moveTo(iconRightCx - 28f, 54f)
+            lineTo(iconRightCx - 10f, 54f)
+            quadTo(iconRightCx, 66f, iconRightCx + 10f, 54f)
+            lineTo(iconRightCx + 28f, 54f)
         }
         canvas.drawPath(setHorizonPath, blueLinePaint)
 
-        // 3. Área do Gráfico Solar (Gradiente Crepuscular acima da linha do horizonte)
+        // 3. Geometria do Gráfico Solar (Dia acima de horizonY = 160f, Noite abaixo de horizonY = 160f)
         val graphLeft = 26f
-        val graphRight = CARD_WIDTH - 26f
-        val horizonY = 172f
-        val graphTop = 78f
-        val graphBottom = 248f
+        val graphRight = CARD_WIDTH - 26f // 578f
+        val sunriseX = 164f
+        val noonX = CARD_WIDTH / 2f // 302f
+        val sunsetX = CARD_WIDTH - 164f // 440f
+        val horizonY = 160f
+        val graphTop = 74f
+        val graphBottom = 242f
 
         val skyGradientPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -568,27 +575,24 @@ object AgendaCardBitmapRenderer {
         }
         canvas.drawRect(graphLeft, graphTop, graphRight, horizonY, skyGradientPaint)
 
-        // 4. Três linhas verticais pontilhadas (Nascer X=168, Meio-Dia Solar X=302, Pôr do Sol X=436)
+        // 4. Três linhas verticais pontilhadas (Nascer X=164, Meio-Dia Solar X=302, Pôr do Sol X=440)
         val dottedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 5f
             strokeCap = Paint.Cap.ROUND
             color = Color.parseColor("#64748B")
-            pathEffect = DashPathEffect(floatArrayOf(3f, 12f), 0f)
+            pathEffect = DashPathEffect(floatArrayOf(3f, 11f), 0f)
         }
-        val sunriseX = 168f
-        val noonX = CARD_WIDTH / 2f
-        val sunsetX = CARD_WIDTH - 168f
 
         for (vx in listOf(sunriseX, noonX, sunsetX)) {
             val vPath = Path().apply {
-                moveTo(vx, 76f)
-                lineTo(vx, 206f)
+                moveTo(vx, 74f)
+                lineTo(vx, 200f)
             }
             canvas.drawPath(vPath, dottedPaint)
         }
 
-        // 5. Linha Horizontal Azul-Celeste do Horizonte
+        // 5. Linha Horizontal Azul-Celeste do Horizonte (em horizonY = 160f)
         val horizonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 6.5f
@@ -606,37 +610,41 @@ object AgendaCardBitmapRenderer {
             color = Color.parseColor("#94A3B8")
         }
         // Seta ↑ em sunriseX
-        canvas.drawLine(sunriseX, 248f, sunriseX, 218f, symbolStrokePaint)
-        canvas.drawLine(sunriseX - 10f, 228f, sunriseX, 218f, symbolStrokePaint)
-        canvas.drawLine(sunriseX + 10f, 228f, sunriseX, 218f, symbolStrokePaint)
+        canvas.drawLine(sunriseX, 240f, sunriseX, 212f, symbolStrokePaint)
+        canvas.drawLine(sunriseX - 10f, 222f, sunriseX, 212f, symbolStrokePaint)
+        canvas.drawLine(sunriseX + 10f, 222f, sunriseX, 212f, symbolStrokePaint)
 
         // Sol ☼ em noonX
-        val sunCenterY = 233f
-        canvas.drawCircle(noonX, sunCenterY, 7f, symbolStrokePaint)
+        val sunCenterY = 226f
+        canvas.drawCircle(noonX, sunCenterY, 6.5f, symbolStrokePaint)
         for (deg in 0 until 360 step 45) {
             val rad = Math.toRadians(deg.toDouble())
-            val x1 = noonX + (12f * cos(rad)).toFloat()
-            val y1 = sunCenterY + (12f * sin(rad)).toFloat()
-            val x2 = noonX + (16f * cos(rad)).toFloat()
-            val y2 = sunCenterY + (16f * sin(rad)).toFloat()
+            val x1 = noonX + (11.5f * cos(rad)).toFloat()
+            val y1 = sunCenterY + (11.5f * sin(rad)).toFloat()
+            val x2 = noonX + (15.5f * cos(rad)).toFloat()
+            val y2 = sunCenterY + (15.5f * sin(rad)).toFloat()
             canvas.drawLine(x1, y1, x2, y2, symbolStrokePaint)
         }
 
         // Seta ↓ em sunsetX
-        canvas.drawLine(sunsetX, 218f, sunsetX, 248f, symbolStrokePaint)
-        canvas.drawLine(sunsetX - 10f, 238f, sunsetX, 248f, symbolStrokePaint)
-        canvas.drawLine(sunsetX + 10f, 238f, sunsetX, 248f, symbolStrokePaint)
+        canvas.drawLine(sunsetX, 212f, sunsetX, 240f, symbolStrokePaint)
+        canvas.drawLine(sunsetX - 10f, 230f, sunsetX, 240f, symbolStrokePaint)
+        canvas.drawLine(sunsetX + 10f, 230f, sunsetX, 240f, symbolStrokePaint)
 
-        // 7. Curva Senoidal Solar Branca (cruza o horizonte exatamente em sunriseX e sunsetX)
-        // y(x) = horizonY - A * cos(pi * (x - noonX) / (sunsetX - sunriseX))
-        val halfSpan = sunsetX - sunriseX // 134px -> cos(pi/2) = 0 no horizonte!
-        val amplitude = 78f
+        // 7. Curva Senoidal Completa (Dia e Noite):
+        // halfDaySpan = sunsetX - noonX = 138px.
+        // - Em x = sunriseX (164): angle = -PI/2 -> cos = 0 -> y = horizonY (160)
+        // - Em x = noonX (302):    angle = 0     -> cos = +1 -> y = 160 - 76 = 84 (Pico do Dia)
+        // - Em x = sunsetX (440):  angle = +PI/2 -> cos = 0 -> y = horizonY (160)
+        // - Em x < sunriseX (26..164) e x > sunsetX (440..578): cos < 0 -> y > horizonY (até 236, Noite abaixo do horizonte!)
+        val halfDaySpan = sunsetX - noonX // 138f
+        val amplitude = 76f
         val solarCurvePath = Path()
-        val steps = 80
+        val steps = 96
         for (i in 0..steps) {
             val x = graphLeft + (graphRight - graphLeft) * (i.toFloat() / steps.toFloat())
-            val angle = (Math.PI / 2.0) * ((x - noonX) / halfSpan)
-            val y = (horizonY - amplitude * cos(angle).toFloat()).coerceIn(84f, graphBottom)
+            val angle = (Math.PI / 2.0) * ((x - noonX) / halfDaySpan)
+            val y = (horizonY - amplitude * cos(angle).toFloat()).coerceIn(80f, graphBottom)
             if (i == 0) solarCurvePath.moveTo(x, y) else solarCurvePath.lineTo(x, y)
         }
 
@@ -648,29 +656,31 @@ object AgendaCardBitmapRenderer {
         }
         canvas.drawPath(solarCurvePath, curvePaint)
 
-        // 8. Ponto Luminoso do Sol na Posição da Hora Atual
+        // 8. Ponto Luminoso do Sol na Posição da Hora Atual (inclusive abaixo do horizonte à noite!)
         val curMins = solar.currentMinutesOfDay.toFloat()
-        val riseMins = solar.sunriseMinutesOfDay.toFloat()
+        val riseMins = solar.sunriseMinutesOfDay.toFloat().coerceAtLeast(1f)
         val setMins = solar.sunsetMinutesOfDay.toFloat().coerceAtLeast(riseMins + 60f)
-        val noonMins = (riseMins + setMins) / 2f
 
         val sunX = when {
             curMins <= riseMins -> {
-                val frac = (curMins / riseMins.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                // Madrugada (00:00 até Nascer do Sol): percorre de graphLeft (26) até sunriseX (164) abaixo do horizonte
+                val frac = (curMins / riseMins).coerceIn(0f, 1f)
                 graphLeft + frac * (sunriseX - graphLeft)
             }
             curMins <= setMins -> {
+                // Dia (Nascer até Pôr do Sol): percorre de sunriseX (164) até sunsetX (440) acima do horizonte
                 val frac = ((curMins - riseMins) / (setMins - riseMins)).coerceIn(0f, 1f)
                 sunriseX + frac * (sunsetX - sunriseX)
             }
             else -> {
+                // Noite (Pôr do Sol até 24:00): percorre de sunsetX (440) até graphRight (578) abaixo do horizonte
                 val remDay = (1440f - setMins).coerceAtLeast(1f)
                 val frac = ((curMins - setMins) / remDay).coerceIn(0f, 1f)
                 sunsetX + frac * (graphRight - sunsetX)
             }
         }
-        val sunAngle = (Math.PI / 2.0) * ((sunX - noonX) / halfSpan)
-        val sunY = (horizonY - amplitude * cos(sunAngle).toFloat()).coerceIn(84f, graphBottom)
+        val sunAngle = (Math.PI / 2.0) * ((sunX - noonX) / halfDaySpan)
+        val sunY = (horizonY - amplitude * cos(sunAngle).toFloat()).coerceIn(80f, graphBottom)
 
         val sunHaloOuter = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -687,6 +697,112 @@ object AgendaCardBitmapRenderer {
         canvas.drawCircle(sunX, sunY, 20f, sunHaloOuter)
         canvas.drawCircle(sunX, sunY, 13f, sunHaloInner)
         canvas.drawCircle(sunX, sunY, 8.5f, sunCore)
+
+        return bmp
+    }
+
+    /**
+     * CONTEXTO 5: Resumo de Sono (Health Connect / Samsung Health — Hipnograma e Pontuação)
+     */
+    private fun renderSleepSummaryCanvas(sleep: SleepSnapshot): Bitmap {
+        val (bmp, canvas) = createBaseCardBitmap()
+
+        val lavenderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.parseColor("#A78BFA")
+        }
+        val darkCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.parseColor("#080A0E")
+        }
+
+        // Ícone de Lua Crescente no topo esquerdo
+        canvas.drawCircle(44f, 36f, 17f, lavenderPaint)
+        canvas.drawCircle(52f, 31f, 14f, darkCutoutPaint)
+
+        val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#C4B5FD")
+            textSize = 42f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("Sono", 76f, 50f, headerPaint)
+
+        val hours = sleep.durationMinutes / 60
+        val mins = sleep.durationMinutes % 60
+        val rightScorePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 35f
+            textAlign = Paint.Align.RIGHT
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("${hours}h ${mins}m • ${sleep.sleepScore} pts", CARD_WIDTH - 24f, 50f, rightScorePaint)
+
+        val subPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#CBD5E1")
+            textSize = 28f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val qualityLabel = when {
+            sleep.sleepScore >= 85 -> "Excelente"
+            sleep.sleepScore >= 70 -> "Bom"
+            else -> "Regular"
+        }
+        canvas.drawText("${sleep.bedtimeHHMM} → ${sleep.wakeHHMM} • $qualityLabel", 24f, 92f, subPaint)
+
+        // Barra Segmentada de Estágios do Sono (Acordado, REM, Leve, Profundo)
+        val stages = sleep.stagesMinutes.take(4).let {
+            if (it.size == 4) it else listOf(18, 95, 244, 105)
+        }
+        val totalStageMins = stages.sum().coerceAtLeast(1).toFloat()
+        val stageColors = listOf(
+            Color.parseColor("#F87171"), // Acordado
+            Color.parseColor("#38BDF8"), // REM
+            Color.parseColor("#818CF8"), // Leve
+            Color.parseColor("#4F46E5")  // Profundo
+        )
+        val stageNames = listOf("Acord.", "REM", "Leve", "Prof.")
+
+        val barLeft = 24f
+        val barRight = CARD_WIDTH - 24f
+        val totalBarWidth = barRight - barLeft
+        val barTop = 114f
+        val barBottom = 152f
+
+        var curX = barLeft
+        stages.forEachIndexed { idx, stageMins ->
+            val segW = (stageMins.toFloat() / totalStageMins) * totalBarWidth
+            val segPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = stageColors[idx]
+            }
+            val rightEdge = (curX + segW - 4f).coerceAtLeast(curX + 6f)
+            canvas.drawRoundRect(RectF(curX, barTop, rightEdge, barBottom), 10f, 10f, segPaint)
+            curX += segW
+        }
+
+        // Legenda de Estágios na parte inferior com alto DPI
+        val colWidth = totalBarWidth / 4f
+        val stageTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#94A3B8")
+            textSize = 26f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val stageValPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 31f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        stages.forEachIndexed { idx, stageMins ->
+            val cx = barLeft + idx * colWidth + colWidth / 2f
+            val sh = stageMins / 60
+            val sm = stageMins % 60
+            val durText = if (sh > 0) "${sh}h${String.format("%02d", sm)}" else "${sm}m"
+            canvas.drawText(stageNames[idx], cx, 198f, stageTitlePaint)
+            canvas.drawText(durText, cx, 240f, stageValPaint)
+        }
 
         return bmp
     }

@@ -202,7 +202,18 @@ export const SmartphoneCompanionSimulator: React.FC<
     { id: 'WEATHER', label: 'Clima' },
     { id: 'STEPS', label: 'Passos' },
     { id: 'SUN', label: 'Sol' },
+    { id: 'SLEEP', label: 'Sono' },
   ] as const;
+
+  const autoPrimaryOptions = [
+    { id: 'EVENTS', label: 'Agenda' },
+    { id: 'WEATHER', label: 'Clima' },
+    { id: 'SUN', label: 'Sol' },
+    { id: 'STEPS', label: 'Passos' },
+    { id: 'SLEEP', label: 'Sono' },
+  ] as const;
+
+  const exposureMinuteOptions = [15, 30, 45, 60] as const;
 
   return (
     <div
@@ -285,10 +296,10 @@ export const SmartphoneCompanionSimulator: React.FC<
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="text-sm font-bold text-white leading-snug">
-                    Janela de Contexto em Canvas Bitmap (v1.1.2)
+                    Janela de Contexto em Canvas Bitmap (v1.1.3)
                   </div>
                   <p className="text-[11px] text-[#C8D3CC] leading-relaxed">
-                    5 modos em alta densidade (Auto, Agenda, Clima, Passos e Nascer/Pôr do Sol) com atualização instantânea ao trocar opções.
+                    6 modos (Auto, Agenda, Clima, Passos, Sol com curva noturna e Sono via Health Connect) com tempos de exposição configuráveis.
                   </p>
                 </div>
               </div>
@@ -300,10 +311,18 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Contexto no Relógio:
                   </span>
                   <span className="font-mono text-[10px] text-amber-300">
-                    {config.highFreq15MinRule ? 'Turbo 1m (≤15m) Ativo' : 'Padrão Screen-On'}
+                    {config.contextWindowMode === 'DYNAMIC'
+                      ? `Auto (Base: ${
+                          autoPrimaryOptions.find(
+                            (o) => o.id === (config.autoPrimaryContext ?? 'EVENTS')
+                          )?.label ?? 'Agenda'
+                        })`
+                      : config.highFreq15MinRule
+                        ? 'Turbo 1m (≤15m) Ativo'
+                        : 'Padrão Screen-On'}
                   </span>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-6 gap-1">
                   {contextModeOptions.map((mode) => (
                     <button
                       key={mode.id}
@@ -311,7 +330,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                       onClick={() =>
                         onUpdateConfig({ contextWindowMode: mode.id })
                       }
-                      className={`py-1.5 px-2 rounded-full text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
+                      className={`py-1.5 px-1.5 rounded-full text-[10.5px] font-semibold transition-all duration-150 cursor-pointer ${
                         config.contextWindowMode === mode.id
                           ? 'bg-[#22C55E] text-[#052E16] font-bold shadow-xs'
                           : 'bg-[#141D18] text-slate-200 border border-[#2D3E34] hover:bg-[#1C2821]'
@@ -373,25 +392,13 @@ export const SmartphoneCompanionSimulator: React.FC<
               <div className="pt-3 border-t border-[#242A26] grid grid-cols-3 gap-2.5">
                 <div className="rounded-2xl bg-[#1B201D] p-2.5">
                   <div className="text-[10px] text-slate-400">
-                    Próximo evento
+                    Barra de Progresso
                   </div>
                   <div className="text-xs font-bold text-white truncate mt-0.5">
-                    {nextEvent ? nextEvent.title : 'Sem eventos'}
+                    0% → 100% ({config.progressWindowMinutes === 30 ? '30m' : `${config.progressWindowMinutes / 60}h`})
                   </div>
-                  <div className="text-[11px] font-mono text-amber-400 mt-0.5">
-                    {nextEvent ? formatHHMM(nextEvent.startEpochMs) : '--:--'}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-[#1B201D] p-2.5">
-                  <div className="text-[10px] text-slate-400">
-                    Clima &amp; Triggers
-                  </div>
-                  <div className="text-xs font-bold text-white mt-0.5">
-                    {selectedWeatherApps.length} apps ativos
-                  </div>
-                  <div className="text-[10px] font-mono text-sky-400 mt-0.5">
-                    Auto {config.phoneWeatherCheckIntervalMinutes ?? 60}m
+                  <div className="text-[10px] font-mono text-amber-400 mt-0.5">
+                    Próx: {nextEvent ? formatHHMM(nextEvent.startEpochMs) : '--:--'}
                   </div>
                 </div>
 
@@ -402,8 +409,20 @@ export const SmartphoneCompanionSimulator: React.FC<
                   <div className="text-xs font-bold text-white mt-0.5 font-mono">
                     {config.solarSunriseHHMM ?? '05:27'} • {config.solarSunsetHHMM ?? '17:40'}
                   </div>
+                  <div className="text-[10px] font-mono text-sky-400 mt-0.5">
+                    Exposição: {config.autoSunExposureMinutes ?? 30}m
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-[#1B201D] p-2.5">
+                  <div className="text-[10px] text-slate-400">
+                    Resumo de Sono
+                  </div>
+                  <div className="text-xs font-bold text-white mt-0.5 font-mono">
+                    7h 42m • {config.sleepScore ?? 86} pts
+                  </div>
                   <div className="text-[10px] font-mono text-emerald-400 mt-0.5">
-                    {config.phoneSolarAutoSyncEnabled ?? true ? 'GPS Telefone' : 'Stand-Alone'}
+                    {config.sleepSyncEnabled ?? true ? `Ao acordar (${config.autoSleepExposureMinutes ?? 30}m)` : 'Desativado'}
                   </div>
                 </div>
               </div>
@@ -432,7 +451,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                 <span className="text-xs font-bold text-slate-100 block">
                   Função da Janela de Contexto (Canvas Bitmap)
                 </span>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   {contextModeOptions.map((m) => (
                     <button
                       key={m.id}
@@ -493,10 +512,145 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 2: SINCRONIZAÇÃO DE AGENDA */}
+            {/* SEÇÃO 2: MODO AUTOMÁTICO (PRIORIDADE E TEMPOS DE EXPOSIÇÃO) */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                2. Sincronização de Agenda
+                2. Modo Automático (Prioridade e Exposição)
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Define qual é o contexto principal no modo Auto e por quanto tempo cada contexto temporário permanece exposto no relógio.
+              </p>
+
+              {/* Contexto Principal Padrão */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Contexto Principal (Padrão em Modo Auto)
+                </span>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {autoPrimaryOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({ autoPrimaryContext: opt.id })
+                      }
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.autoPrimaryContext ?? 'EVENTS') === opt.id
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tempo de Exposição da Agenda (quando não for a principal) */}
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Exposição da Agenda (quando não for a principal, antes do evento)
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {exposureMinuteOptions.map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({ autoAgendaExposureMinutes: mins })
+                      }
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.autoAgendaExposureMinutes ?? 30) === mins
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
+                      }`}
+                    >
+                      {mins === 60 ? '1h' : `${mins}m`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tempo de Exposição do Clima */}
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Exposição do Clima (após alerta de chuva ou mudança de temp.)
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {exposureMinuteOptions.map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({ autoWeatherExposureMinutes: mins })
+                      }
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.autoWeatherExposureMinutes ?? 30) === mins
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
+                      }`}
+                    >
+                      {mins === 60 ? '1h' : `${mins}m`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tempo de Exposição de Nascer e Pôr do Sol */}
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Exposição de Nascer e Pôr do Sol (janela ao redor do evento solar)
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {exposureMinuteOptions.map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({ autoSunExposureMinutes: mins })
+                      }
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.autoSunExposureMinutes ?? 30) === mins
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
+                      }`}
+                    >
+                      {mins === 60 ? '1h' : `${mins}m`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tempo de Exposição do Sono */}
+              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Exposição do Resumo de Sono (após despertar pela manhã)
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {exposureMinuteOptions.map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({ autoSleepExposureMinutes: mins })
+                      }
+                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.autoSleepExposureMinutes ?? 30) === mins
+                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
+                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
+                      }`}
+                    >
+                      {mins === 60 ? '1h' : `${mins}m`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* SEÇÃO 3: SINCRONIZAÇÃO DE AGENDA & BARRA DE PROGRESSO */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                3. Sincronização de Agenda e Barra de Progresso
               </div>
 
               <div className="flex items-center justify-between gap-4">
@@ -550,7 +704,7 @@ export const SmartphoneCompanionSimulator: React.FC<
 
               <div className="space-y-1.5 pt-2 border-t border-[#232925]">
                 <span className="text-xs font-bold text-slate-200 block">
-                  Janela da Barra de Progresso do Evento
+                  Início da Barra de Progresso do Evento (0% → 100% até o início)
                 </span>
                 <div className="grid grid-cols-4 gap-1.5">
                   {([30, 60, 120, 180] as const).map((mins) => (
@@ -595,10 +749,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 3: INTELIGÊNCIA DE CLIMA & GATILHOS */}
+            {/* SEÇÃO 4: INTELIGÊNCIA DE CLIMA & GATILHOS */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                3. Inteligência de Clima e Gatilhos
+                4. Inteligência de Clima e Gatilhos
               </div>
 
               <div className="flex items-center justify-between gap-4">
@@ -701,10 +855,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 4: NASCER E PÔR DO SOL (LOCALIZAÇÃO) */}
+            {/* SEÇÃO 5: NASCER E PÔR DO SOL (LOCALIZAÇÃO & CURVA NOTURNA) */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                4. Nascer e Pôr do Sol (Localização)
+                5. Nascer e Pôr do Sol (Localização)
               </div>
 
               <div className="flex items-center justify-between gap-4">
@@ -713,7 +867,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Sincronizar Sol pelo Smartphone (GPS)
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Calcula nascer ({config.solarSunriseHHMM ?? '05:27'}) e pôr do sol ({config.solarSunsetHHMM ?? '17:40'}) pela localização do telefone
+                    Calcula nascer ({config.solarSunriseHHMM ?? '05:27'}), pôr do sol ({config.solarSunsetHHMM ?? '17:40'}) e trajetória noturna abaixo do horizonte
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -752,10 +906,37 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 5: SERVIÇO EM SEGUNDO PLANO */}
+            {/* SEÇÃO 6: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH) */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                6. Monitoramento de Sono (Health Connect / Samsung Health)
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Sincronizar Dados de Sono (Health Connect)
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Lê estágios do sono (Leve, Profundo, REM, Acordado) via Health Connect ou Samsung Health ({config.sleepBedtimeHHMM ?? '23:18'} → {config.sleepWakeHHMM ?? '07:00'} • {config.sleepScore ?? 86} pts)
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.sleepSyncEnabled ?? true}
+                  ariaLabel="Sincronizar Dados de Sono"
+                  onChange={() =>
+                    onUpdateConfig({
+                      sleepSyncEnabled: !(config.sleepSyncEnabled ?? true),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* SEÇÃO 7: SERVIÇO EM SEGUNDO PLANO */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-2.5 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                5. Serviço em Segundo Plano
+                7. Serviço em Segundo Plano
               </div>
 
               <div className="flex items-center justify-between gap-4">
@@ -764,7 +945,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Acesso a Notificações Ativo
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Permite detectar gatilhos dos apps de clima selecionados
+                    Permite detectar gatilhos dos apps de clima e resumos matinais de sono
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -788,16 +969,16 @@ export const SmartphoneCompanionSimulator: React.FC<
             <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-2.5 text-xs text-slate-300 leading-relaxed shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
               <div className="text-sm font-bold text-white">
-                ChronoWear Sync v1.1.2 — Recursos da Janela Canvas
+                ChronoWear Sync v1.1.3 — Recursos da Janela Canvas
               </div>
               <p>
-                • <strong>Tipografia de Alto DPI no Relógio</strong>: Textos, horários e curvas ampliados no bitmap 604×272px para leitura imediata em Agenda, Clima, Passos e Sol.
+                • <strong>Curva Solar Dia e Noite Abaixo do Horizonte</strong>: A trajetória cosseno cruza a linha azul do horizonte no nascer e pôr do sol e continua abaixo do horizonte durante a noite, indicando quanto falta para o sol nascer.
               </p>
               <p>
-                • <strong>Clima por Temperatura e Condição Climática</strong>: Cabeçalho limpo (&quot;Clima&quot;) e detecção automática de chuva, tempestade, garoa ou mudança brusca de temperatura.
+                • <strong>Barra de Progresso Fiel à Janela Configurada (0% → 100%)</strong>: Permanece em 0% antes da janela escolhida (30m, 1h, 2h ou 3h) e cresce linearmente de 0% até 100% na hora exata do evento.
               </p>
               <p>
-                • <strong>Novo Contexto Nascer e Pôr do Sol</strong>: Curva astronômica com gradiente crepuscular, linha do horizonte e posição solar sincronizada pelo telefone ou Stand-Alone no relógio.
+                • <strong>Modo Automático Programável e Contexto de Sono</strong>: Escolha o contexto principal, o tempo de exposição (15m, 30m, 45m ou 1h) para Clima, Sol, Agenda e o novo hipnograma de Sono (Health Connect / Samsung Health).
               </p>
             </div>
 

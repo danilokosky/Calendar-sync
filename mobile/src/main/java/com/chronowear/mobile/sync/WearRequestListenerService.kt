@@ -45,14 +45,11 @@ class WearRequestListenerService : WearableListenerService() {
 }
 
 /**
- * Observador de Notificações de Clima no Smartphone (`PhoneWeatherNotificationListenerService`):
- * Observa se o telefone recebe uma notificação sobre clima vinda de qualquer **App de Clima de Terceiro**
- * escolhido pelo usuário nas Configurações (`selectedWeatherTriggerPackages`, ex.: App Google,
- * Google Weather, App Clima Samsung, Climatempo, AccuWeather, The Weather Channel, Windy, etc.).
- * Quando detectada:
- * 1. Verifica se o pacote que disparou a notificação está na lista de Apps Trigger selecionados pelo usuário.
- * 2. Chama imediatamente a atualização de previsão horária já implementada (`fetchPhoneHourlyWeatherIfNeeded(forceRefresh = true)`).
- * 3. Registra o alerta com o nome do app de origem e envia o contexto atualizado para o relógio mudar dinamicamente o Canvas!
+ * Observador de Notificações de Clima e Resumo de Sono no Smartphone (`PhoneWeatherNotificationListenerService`):
+ * 1. Detecta notificações de Apps de Clima escolhidos pelo usuário e envia atualização imediata ao relógio.
+ * 2. Detecta notificações matinais de Sono do Samsung Health (`com.sec.android.app.shealth`),
+ *    Health Connect (`com.google.android.apps.healthdata`), Sleep as Android ou Google Fit,
+ *    extraindo o tempo dormido/pontuação e acionando a exposição do contexto de Sono ao acordar.
  */
 class PhoneWeatherNotificationListenerService : NotificationListenerService() {
 
@@ -63,21 +60,64 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
         if (sbn == null) return
 
         val prefs = SyncPreferences(applicationContext)
-        if (!prefs.isNotificationsSyncEnabled()) return
-
         val pkg = sbn.packageName.lowercase()
-        val selectedPkgs = prefs.getSelectedWeatherTriggerPackages().map { it.lowercase() }.toSet()
-        val isSelectedTriggerPkg = selectedPkgs.any { sel -> pkg == sel || pkg.contains(sel) }
-        if (!isSelectedTriggerPkg) return
-
         val extras = sbn.notification?.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
         val text = (
             extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
                 ?: extras.getCharSequence(Notification.EXTRA_TEXT)
             )?.toString()?.trim().orEmpty()
-
         val combinedLower = "$title $text".lowercase()
+
+        // 1) Verifica se é um relatório de Sono (Samsung Health, Health Connect, Sleep as Android, etc.)
+        val isSleepAppPkg = pkg.contains("shealth") ||
+            pkg.contains("healthdata") ||
+            pkg.contains("sleep") ||
+            pkg.contains("fitness")
+        val hasSleepKeywords = combinedLower.contains("sono") ||
+            combinedLower.contains("sleep") ||
+            combinedLower.contains("dormiu") ||
+            combinedLower.contains("pontuação do sono")
+
+        if (prefs.isSleepSyncEnabled() && isSleepAppPkg && hasSleepKeywords) {
+            val hoursRegex = Regex("(\\d{1,2})\\s*h\\s*(\\d{1,2})?\\s*m?")
+            val match = hoursRegex.find(combinedLower)
+            val parsedMins = if (match != null) {
+                val h = match.groupValues[1].toIntOrNull() ?: 7
+                val m = match.groupValues.getOrNull(2)?.toIntOrNull() ?: 42
+                (h * 60 + m).coerceIn(120, 840)
+            } else {
+                prefs.getSleepDurationMinutes()
+            }
+
+            val scoreRegex = Regex("(\\d{2,3})\\s*(pts|pontos|score)")
+            val parsedScore = scoreRegex.find(combinedLower)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: prefs.getSleepScore()
+
+            prefs.saveSleepSnapshot(
+                totalDurationMinutes = parsedMins,
+                sleepScore = parsedScore,
+                bedtimeHHMM = prefs.getSleepBedtimeHHMM(),
+                wakeHHMM = prefs.getSleepWakeHHMM(),
+                stagesMinutesCsv = prefs.getSleepStagesCsv(),
+                wakeTimestampMs = System.currentTimeMillis()
+            )
+
+            scope.launch {
+                CalendarSyncEngine.performFullSyncToWatch(
+                    context = applicationContext,
+                    triggerSource = "Resumo de Sono Detectado"
+                )
+            }
+            return
+        }
+
+        // 2) Verifica se é um gatilho de Clima escolhido pelo usuário
+        if (!prefs.isNotificationsSyncEnabled()) return
+
+        val selectedPkgs = prefs.getSelectedWeatherTriggerPackages().map { it.lowercase() }.toSet()
+        val isSelectedTriggerPkg = selectedPkgs.any { sel -> pkg == sel || pkg.contains(sel) }
+        if (!isSelectedTriggerPkg) return
 
         val isGeneralGoogleSearchApp = pkg.contains("googlequicksearchbox")
         val hasWeatherKeywords = combinedLower.contains("chuva") ||
@@ -89,7 +129,6 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
             combinedLower.contains("°c") ||
             combinedLower.contains("°")
 
-        // Se for o pacote geral do App Google, exige palavras-chave de clima; se for um app dedicado de clima escolhido pelo usuário, dispara direto
         if (!isGeneralGoogleSearchApp || hasWeatherKeywords) {
             val catalogMatch = SyncPreferences.KNOWN_WEATHER_TRIGGER_CATALOG.firstOrNull {
                 pkg == it.packageName.lowercase() || pkg.contains(it.packageName.lowercase())
@@ -114,19 +153,16 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
             val formattedHeadline = "$sourceLabel • $rawSummary".take(42)
 
             scope.launch {
-                // 1) Chama a atualização de clima implementada no telefone para garantir temperaturas frescas
                 CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
                     context = applicationContext,
                     forceRefresh = true
                 )
-                // 2) Registra a notificação com o nome do app escolhido pelo usuário como origem prioritária
                 val nowMs = System.currentTimeMillis()
                 prefs.recordObservedWeatherNotification(
                     sourceAppLabel = sourceLabel,
                     headline = formattedHeadline,
                     timestampMs = nowMs
                 )
-                // 3) Envia imediatamente o contexto atualizado ao relógio para mudar o Canvas
                 CalendarSyncEngine.performFullSyncToWatch(
                     context = applicationContext,
                     triggerSource = "Trigger App Clima ($sourceLabel)"

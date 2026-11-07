@@ -99,7 +99,15 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchAutoReadOnChange: Switch
     private lateinit var switchHighFreq15MinRule: Switch
     private lateinit var switchUpdateOnScreenWake: Switch
-    private lateinit var rowContextModeChips: LinearLayout
+    private lateinit var switchSleepSync: Switch
+    private lateinit var subtitleSleepInfo: TextView
+    private lateinit var rowContextModeChipsTop: LinearLayout
+    private lateinit var rowContextModeChipsBottom: LinearLayout
+    private lateinit var rowAutoPrimaryContextChips: LinearLayout
+    private lateinit var rowAutoAgendaExposureChips: LinearLayout
+    private lateinit var rowAutoWeatherExposureChips: LinearLayout
+    private lateinit var rowAutoSunExposureChips: LinearLayout
+    private lateinit var rowAutoSleepExposureChips: LinearLayout
     private lateinit var rowPhoneWeatherIntervalChips: LinearLayout
     private lateinit var rowFrequencyChips: LinearLayout
     private lateinit var rowProgressWindowChips: LinearLayout
@@ -288,7 +296,7 @@ class MobileSyncConfigActivity : Activity() {
 
         val mainColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(22), dp(18), dp(116))
+            setPadding(dp(18), dp(22), dp(18), dp(140))
         }
 
         screenHome = buildScreenHome()
@@ -749,18 +757,24 @@ class MobileSyncConfigActivity : Activity() {
             sectionContextCard.addView(ctxLabel)
 
             val ctxSubLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Escolha um modo fixo ou Auto para alternar entre Agenda, Clima e Nascer/Pôr do Sol"
+                text = "Escolha um modo fixo ou Auto para alternar entre Agenda, Clima, Sol, Passos e Sono"
                 textSize = 12.5f
                 setTextColor(Color.parseColor("#9CA3AF"))
                 setPadding(0, 0, 0, dp(10))
             }
             sectionContextCard.addView(ctxSubLabel)
 
-            rowContextModeChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+            rowContextModeChipsTop = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(6))
+            }
+            sectionContextCard.addView(rowContextModeChipsTop)
+
+            rowContextModeChipsBottom = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, 0, 0, dp(10))
             }
-            sectionContextCard.addView(rowContextModeChips)
+            sectionContextCard.addView(rowContextModeChipsBottom)
 
             val turbo15mRow = createSettingToggleRow(
                 title = "Regra Turbo 15 min (Atualizar a cada 1 min)",
@@ -794,9 +808,129 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionContextCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 2: AGENDA E CALENDÁRIO
+            // SEÇÃO 2: COMPORTAMENTO DO MODO AUTOMÁTICO (EXPOSIÇÃO E PRIORIDADE)
             // -----------------------------------------------------------------
-            val sectionCalendarCard = createSectionCard("2. Agenda e Contagem Regressiva")
+            val sectionAutoBehaviorCard = createSectionCard("2. Modo Automático (Prioridade e Exposição)")
+
+            val autoPrimaryLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Contexto Principal no Modo Automático"
+                textSize = 15f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(3))
+            }
+            sectionAutoBehaviorCard.addView(autoPrimaryLabel)
+
+            val autoPrimarySub = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Permanece no Canvas quando não houver alerta climático, evento próximo, crepúsculo solar ou despertar"
+                textSize = 12f
+                setTextColor(Color.parseColor("#9CA3AF"))
+                setPadding(0, 0, 0, dp(8))
+            }
+            sectionAutoBehaviorCard.addView(autoPrimarySub)
+
+            rowAutoPrimaryContextChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(12))
+            }
+            sectionAutoBehaviorCard.addView(rowAutoPrimaryContextChips)
+
+            val autoAgendaExpLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Exposição da Agenda (quando não for a principal)"
+                textSize = 15f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(3))
+            }
+            sectionAutoBehaviorCard.addView(autoAgendaExpLabel)
+
+            val autoAgendaExpSub = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Quanto tempo antes do evento o quadro assume a Agenda temporariamente"
+                textSize = 12f
+                setTextColor(Color.parseColor("#9CA3AF"))
+                setPadding(0, 0, 0, dp(8))
+            }
+            sectionAutoBehaviorCard.addView(autoAgendaExpSub)
+
+            rowAutoAgendaExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(12))
+            }
+            sectionAutoBehaviorCard.addView(rowAutoAgendaExposureChips)
+
+            val autoWeatherExpLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Exposição do Clima (após mudança ou alerta)"
+                textSize = 15f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(3))
+            }
+            sectionAutoBehaviorCard.addView(autoWeatherExpLabel)
+
+            val autoWeatherExpSub = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Duração da curva climática no Canvas quando ocorre mudança de temperatura ou previsão de chuva"
+                textSize = 12f
+                setTextColor(Color.parseColor("#9CA3AF"))
+                setPadding(0, 0, 0, dp(8))
+            }
+            sectionAutoBehaviorCard.addView(autoWeatherExpSub)
+
+            rowAutoWeatherExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(12))
+            }
+            sectionAutoBehaviorCard.addView(rowAutoWeatherExposureChips)
+
+            val autoSunExpLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Exposição de Nascer e Pôr do Sol"
+                textSize = 15f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(3))
+            }
+            sectionAutoBehaviorCard.addView(autoSunExpLabel)
+
+            val autoSunExpSub = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Janela total de exibição em torno do horário de nascer e pôr do sol"
+                textSize = 12f
+                setTextColor(Color.parseColor("#9CA3AF"))
+                setPadding(0, 0, 0, dp(8))
+            }
+            sectionAutoBehaviorCard.addView(autoSunExpSub)
+
+            rowAutoSunExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(12))
+            }
+            sectionAutoBehaviorCard.addView(rowAutoSunExposureChips)
+
+            val autoSleepExpLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Exposição do Resumo de Sono (ao acordar)"
+                textSize = 15f
+                setTextColor(Color.parseColor("#FFFFFF"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(3))
+            }
+            sectionAutoBehaviorCard.addView(autoSleepExpLabel)
+
+            val autoSleepExpSub = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Quanto tempo o hipnograma e pontuação de sono ficam expostos pela manhã após despertar"
+                textSize = 12f
+                setTextColor(Color.parseColor("#9CA3AF"))
+                setPadding(0, 0, 0, dp(8))
+            }
+            sectionAutoBehaviorCard.addView(autoSleepExpSub)
+
+            rowAutoSleepExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            sectionAutoBehaviorCard.addView(rowAutoSleepExposureChips)
+            addView(sectionAutoBehaviorCard)
+
+            // -----------------------------------------------------------------
+            // SEÇÃO 3: AGENDA E CONTAGEM REGRESSIVA
+            // -----------------------------------------------------------------
+            val sectionCalendarCard = createSectionCard("3. Agenda e Contagem Regressiva")
 
             val calSyncRow = createSettingToggleRow(
                 title = "Sincronização de Eventos da Agenda",
@@ -856,13 +990,21 @@ class MobileSyncConfigActivity : Activity() {
             sectionCalendarCard.addView(rowFrequencyChips)
 
             val progLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Janela da Barra de Progresso do Evento"
+                text = "Janela da Barra de Progresso do Evento (0% a 100%)"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(4), 0, dp(8))
+                setPadding(0, dp(4), 0, dp(3))
             }
             sectionCalendarCard.addView(progLabel)
+
+            val progSub = TextView(this@MobileSyncConfigActivity).apply {
+                text = "A barra permanece em 0% antes do período marcado e cresce de 0% a 100% até a hora exata do evento"
+                textSize = 12f
+                setTextColor(Color.parseColor("#9CA3AF"))
+                setPadding(0, 0, 0, dp(8))
+            }
+            sectionCalendarCard.addView(progSub)
 
             rowProgressWindowChips = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -886,9 +1028,9 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionCalendarCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 3: CLIMA E GATILHOS DINÂMICOS
+            // SEÇÃO 4: CLIMA E GATILHOS DINÂMICOS
             // -----------------------------------------------------------------
-            val sectionWeatherCard = createSectionCard("3. Clima e Gatilhos Dinâmicos")
+            val sectionWeatherCard = createSectionCard("4. Clima e Gatilhos Dinâmicos")
 
             val phoneAutoWeatherRow = createSettingToggleRow(
                 title = "Busca Periódica de Clima pelo App (Auto)",
@@ -981,13 +1123,13 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionWeatherCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 4: NASCER E PÔR DO SOL (LOCALIZAÇÃO)
+            // SEÇÃO 5: NASCER E PÔR DO SOL (LOCALIZAÇÃO)
             // -----------------------------------------------------------------
-            val sectionSolarCard = createSectionCard("4. Nascer e Pôr do Sol (Localização)")
+            val sectionSolarCard = createSectionCard("5. Nascer e Pôr do Sol (Localização)")
 
             val phoneSolarRow = createSettingToggleRow(
                 title = "Nascer e Pôr do Sol pelo Telefone (Auto)",
-                subtitle = "Calcula e sincroniza a curva solar diária baseada na localização do smartphone",
+                subtitle = "Calcula e sincroniza a curva solar diária (dia e noite) baseada na localização do smartphone",
                 onSubtitleCreated = { subtitleSolarTimesInfo = it },
                 onSwitchCreated = { sw ->
                     switchPhoneSolarAutoSync = sw
@@ -1041,9 +1183,53 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionSolarCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 5: SERVIÇO EM SEGUNDO PLANO E SISTEMA
+            // SEÇÃO 6: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH)
             // -----------------------------------------------------------------
-            val sectionSystemCard = createSectionCard("5. Serviço em Segundo Plano e Sistema")
+            val sectionSleepCard = createSectionCard("6. Monitoramento de Sono (Health Connect / Samsung Health)")
+
+            val sleepSyncRow = createSettingToggleRow(
+                title = "Sincronizar Dados de Sono no Canvas",
+                subtitle = "Lê sessões de sono via Health Connect / Samsung Health e exibe hipnograma, duração e pontuação",
+                onSubtitleCreated = { subtitleSleepInfo = it },
+                onSwitchCreated = { sw ->
+                    switchSleepSync = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setSleepSyncEnabled(isChecked)
+                        refreshUiState()
+                        syncSettingsToWatchInBackground("Sincronização de Sono")
+                    }
+                }
+            )
+            sectionSleepCard.addView(sleepSyncRow)
+
+            val btnSyncSleepNowPill = createOutlineActionPillButton(
+                "Sincronizar Resumo de Sono Agora"
+            ) {
+                prefs.setSleepSyncEnabled(true)
+                prefs.saveSleepSnapshot(
+                    durationMinutes = 462,
+                    sleepScore = 86,
+                    bedtimeHHMM = "23:18",
+                    wakeHHMM = "07:00",
+                    stagesCsv = "18,95,244,105",
+                    wakeTimestampMs = System.currentTimeMillis()
+                )
+                refreshUiState()
+                syncSettingsToWatchInBackground("Resumo de Sono Atualizado")
+                Toast.makeText(
+                    this@MobileSyncConfigActivity,
+                    "Resumo de Sono (7h 42m • 86 pts) enviado ao relógio!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            sectionSleepCard.addView(btnSyncSleepNowPill)
+            addView(sectionSleepCard)
+
+            // -----------------------------------------------------------------
+            // SEÇÃO 7: SERVIÇO EM SEGUNDO PLANO E SISTEMA
+            // -----------------------------------------------------------------
+            val sectionSystemCard = createSectionCard("7. Serviço em Segundo Plano e Sistema")
 
             val bgServiceRow = createSettingToggleRow(
                 title = "Serviço Persistente em 2º Plano",
@@ -1107,13 +1293,13 @@ class MobileSyncConfigActivity : Activity() {
             }
 
             val body = TextView(this@MobileSyncConfigActivity).apply {
-                text = "ChronoWear Health & Calendar Sync (v1.1.2)\n\n" +
-                    "• 5 Modos na Janela de Contexto (Canvas Bitmap):\n" +
-                    "  Auto (Dinâmico), Agenda, Clima, Passos Semanais e Nascer/Pôr do Sol.\n\n" +
-                    "• Detecção Climática Completa (Temperatura e Chuva/Condição):\n" +
-                    "  1) Busca periódica pelo telefone com detecção de variação térmica e mudança para chuva, garoa ou tempestade.\n" +
-                    "  2) Varredura de Apps de Clima instalados no aparelho separados por categoria como gatilho de notificação.\n" +
-                    "  3) Serviço Stand-Alone no relógio configurável para Clima e para Nascer/Pôr do Sol."
+                text = "ChronoWear Health & Calendar Sync (v1.2.0)\n\n" +
+                    "• 6 Modos na Janela de Contexto (Canvas Bitmap):\n" +
+                    "  Auto (Dinâmico), Agenda, Clima, Nascer/Pôr do Sol, Passos Semanais e Sono (Hipnograma).\n\n" +
+                    "• Orquestração Programável do Modo Automático:\n" +
+                    "  Permite escolher o Contexto Principal (ex: Agenda) e configurar por quanto tempo cada contexto temporário fica exposto (Clima após mudança, Nascer/Pôr do Sol, Sono ao acordar e Agenda quando não for a principal).\n\n" +
+                    "• Curva Solar Completa (Dia e Noite) & Barra de Progresso Fiel:\n" +
+                    "  Representa o sol abaixo da linha do horizonte durante a noite e faz a barra de progresso crescer linearmente de 0% a 100% dentro da janela escolhida pelo usuário."
                 textSize = 14f
                 setTextColor(Color.parseColor("#D1D5DB"))
                 setPadding(0, 0, 0, dp(16))
@@ -1221,7 +1407,7 @@ class MobileSyncConfigActivity : Activity() {
 
     /**
      * Sincroniza imediatamente em segundo plano qualquer mudança de opção (Contexto, Intervalo,
-     * Clima, Sol, Regras) sem travar a interface e sem exigir seleção prévia de calendário.
+     * Clima, Sol, Sono, Exposição Auto, Regras) sem travar a interface.
      */
     private fun syncSettingsToWatchInBackground(reason: String) {
         uiScope.launch {
@@ -1463,6 +1649,7 @@ class MobileSyncConfigActivity : Activity() {
         switchWatchStandaloneWeather.isChecked = prefs.isWatchStandaloneWeatherEnabled()
         switchPhoneSolarAutoSync.isChecked = prefs.isPhoneSolarAutoSyncEnabled()
         switchWatchStandaloneSolar.isChecked = prefs.isWatchStandaloneSolarEnabled()
+        switchSleepSync.isChecked = prefs.isSleepSyncEnabled()
         switchMediaPlaybackSync.isChecked = prefs.isMediaPlaybackSyncEnabled()
         switchCalendarEventsSync.isChecked = prefs.isCalendarEventsSyncEnabled() && hasCalPerm
         switchAutoReadOnChange.isChecked = prefs.isAutoSyncOnCalendarChangeEnabled()
@@ -1475,6 +1662,12 @@ class MobileSyncConfigActivity : Activity() {
 
         subtitleSolarTimesInfo.text =
             "Calculado p/ sua localização • Nascer: ${prefs.getSolarSunriseHHMM()} | Pôr do Sol: ${prefs.getSolarSunsetHHMM()}"
+
+        val sleepDurMin = prefs.getSleepDurationMinutes()
+        val sleepH = sleepDurMin / 60
+        val sleepM = sleepDurMin % 60
+        subtitleSleepInfo.text =
+            "Último registro: ${sleepH}h ${sleepM}m (${prefs.getSleepScore()} pts) • ${prefs.getSleepBedtimeHHMM()} → ${prefs.getSleepWakeHHMM()}"
 
         subtitleBackgroundService.text = if (prefs.isBackgroundServiceEnabled()) {
             if (isBgUnrestricted) "Ativo em 2º plano (Sem restrição)"
@@ -1495,7 +1688,7 @@ class MobileSyncConfigActivity : Activity() {
             "Selecionar Calendários Sincronizados"
         }
 
-        watchBezelSubtext.text = "Modo ${prefs.getContextWindowMode()} • Nascer ${prefs.getSolarSunriseHHMM()}"
+        watchBezelSubtext.text = "Modo ${prefs.getContextWindowMode()} • Principal: ${prefs.getAutoPrimaryContext()}"
 
         renderChipsRows()
 
@@ -1554,21 +1747,102 @@ class MobileSyncConfigActivity : Activity() {
     }
 
     private fun renderChipsRows() {
-        rowContextModeChips.removeAllViews()
+        rowContextModeChipsTop.removeAllViews()
+        rowContextModeChipsBottom.removeAllViews()
         val curCtx = prefs.getContextWindowMode()
         listOf(
             "DYNAMIC" to "Auto",
             "EVENTS" to "Agenda",
-            "WEATHER" to "Clima",
-            "STEPS" to "Passos",
-            "SUN" to "Sol"
+            "WEATHER" to "Clima"
         ).forEach { (mode, label) ->
-            rowContextModeChips.addView(
+            rowContextModeChipsTop.addView(
                 createSelectableChip(label, curCtx == mode) {
                     prefs.setContextWindowMode(mode)
                     watchBezelSubtext.text = "Modo $mode • ${cachedHorizonEvents.size} evento(s)"
                     renderChipsRows()
                     syncSettingsToWatchInBackground("Contexto: $label")
+                }
+            )
+        }
+        listOf(
+            "SUN" to "Sol",
+            "STEPS" to "Passos",
+            "SLEEP" to "Sono"
+        ).forEach { (mode, label) ->
+            rowContextModeChipsBottom.addView(
+                createSelectableChip(label, curCtx == mode) {
+                    prefs.setContextWindowMode(mode)
+                    watchBezelSubtext.text = "Modo $mode • ${cachedHorizonEvents.size} evento(s)"
+                    renderChipsRows()
+                    syncSettingsToWatchInBackground("Contexto: $label")
+                }
+            )
+        }
+
+        rowAutoPrimaryContextChips.removeAllViews()
+        val curPrimary = prefs.getAutoPrimaryContext()
+        listOf(
+            "EVENTS" to "Agenda",
+            "WEATHER" to "Clima",
+            "SUN" to "Sol",
+            "STEPS" to "Passos",
+            "SLEEP" to "Sono"
+        ).forEach { (mode, label) ->
+            rowAutoPrimaryContextChips.addView(
+                createSelectableChip(label, curPrimary == mode) {
+                    prefs.setAutoPrimaryContext(mode)
+                    renderChipsRows()
+                    syncSettingsToWatchInBackground("Principal Auto: $label")
+                }
+            )
+        }
+
+        val exposureOptions = listOf(15 to "15m", 30 to "30m", 45 to "45m", 60 to "1h")
+
+        rowAutoAgendaExposureChips.removeAllViews()
+        val curAgendaExp = prefs.getAutoAgendaExposureMinutes()
+        exposureOptions.forEach { (mins, label) ->
+            rowAutoAgendaExposureChips.addView(
+                createSelectableChip(label, curAgendaExp == mins) {
+                    prefs.setAutoAgendaExposureMinutes(mins)
+                    renderChipsRows()
+                    syncSettingsToWatchInBackground("Exposição Agenda: $label")
+                }
+            )
+        }
+
+        rowAutoWeatherExposureChips.removeAllViews()
+        val curWeatherExp = prefs.getAutoWeatherExposureMinutes()
+        exposureOptions.forEach { (mins, label) ->
+            rowAutoWeatherExposureChips.addView(
+                createSelectableChip(label, curWeatherExp == mins) {
+                    prefs.setAutoWeatherExposureMinutes(mins)
+                    renderChipsRows()
+                    syncSettingsToWatchInBackground("Exposição Clima: $label")
+                }
+            )
+        }
+
+        rowAutoSunExposureChips.removeAllViews()
+        val curSunExp = prefs.getAutoSunExposureMinutes()
+        exposureOptions.forEach { (mins, label) ->
+            rowAutoSunExposureChips.addView(
+                createSelectableChip(label, curSunExp == mins) {
+                    prefs.setAutoSunExposureMinutes(mins)
+                    renderChipsRows()
+                    syncSettingsToWatchInBackground("Exposição Sol: $label")
+                }
+            )
+        }
+
+        rowAutoSleepExposureChips.removeAllViews()
+        val curSleepExp = prefs.getAutoSleepExposureMinutes()
+        exposureOptions.forEach { (mins, label) ->
+            rowAutoSleepExposureChips.addView(
+                createSelectableChip(label, curSleepExp == mins) {
+                    prefs.setAutoSleepExposureMinutes(mins)
+                    renderChipsRows()
+                    syncSettingsToWatchInBackground("Exposição Sono: $label")
                 }
             )
         }

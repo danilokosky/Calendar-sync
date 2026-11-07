@@ -284,14 +284,16 @@ object AutonomousCountdownScheduler {
             val highFreq15MinEnabled = repo.isHighFreq15MinRuleEnabled()
 
             when {
+                // Dentro da janela da barra de progresso (30m, 1h, 2h ou 3h antes) ou nos 15m finais:
+                // desperta a cada 1 minuto para fazer a barra crescer de 0% a 100% até a hora do evento
+                nowMs in progressStartEpochMs until nextEvent.startEpochMs -> {
+                    minOf(nowMs + 60_000L, nextEvent.startEpochMs + 1000L)
+                }
                 highFreq15MinEnabled && nowMs in fifteenMinBeforeMs until nextEvent.startEpochMs -> {
                     minOf(nowMs + 60_000L, nextEvent.startEpochMs + 1000L)
                 }
                 nowMs < progressStartEpochMs -> {
                     progressStartEpochMs
-                }
-                highFreq15MinEnabled && nowMs < fifteenMinBeforeMs -> {
-                    fifteenMinBeforeMs
                 }
                 else -> {
                     nextEvent.startEpochMs + 1000L

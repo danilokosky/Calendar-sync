@@ -112,6 +112,7 @@ class WearMainActivity : Activity() {
             WatchAutonomousRepository.MODE_WEATHER -> "Contexto: Clima"
             WatchAutonomousRepository.MODE_STEPS -> "Contexto: Passos"
             WatchAutonomousRepository.MODE_SUN -> "Contexto: Nascer/Pôr do Sol"
+            WatchAutonomousRepository.MODE_SLEEP -> "Contexto: Sono"
             else -> "Contexto: Auto (Dinâmico)"
         }
     }
@@ -122,7 +123,8 @@ class WearMainActivity : Activity() {
             WatchAutonomousRepository.MODE_EVENTS,
             WatchAutonomousRepository.MODE_WEATHER,
             WatchAutonomousRepository.MODE_STEPS,
-            WatchAutonomousRepository.MODE_SUN
+            WatchAutonomousRepository.MODE_SUN,
+            WatchAutonomousRepository.MODE_SLEEP
         )
         val cur = repo.getContextWindowMode()
         val next = order[(order.indexOf(cur) + 1) % order.size]

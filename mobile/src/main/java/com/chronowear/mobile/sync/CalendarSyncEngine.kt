@@ -653,6 +653,18 @@ object CalendarSyncEngine {
         }
 
         val contextMode = prefs.getContextWindowMode()
+        val autoPrimaryContext = prefs.getAutoPrimaryContext()
+        val autoAgendaExposureMin = prefs.getAutoAgendaExposureMinutes()
+        val autoWeatherExposureMin = prefs.getAutoWeatherExposureMinutes()
+        val autoSunExposureMin = prefs.getAutoSunExposureMinutes()
+        val autoSleepExposureMin = prefs.getAutoSleepExposureMinutes()
+        val sleepSyncEnabled = prefs.isSleepSyncEnabled()
+        val sleepDurationMin = prefs.getSleepDurationMinutes()
+        val sleepScore = prefs.getSleepScore()
+        val sleepBedtimeHHMM = prefs.getSleepBedtimeHHMM()
+        val sleepWakeHHMM = prefs.getSleepWakeHHMM()
+        val sleepStagesCsv = prefs.getSleepStagesCsv()
+        val sleepWakeTsMs = prefs.getSleepWakeTimestampMs()
         val highFreq15Min = prefs.isHighFreq15MinRuleEnabled()
         val updateOnWake = prefs.isUpdateOnScreenWakeEnabled()
 
@@ -676,6 +688,18 @@ object CalendarSyncEngine {
             put("horizon_days", horizonDays)
             put("progress_window_minutes", progressWindowMinutes)
             put("context_window_mode", contextMode)
+            put("auto_primary_context", autoPrimaryContext)
+            put("auto_agenda_exposure_min", autoAgendaExposureMin)
+            put("auto_weather_exposure_min", autoWeatherExposureMin)
+            put("auto_sun_exposure_min", autoSunExposureMin)
+            put("auto_sleep_exposure_min", autoSleepExposureMin)
+            put("sleep_sync_enabled", sleepSyncEnabled)
+            put("sleep_duration_min", sleepDurationMin)
+            put("sleep_score", sleepScore)
+            put("sleep_bedtime_hhmm", sleepBedtimeHHMM)
+            put("sleep_wake_hhmm", sleepWakeHHMM)
+            put("sleep_stages_csv", sleepStagesCsv)
+            put("sleep_wake_ts_ms", sleepWakeTsMs)
             put("high_freq_15min_rule", highFreq15Min)
             put("update_on_screen_wake", updateOnWake)
             put("weather_temps_csv", weatherTempsCsv)
@@ -706,6 +730,18 @@ object CalendarSyncEngine {
                 dataMap.putInt("horizon_days", horizonDays)
                 dataMap.putInt("progress_window_minutes", progressWindowMinutes)
                 dataMap.putString("context_window_mode", contextMode)
+                dataMap.putString("auto_primary_context", autoPrimaryContext)
+                dataMap.putInt("auto_agenda_exposure_min", autoAgendaExposureMin)
+                dataMap.putInt("auto_weather_exposure_min", autoWeatherExposureMin)
+                dataMap.putInt("auto_sun_exposure_min", autoSunExposureMin)
+                dataMap.putInt("auto_sleep_exposure_min", autoSleepExposureMin)
+                dataMap.putBoolean("sleep_sync_enabled", sleepSyncEnabled)
+                dataMap.putInt("sleep_duration_min", sleepDurationMin)
+                dataMap.putInt("sleep_score", sleepScore)
+                dataMap.putString("sleep_bedtime_hhmm", sleepBedtimeHHMM)
+                dataMap.putString("sleep_wake_hhmm", sleepWakeHHMM)
+                dataMap.putString("sleep_stages_csv", sleepStagesCsv)
+                dataMap.putLong("sleep_wake_ts_ms", sleepWakeTsMs)
                 dataMap.putBoolean("high_freq_15min_rule", highFreq15Min)
                 dataMap.putBoolean("update_on_screen_wake", updateOnWake)
                 dataMap.putString("weather_temps_csv", weatherTempsCsv)
@@ -764,7 +800,7 @@ object CalendarSyncEngine {
 
     /**
      * Pré-renderiza no processador do Smartphone o Bitmap transparente 604x272px (@2x Retina para 302x136px)
-     * com tipografia ampliada e mais legível.
+     * com tipografia ampliada e barra de progresso 0% -> 100% fiel à janela configurada pelo usuário.
      */
     private fun renderAgendaCardPngBase64OnPhone(
         events: List<LocalCalendarEvent>,
@@ -773,12 +809,16 @@ object CalendarSyncEngine {
     ): String {
         val upcomingThree = events.filter { it.startEpochMs > nowMs }.take(3)
         val primary = upcomingThree.firstOrNull()
-        val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.toLong()).toFloat()
+        val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.coerceAtLeast(1).toLong())
         val progressFraction = if (primary == null) {
-            0.05f
+            0f
         } else {
-            val rem = (primary.startEpochMs - nowMs).coerceAtLeast(0L).toFloat()
-            if (rem >= windowMs) 0.06f else (1f - (rem / windowMs)).coerceIn(0.06f, 1f)
+            val remMs = primary.startEpochMs - nowMs
+            when {
+                remMs <= 0L -> 1f
+                remMs >= windowMs -> 0f
+                else -> ((windowMs - remMs).toFloat() / windowMs.toFloat()).coerceIn(0f, 1f)
+            }
         }
 
         val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -866,8 +906,10 @@ object CalendarSyncEngine {
         val barLeft = 24f
         val barRight = w - 24f
         canvas.drawRoundRect(RectF(barLeft, 117f, barRight, 130f), 6.5f, 6.5f, trackPaint)
-        val fillWidth = (barRight - barLeft) * progressFraction
-        canvas.drawRoundRect(RectF(barLeft, 117f, barLeft + fillWidth, 130f), 6.5f, 6.5f, goldPaint)
+        if (progressFraction > 0f) {
+            val fillWidth = ((barRight - barLeft) * progressFraction).coerceAtLeast(10f)
+            canvas.drawRoundRect(RectF(barLeft, 117f, barLeft + fillWidth, 130f), 6.5f, 6.5f, goldPaint)
+        }
 
         val ev1 = upcomingThree.getOrNull(1)
         canvas.drawText(if (ev1 != null) sdf.format(Date(ev1.startEpochMs)) else "--:--", 24f, 188f, timePaint)
