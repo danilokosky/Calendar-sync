@@ -1,7 +1,9 @@
 package com.chronowear.wear.complication
 
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -26,6 +28,7 @@ import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUp
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import com.chronowear.wear.data.AutonomousCountdownScheduler
+import com.chronowear.wear.data.AutonomousTransitionReceiver
 import com.chronowear.wear.data.CachedWearEvent
 import com.chronowear.wear.data.HourlyWeatherSnapshot
 import com.chronowear.wear.data.SleepSnapshot
@@ -808,6 +811,18 @@ object AgendaCardBitmapRenderer {
 
 class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 
+    private fun buildTapCyclePendingIntent(): PendingIntent {
+        val tapIntent = Intent(applicationContext, AutonomousTransitionReceiver::class.java).apply {
+            action = AutonomousCountdownScheduler.ACTION_TAP_CYCLE_CONTEXT
+        }
+        return PendingIntent.getBroadcast(
+            applicationContext,
+            3001,
+            tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
         AutonomousCountdownScheduler.ensureScreenWakeListenerRegistered(applicationContext)
 
@@ -818,7 +833,7 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 
         AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
 
-        val contentDesc = PlainComplicationText.Builder("ChronoWear Janela de Contexto").build()
+        val contentDesc = PlainComplicationText.Builder("ChronoWear Janela de Contexto (Toque p/ Alternar)").build()
 
         val cardBitmap = AgendaCardBitmapRenderer.getOrRenderCardBitmap(
             repo = repo,
@@ -827,14 +842,19 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
             progressWindowMinutes = progressWindowMinutes
         )
         val icon = Icon.createWithBitmap(cardBitmap)
+        val tapPendingIntent = buildTapCyclePendingIntent()
 
         return when (request.complicationType) {
             ComplicationType.SMALL_IMAGE -> {
                 val smallImage = SmallImage.Builder(icon, SmallImageType.PHOTO).build()
-                SmallImageComplicationData.Builder(smallImage, contentDesc).build()
+                SmallImageComplicationData.Builder(smallImage, contentDesc)
+                    .setTapAction(tapPendingIntent)
+                    .build()
             }
             ComplicationType.PHOTO_IMAGE -> {
-                PhotoImageComplicationData.Builder(icon, contentDesc).build()
+                PhotoImageComplicationData.Builder(icon, contentDesc)
+                    .setTapAction(tapPendingIntent)
+                    .build()
             }
             else -> null
         }

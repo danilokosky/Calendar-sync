@@ -568,10 +568,51 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
+     * Chamado quando o usuário toca diretamente na imagem do Canvas na Watch Face (Complication Tap Action).
+     * Alterna imediatamente para o próximo cenário visual na ordem:
+     * Agenda (EVENTS) -> Clima (WEATHER) -> Nascer/Pôr do Sol (SUN) -> Passos (STEPS) -> Sono (SLEEP) -> Agenda (EVENTS)
+     * - Se o relógio estiver em Modo Automático (DYNAMIC), aplica um override temporário de 3 minutos
+     *   para cada toque sem desativar o Modo Automático.
+     * - Se estiver em modo fixo, muda diretamente para o próximo contexto.
+     */
+    fun cycleNextVisualCanvasOnTap(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
+        val visualOrder = listOf(
+            MODE_EVENTS,
+            MODE_WEATHER,
+            MODE_SUN,
+            MODE_STEPS,
+            MODE_SLEEP
+        )
+        val currentVisual = resolveEffectiveContextMode(nowMs, upcomingThree)
+        val currentIdx = visualOrder.indexOf(currentVisual).takeIf { it >= 0 } ?: 0
+        val nextVisual = visualOrder[(currentIdx + 1) % visualOrder.size]
+
+        if (getContextWindowMode() == MODE_DYNAMIC) {
+            prefs.edit()
+                .putString("tap_override_context_mode", nextVisual)
+                .putLong("tap_override_timestamp_ms", nowMs)
+                .commit()
+        } else {
+            setContextWindowMode(nextVisual)
+        }
+        return nextVisual
+    }
+
+    private fun getActiveTapOverrideMode(nowMs: Long, maxAgeMinutes: Long = 3L): String? {
+        val ts = prefs.getLong("tap_override_timestamp_ms", 0L)
+        if (ts <= 0L) return null
+        val elapsed = nowMs - ts
+        if (elapsed !in 0..TimeUnit.MINUTES.toMillis(maxAgeMinutes)) return null
+        return prefs.getString("tap_override_context_mode", null)?.takeIf { it.isNotBlank() }
+    }
+
+    /**
      * Resolve qual contexto deve ser desenhado no Canvas agora com base nas regras programadas
      * pelo usuário para o Modo Automático (DYNAMIC):
      * - Se o usuário fixou EVENTS, WEATHER, STEPS, SUN ou SLEEP, respeita a escolha fixa.
      * - Se escolheu DYNAMIC (Auto):
+     *   0. Toque Manual no Canvas (Tap-to-Cycle):
+     *      - Se o usuário tocou na imagem do Canvas nos últimos 3 minutos, exibe o Canvas escolhido no toque.
      *   1. Prioridade de Evento Próximo:
      *      - Se Agenda é o Contexto Principal: faltando <= 15m (Turbo) garante foco em EVENTS.
      *      - Se Agenda NÃO é o Contexto Principal: faltando <= autoAgendaExposureMinutes (ex: 30m)
@@ -591,6 +632,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
     fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
         val configured = getContextWindowMode()
         if (configured != MODE_DYNAMIC) return configured
+
+        // 0. Se o usuário acabou de tocar no Canvas na Watch Face para alternar de tela
+        val tapOverride = getActiveTapOverrideMode(nowMs)
+        if (tapOverride != null) {
+            return tapOverride
+        }
 
         val primaryContext = getAutoPrimaryContext()
         val nextEvent = upcomingThree.firstOrNull()

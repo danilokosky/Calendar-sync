@@ -61,6 +61,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   onResetTime,
 }) => {
   const [watchScreenMode, setWatchScreenMode] = useState<'wff' | 'tile' | 'cache'>('wff');
+  const [tapOverrideMode, setTapOverrideMode] = useState<
+    'EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP' | null
+  >(null);
   const [weatherNotifSource, setWeatherNotifSource] = useState<
     'ChronoWear Auto (1h)' | 'App Clima (Escolhido)' | 'Relógio Stand-Alone (1h)'
   >('ChronoWear Auto (1h)');
@@ -75,7 +78,25 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   const dayOfMonth = String(watchDate.getDate()).padStart(2, '0');
   const timeHHMMSS = `${formatTimeHHMM(currentWatchTimeMs)}:06`;
 
-  const effectiveMode = watchState.effectiveContextMode;
+  const effectiveMode = tapOverrideMode ?? watchState.effectiveContextMode;
+
+  const handleTapCanvasToCycle = () => {
+    const order: ('EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP')[] = [
+      'EVENTS',
+      'WEATHER',
+      'SUN',
+      'STEPS',
+      'SLEEP',
+    ];
+    const currentIdx = order.indexOf(effectiveMode);
+    const nextMode = order[(currentIdx + 1) % order.length];
+    if (config.contextWindowMode === 'DYNAMIC') {
+      setTapOverrideMode(nextMode);
+    } else {
+      setTapOverrideMode(null);
+      onUpdateConfig({ contextWindowMode: nextMode });
+    }
+  };
 
   const contextModes: { id: ContextWindowMode; label: string }[] = [
     { id: 'DYNAMIC', label: 'Auto' },
@@ -228,7 +249,10 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => onUpdateConfig({ contextWindowMode: m.id })}
+                  onClick={() => {
+                    setTapOverrideMode(null);
+                    onUpdateConfig({ contextWindowMode: m.id });
+                  }}
                   className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                     active
                       ? 'bg-amber-400 text-slate-950'
@@ -390,10 +414,12 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 0
               </span>
 
-              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — DPI Ampliado em todos os cenários */}
+              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — Toque no Canvas alterna para o próximo contexto (PendingIntent.getBroadcast) */}
               <div
                 data-testid="watch-context-canvas"
-                className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
+                onClick={handleTapCanvasToCycle}
+                title="Toque no Canvas para alternar para o próximo contexto (Agenda → Clima → Sol → Passos → Sono)"
+                className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] hover:border-amber-400/50 active:scale-[0.99] transition-all cursor-pointer select-none px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
               >
                 {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — Barra de Progresso fiel 0% → 100% na janela configurada) */}
                 {effectiveMode === 'EVENTS' && (

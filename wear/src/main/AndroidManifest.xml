@@ -108,12 +108,13 @@
             </intent-filter>
         </service>
 
-        <!-- Receiver para transição autônoma + regra Turbo de 1 minuto quando faltam <= 15 min -->
+        <!-- Receiver para transição autônoma, toque no Canvas (Tap-to-Cycle) e regra Turbo de 1 minuto -->
         <receiver
             android:name=".data.AutonomousTransitionReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION" />
+                <action android:name="com.chronowear.wear.ACTION_TAP_CYCLE_CONTEXT" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>

@@ -31,7 +31,8 @@ import kotlin.math.tan
 
 object AutonomousCountdownScheduler {
 
-    private const val ACTION_TRANSITION = "com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION"
+    const val ACTION_TRANSITION = "com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION"
+    const val ACTION_TAP_CYCLE_CONTEXT = "com.chronowear.wear.ACTION_TAP_CYCLE_CONTEXT"
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var screenWakeReceiverRegistered = false
     private var lastScreenWakeUpdateMs = 0L
@@ -333,6 +334,20 @@ object AutonomousCountdownScheduler {
 
 class AutonomousTransitionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_CONTEXT) {
+            // Toque direto na imagem do Canvas na Watch Face: avança imediatamente para o próximo Canvas!
+            val repo = WatchAutonomousRepository.getInstance(context)
+            val nowMs = System.currentTimeMillis()
+            val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
+            repo.cycleNextVisualCanvasOnTap(nowMs, upcomingThree)
+            ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
+            context.sendBroadcast(
+                Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
+                    .setPackage(context.packageName)
+            )
+            return
+        }
+
         AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
 
         ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
