@@ -158,7 +158,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         sleepWakeTimestampMs: Long? = null,
         tasksSyncEnabled: Boolean? = null,
         tasksJson: String? = null,
-        tasksAlertTimestampMs: Long? = null
+        tasksAlertTimestampMs: Long? = null,
+        autoFallbackAgendaToTasks: Boolean? = null
     ) {
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
@@ -290,6 +291,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 editor.remove("tap_override_context_mode")
                 editor.putLong("tap_override_timestamp_ms", 0L)
             }
+        }
+        if (autoFallbackAgendaToTasks != null) {
+            editor.putBoolean("auto_fallback_agenda_to_tasks", autoFallbackAgendaToTasks)
         }
         editor.commit()
 
@@ -730,6 +734,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit().putBoolean("tasks_sync_enabled", enabled).commit()
     }
 
+    fun isAutoFallbackAgendaToTasksEnabled(): Boolean {
+        return prefs.getBoolean("auto_fallback_agenda_to_tasks", true)
+    }
+
+    fun setAutoFallbackAgendaToTasksEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_fallback_agenda_to_tasks", enabled).commit()
+    }
+
     fun recordWatchTaskNotification(
         title: String,
         sourceLabel: String = "Reminder",
@@ -1020,13 +1032,24 @@ class WatchAutonomousRepository private constructor(context: Context) :
             return tapOverride
         }
 
-        // Caso contrário, retorna ao Canvas Padrão Principal configurado pelo usuário
+        // Caso contrário, retorna ao Canvas Padrão Principal configurado pelo usuário:
+        // Se o foco principal for Agenda (EVENTS) e NÃO houver compromissos para HOJE
+        // (mesmo que existam compromissos para amanhã), exibe Tarefas (Reminder / Google Tasks)
+        // caso existam tarefas ativas/pendentes. Se não houver tarefas ativas, mantém o foco
+        // na Agenda (mostrando os eventos de Amanhã ou "Não há eventos").
         val primaryContext = getAutoPrimaryContext()
-        return if (primaryContext == MODE_EVENTS && upcomingThree.isEmpty()) {
-            MODE_WEATHER
-        } else {
-            primaryContext
+        if (primaryContext == MODE_EVENTS) {
+            val hasEventToday = upcomingThree.any { isSameCalendarDay(it.startEpochMs, nowMs) }
+            if (!hasEventToday &&
+                isAutoFallbackAgendaToTasksEnabled() &&
+                isTasksSyncEnabled() &&
+                getTasksSnapshot(nowMs).pendingCount > 0
+            ) {
+                return MODE_TASKS
+            }
+            return MODE_EVENTS
         }
+        return primaryContext
     }
 
     fun getNextThreeUpcomingEvents(nowMs: Long): List<CachedWearEvent> {
@@ -1082,34 +1105,97 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"
 
-        private val BRAZIL_STATE_UF_MAP = mapOf(
-            "acre" to "AC",
-            "alagoas" to "AL",
-            "amapa" to "AP",
-            "amazonas" to "AM",
-            "bahia" to "BA",
-            "ceara" to "CE",
-            "distrito federal" to "DF",
-            "espirito santo" to "ES",
-            "goias" to "GO",
-            "maranhao" to "MA",
-            "mato grosso" to "MT",
+        private val OFFICIAL_IBGE_UFS = setOf(
+            "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO",
+            "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
+            "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+        )
+
+        // Ordenado dos nomes compostos mais longos para os mais curtos para evitar colisões
+        // (ex: "mato grosso do sul" -> MS antes de "mato grosso" -> MT; "parana" -> PR e "paraiba" -> PB antes de "para" -> PA)
+        private val ORDERED_BRAZIL_STATE_UF_LIST = listOf(
             "mato grosso do sul" to "MS",
-            "minas gerais" to "MG",
-            "para" to "PA",
-            "paraiba" to "PB",
-            "parana" to "PR",
-            "pernambuco" to "PE",
-            "piaui" to "PI",
-            "rio de janeiro" to "RJ",
             "rio grande do norte" to "RN",
             "rio grande do sul" to "RS",
-            "rondonia" to "RO",
-            "roraima" to "RR",
+            "distrito federal" to "DF",
+            "espirito santo" to "ES",
             "santa catarina" to "SC",
+            "rio de janeiro" to "RJ",
+            "minas gerais" to "MG",
+            "mato grosso" to "MT",
+            "pernambuco" to "PE",
             "sao paulo" to "SP",
+            "tocantins" to "TO",
+            "maranhao" to "MA",
+            "amazonas" to "AM",
+            "rondonia" to "RO",
+            "paraiba" to "PB",
+            "alagoas" to "AL",
+            "roraima" to "RR",
             "sergipe" to "SE",
-            "tocantins" to "TO"
+            "parana" to "PR",
+            "ceara" to "CE",
+            "goias" to "GO",
+            "piaui" to "PI",
+            "bahia" to "BA",
+            "amapa" to "AP",
+            "acre" to "AC",
+            "para" to "PA"
+        )
+
+        private val KNOWN_CITY_OFFICIAL_UF_MAP = mapOf(
+            "sao paulo" to "SP",
+            "sao bernardo do campo" to "SP",
+            "santo andre" to "SP",
+            "sao caetano do sul" to "SP",
+            "campinas" to "SP",
+            "guarulhos" to "SP",
+            "santos" to "SP",
+            "ribeirao preto" to "SP",
+            "sorocaba" to "SP",
+            "sao jose dos campos" to "SP",
+            "pindamonhangaba" to "SP",
+            "pinheiros" to "SP",
+            "sao luis" to "MA",
+            "barreirinhas" to "MA",
+            "imperatriz" to "MA",
+            "curitiba" to "PR",
+            "londrina" to "PR",
+            "maringa" to "PR",
+            "foz do iguacu" to "PR",
+            "cascavel" to "PR",
+            "ponta grossa" to "PR",
+            "rio de janeiro" to "RJ",
+            "niteroi" to "RJ",
+            "belo horizonte" to "MG",
+            "uberlandia" to "MG",
+            "governador valadares" to "MG",
+            "juiz de fora" to "MG",
+            "porto alegre" to "RS",
+            "caxias do sul" to "RS",
+            "florianopolis" to "SC",
+            "joinville" to "SC",
+            "blumenau" to "SC",
+            "salvador" to "BA",
+            "recife" to "PE",
+            "fortaleza" to "CE",
+            "brasilia" to "DF",
+            "goiania" to "GO",
+            "belem" to "PA",
+            "manaus" to "AM",
+            "vitoria" to "ES",
+            "natal" to "RN",
+            "joao pessoa" to "PB",
+            "maceio" to "AL",
+            "aracaju" to "SE",
+            "teresina" to "PI",
+            "campo grande" to "MS",
+            "cuiaba" to "MT",
+            "palmas" to "TO",
+            "porto velho" to "RO",
+            "rio branco" to "AC",
+            "macapa" to "AP",
+            "boa vista" to "RR"
         )
 
         private fun stripAccents(input: String): String {
@@ -1117,16 +1203,86 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
         }
 
+        fun isSameCalendarDay(epochA: Long, epochB: Long): Boolean {
+            val calA = Calendar.getInstance().apply { timeInMillis = epochA }
+            val calB = Calendar.getInstance().apply { timeInMillis = epochB }
+            return calA.get(Calendar.YEAR) == calB.get(Calendar.YEAR) &&
+                calA.get(Calendar.DAY_OF_YEAR) == calB.get(Calendar.DAY_OF_YEAR)
+        }
+
+        fun calendarDaysDiff(fromEpochMs: Long, toEpochMs: Long): Int {
+            val startFrom = Calendar.getInstance().apply {
+                timeInMillis = fromEpochMs
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val startTo = Calendar.getInstance().apply {
+                timeInMillis = toEpochMs
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            return Math.round((startTo - startFrom) / 86_400_000.0).toInt()
+        }
+
+        /**
+         * Resolve exclusivamente a sigla UF oficial de 2 letras do IBGE para cada estado brasileiro
+         * (ex: São Paulo -> SP, Maranhão -> MA, Paraná -> PR, Pará -> PA, Mato Grosso do Sul -> MS),
+         * sem nunca usar abreviações lógicas como "SA" ou "PA" para Paraná.
+         */
+        fun resolveOfficialBrazilStateUf(rawState: String, rawCity: String = ""): String {
+            val cleanState = stripAccents(rawState)
+                .lowercase(Locale.ROOT)
+                .replace(Regex("\\b(state of|estado d[eao]|provincia d[eao]|brasil|brazil|br)\\b"), " ")
+                .replace(Regex("[^a-z\\s]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+
+            if (cleanState.length == 2) {
+                val upper = cleanState.uppercase(Locale.ROOT)
+                if (upper in OFFICIAL_IBGE_UFS) return upper
+            }
+
+            if (cleanState.isNotBlank()) {
+                for ((stateName, uf) in ORDERED_BRAZIL_STATE_UF_LIST) {
+                    if (cleanState == stateName || Regex("\\b${Regex.escape(stateName)}\\b").containsMatchIn(cleanState)) {
+                        return uf
+                    }
+                }
+                val tokens = cleanState.split(" ").map { it.uppercase(Locale.ROOT) }
+                val directToken = tokens.firstOrNull { it in OFFICIAL_IBGE_UFS }
+                if (directToken != null) return directToken
+            }
+
+            val cleanCity = stripAccents(rawCity)
+                .lowercase(Locale.ROOT)
+                .replace(Regex("[^a-z\\s]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            if (cleanCity.isNotBlank()) {
+                KNOWN_CITY_OFFICIAL_UF_MAP[cleanCity]?.let { return it }
+                for ((stateName, uf) in ORDERED_BRAZIL_STATE_UF_LIST) {
+                    if (cleanCity == stateName) return uf
+                }
+            }
+
+            return ""
+        }
+
         /**
          * Formata o nome do local para o subtítulo do Canvas de Clima:
-         * 1. Converte o nome do estado para a sigla UF de 2 letras (ex: "Maranhão" -> "MA", "Paraná" -> "PR").
+         * 1. Converte o nome do estado para a sigla UF OFICIAL de 2 letras do IBGE
+         *    (ex: "São Paulo" -> "SP", "Maranhão" -> "MA", "Paraná" -> "PR").
          * 2. Se o nome da cidade for extenso (> 12 caracteres) e ocupar mais da metade do quadro,
          *    mantém a primeira palavra inteira e metade da segunda com reticências (ex: "São Bernardo do Campo" -> "São Bern..."),
          *    ou abrevia palavras únicas muito longas (ex: "Pindamonhangaba" -> "Pindamonh...").
          */
         fun formatCompactWeatherLocation(rawCityOrCombined: String, rawState: String = ""): String {
             val cleaned = rawCityOrCombined.trim()
-            if (cleaned.isBlank()) return "Local, BR"
+            if (cleaned.isBlank()) return "São Paulo, SP"
 
             val cityPart: String
             val statePart: String
@@ -1144,28 +1300,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 statePart = ""
             }
 
-            val ufSigla = if (statePart.isNotBlank()) {
-                val cleanState = stripAccents(statePart)
-                    .lowercase(Locale.ROOT)
-                    .replace(Regex("^estado d[eao]\\s+"), "")
-                    .trim()
-                when {
-                    BRAZIL_STATE_UF_MAP.containsKey(cleanState) -> BRAZIL_STATE_UF_MAP[cleanState]!!
-                    statePart.trim().length == 2 -> statePart.trim().uppercase(Locale.ROOT)
-                    else -> {
-                        val stateWords = cleanState.split(Regex("\\s+")).filter {
-                            it.isNotBlank() && it !in setOf("de", "da", "do", "das", "dos")
-                        }
-                        if (stateWords.size >= 2) {
-                            "${stateWords[0].first()}${stateWords[1].first()}".uppercase(Locale.ROOT)
-                        } else {
-                            statePart.trim().take(2).uppercase(Locale.ROOT)
-                        }
-                    }
-                }
-            } else {
-                ""
-            }
+            val ufSigla = resolveOfficialBrazilStateUf(statePart, cityPart)
 
             val cleanCity = cityPart.trim().removeSuffix("...")
             val compactCity = if (cityPart.trim().endsWith("...") && cityPart.trim().length <= 16) {

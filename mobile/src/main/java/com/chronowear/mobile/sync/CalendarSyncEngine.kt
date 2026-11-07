@@ -672,6 +672,7 @@ object CalendarSyncEngine {
         val unifiedCanvasHoldMin = prefs.getUnifiedCanvasHoldMinutes()
         val notifyOnCanvasChange = prefs.isNotifyWatchOnCanvasChangeEnabled()
         val notifyAgenda15Min = prefs.isNotifyAgenda15MinEnabled()
+        val autoFallbackAgendaToTasks = prefs.isAutoFallbackAgendaToTasksEnabled()
         val autoAgendaExposureMin = prefs.getAutoAgendaExposureMinutes()
         val autoWeatherExposureMin = prefs.getAutoWeatherExposureMinutes()
         val autoSunExposureMin = prefs.getAutoSunExposureMinutes()
@@ -715,6 +716,7 @@ object CalendarSyncEngine {
             put("unified_canvas_hold_min", unifiedCanvasHoldMin)
             put("notify_on_canvas_change", notifyOnCanvasChange)
             put("notify_agenda_15min", notifyAgenda15Min)
+            put("auto_fallback_agenda_to_tasks", autoFallbackAgendaToTasks)
             put("auto_agenda_exposure_min", autoAgendaExposureMin)
             put("auto_weather_exposure_min", autoWeatherExposureMin)
             put("auto_sun_exposure_min", autoSunExposureMin)
@@ -765,6 +767,7 @@ object CalendarSyncEngine {
                 dataMap.putInt("unified_canvas_hold_min", unifiedCanvasHoldMin)
                 dataMap.putBoolean("notify_on_canvas_change", notifyOnCanvasChange)
                 dataMap.putBoolean("notify_agenda_15min", notifyAgenda15Min)
+                dataMap.putBoolean("auto_fallback_agenda_to_tasks", autoFallbackAgendaToTasks)
                 dataMap.putInt("auto_agenda_exposure_min", autoAgendaExposureMin)
                 dataMap.putInt("auto_weather_exposure_min", autoWeatherExposureMin)
                 dataMap.putInt("auto_sun_exposure_min", autoSunExposureMin)
@@ -837,17 +840,65 @@ object CalendarSyncEngine {
         return events.size
     }
 
+    private fun isSameCalendarDay(epochA: Long, epochB: Long): Boolean {
+        val calA = Calendar.getInstance().apply { timeInMillis = epochA }
+        val calB = Calendar.getInstance().apply { timeInMillis = epochB }
+        return calA.get(Calendar.YEAR) == calB.get(Calendar.YEAR) &&
+            calA.get(Calendar.DAY_OF_YEAR) == calB.get(Calendar.DAY_OF_YEAR)
+    }
+
+    private fun calendarDaysDiff(nowMs: Long, targetMs: Long): Int {
+        val startOfNow = Calendar.getInstance().apply {
+            timeInMillis = nowMs
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val startOfTarget = Calendar.getInstance().apply {
+            timeInMillis = targetMs
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        return TimeUnit.MILLISECONDS.toDays(startOfTarget - startOfNow).toInt()
+    }
+
     /**
      * Pré-renderiza no processador do Smartphone o Bitmap transparente 604x272px (@2x Retina para 302x136px)
-     * com tipografia ampliada e barra de progresso 0% -> 100% fiel à janela configurada pelo usuário.
+     * com cabeçalho dinâmico ("Hoje", "Amanhã" ou próximo dia com agenda) e barra de progresso 0% -> 100%.
      */
     private fun renderAgendaCardPngBase64OnPhone(
         events: List<LocalCalendarEvent>,
         nowMs: Long,
         progressWindowMinutes: Int
     ): String {
-        val upcomingThree = events.filter { it.startEpochMs > nowMs }.take(3)
-        val primary = upcomingThree.firstOrNull()
+        val allFuture = events.filter { it.startEpochMs > nowMs }
+        val todayEvents = allFuture.filter { isSameCalendarDay(nowMs, it.startEpochMs) }
+
+        val dayHeader: String
+        val dayEvents: List<LocalCalendarEvent>
+        if (todayEvents.isNotEmpty()) {
+            dayHeader = "Hoje"
+            dayEvents = todayEvents.take(3)
+        } else if (allFuture.isNotEmpty()) {
+            val firstNext = allFuture.first()
+            val diffDays = calendarDaysDiff(nowMs, firstNext.startEpochMs)
+            dayHeader = when (diffDays) {
+                1 -> "Amanhã"
+                else -> SimpleDateFormat("EEE, dd", Locale("pt", "BR"))
+                    .format(Date(firstNext.startEpochMs))
+                    .replace(".", "")
+                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+            }
+            dayEvents = allFuture.filter { isSameCalendarDay(firstNext.startEpochMs, it.startEpochMs) }.take(3)
+        } else {
+            dayHeader = "Hoje"
+            dayEvents = emptyList()
+        }
+
+        val primary = dayEvents.firstOrNull()
         val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.coerceAtLeast(1).toLong())
         val progressFraction = if (primary == null) {
             0f
@@ -913,7 +964,7 @@ object CalendarSyncEngine {
             textSize = 42f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText("Hoje", 78f, 51f, headerPaint)
+        canvas.drawText(dayHeader, 78f, 51f, headerPaint)
 
         val timePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
@@ -932,9 +983,9 @@ object CalendarSyncEngine {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        val ev0 = upcomingThree.getOrNull(0)
+        val ev0 = dayEvents.getOrNull(0)
         canvas.drawText(if (ev0 != null) sdf.format(Date(ev0.startEpochMs)) else "--:--", 24f, 105f, timePaint)
-        val t0 = TextUtils.ellipsize(ev0?.title ?: "Livre", titlePaint, 290f, TextUtils.TruncateAt.END).toString()
+        val t0 = TextUtils.ellipsize(ev0?.title ?: "Não há eventos", titlePaint, 290f, TextUtils.TruncateAt.END).toString()
         canvas.drawText(t0, 150f, 105f, titlePaint)
         canvas.drawText(if (ev0 != null) formatRemaining(ev0.startEpochMs) else "--", w - 24f, 103f, countdownPaint)
 
@@ -950,14 +1001,14 @@ object CalendarSyncEngine {
             canvas.drawRoundRect(RectF(barLeft, 117f, barLeft + fillWidth, 130f), 6.5f, 6.5f, goldPaint)
         }
 
-        val ev1 = upcomingThree.getOrNull(1)
+        val ev1 = dayEvents.getOrNull(1)
         canvas.drawText(if (ev1 != null) sdf.format(Date(ev1.startEpochMs)) else "--:--", 24f, 188f, timePaint)
-        val t1 = TextUtils.ellipsize(ev1?.title ?: "Livre", titlePaint, 430f, TextUtils.TruncateAt.END).toString()
+        val t1 = TextUtils.ellipsize(ev1?.title ?: if (ev0 != null) "Livre" else "Agenda livre", titlePaint, 430f, TextUtils.TruncateAt.END).toString()
         canvas.drawText(t1, 150f, 188f, titlePaint)
 
-        val ev2 = upcomingThree.getOrNull(2)
+        val ev2 = dayEvents.getOrNull(2)
         canvas.drawText(if (ev2 != null) sdf.format(Date(ev2.startEpochMs)) else "--:--", 24f, 250f, timePaint)
-        val t2 = TextUtils.ellipsize(ev2?.title ?: "Livre", titlePaint, 430f, TextUtils.TruncateAt.END).toString()
+        val t2 = TextUtils.ellipsize(ev2?.title ?: if (ev0 != null) "Livre" else "Sem compromissos", titlePaint, 430f, TextUtils.TruncateAt.END).toString()
         canvas.drawText(t2, 150f, 250f, titlePaint)
 
         val out = ByteArrayOutputStream()

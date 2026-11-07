@@ -144,6 +144,7 @@ export default function App() {
     sleepWakeHHMM: '07:00',
     tasksSyncEnabled: true,
     hasActiveWatchTaskAlert: false,
+    autoFallbackAgendaToTasks: true,
   });
 
   // Watch clock can be fast-forwarded to test autonomous offline behavior
@@ -186,6 +187,7 @@ export default function App() {
       hasActiveWatchTaskAlert: config.hasActiveWatchTaskAlert ?? false,
       tasksSyncEnabled: config.tasksSyncEnabled ?? true,
       tasks: config.tasks,
+      autoFallbackAgendaToTasks: config.autoFallbackAgendaToTasks ?? true,
       watchStandaloneWeatherEnabled: config.watchStandaloneWeatherEnabled,
       watchStandaloneSolarEnabled: config.watchStandaloneSolarEnabled,
       solarSunriseHHMM: config.solarSunriseHHMM,
@@ -230,6 +232,7 @@ export default function App() {
     config.hasActiveWatchTaskAlert,
     config.tasksSyncEnabled,
     config.tasks,
+    config.autoFallbackAgendaToTasks,
     config.watchStandaloneWeatherEnabled,
     config.watchStandaloneSolarEnabled,
     config.solarSunriseHHMM,

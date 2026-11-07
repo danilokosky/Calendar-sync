@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+*.mp4
+*.mov
+*.webm
+public/assets/aistudio/*.mp4
+public/assets/aistudio/*.jpg

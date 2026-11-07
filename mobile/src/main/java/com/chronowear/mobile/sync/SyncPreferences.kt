@@ -161,6 +161,27 @@ class SyncPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_NOTIFY_AGENDA_15MIN, enabled).commit()
     }
 
+    /**
+     * Se o modo Automático estiver focado em Agenda (EVENTS) e não houver compromissos para HOJE
+     * (mesmo que haja para amanhã), exibe automaticamente o quadro de Tarefas (Google Tasks / Reminder)
+     * caso existam tarefas pendentes ativas. Se não houver tarefas ativas, mantém o foco na Agenda.
+     */
+    fun isAutoFallbackAgendaToTasksEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_FALLBACK_AGENDA_TO_TASKS, true)
+    }
+
+    fun setAutoFallbackAgendaToTasksEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_FALLBACK_AGENDA_TO_TASKS, enabled).commit()
+    }
+
+    fun hasRequestedInitialPermissionsOnce(): Boolean {
+        return prefs.getBoolean(KEY_INITIAL_PERMISSIONS_REQUESTED, false)
+    }
+
+    fun markInitialPermissionsRequested() {
+        prefs.edit().putBoolean(KEY_INITIAL_PERMISSIONS_REQUESTED, true).apply()
+    }
+
     fun getAutoAgendaExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
 
     fun setAutoAgendaExposureMinutes(minutes: Int) = setUnifiedCanvasHoldMinutes(minutes)
@@ -618,6 +639,8 @@ class SyncPreferences(context: Context) {
         private const val KEY_UNIFIED_CANVAS_HOLD_MIN = "unified_canvas_hold_min"
         private const val KEY_NOTIFY_ON_CANVAS_CHANGE = "notify_on_canvas_change"
         private const val KEY_NOTIFY_AGENDA_15MIN = "notify_agenda_15min"
+        private const val KEY_AUTO_FALLBACK_AGENDA_TO_TASKS = "auto_fallback_agenda_to_tasks"
+        private const val KEY_INITIAL_PERMISSIONS_REQUESTED = "initial_permissions_requested"
         private const val KEY_AUTO_AGENDA_EXPOSURE_MIN = "auto_agenda_exposure_min"
         private const val KEY_AUTO_WEATHER_EXPOSURE_MIN = "auto_weather_exposure_min"
         private const val KEY_AUTO_SUN_EXPOSURE_MIN = "auto_sun_exposure_min"
@@ -674,34 +697,40 @@ class SyncPreferences(context: Context) {
             "com.weather.Weather"
         )
 
-        private val BRAZIL_STATE_UF_MAP = mapOf(
-            "acre" to "AC",
-            "alagoas" to "AL",
-            "amapa" to "AP",
-            "amazonas" to "AM",
-            "bahia" to "BA",
-            "ceara" to "CE",
-            "distrito federal" to "DF",
-            "espirito santo" to "ES",
-            "goias" to "GO",
-            "maranhao" to "MA",
-            "mato grosso" to "MT",
+        private val OFFICIAL_IBGE_UFS = setOf(
+            "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO",
+            "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
+            "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+        )
+
+        private val BRAZIL_STATE_UF_ORDERED = listOf(
             "mato grosso do sul" to "MS",
-            "minas gerais" to "MG",
-            "para" to "PA",
-            "paraiba" to "PB",
-            "parana" to "PR",
-            "pernambuco" to "PE",
-            "piaui" to "PI",
-            "rio de janeiro" to "RJ",
             "rio grande do norte" to "RN",
             "rio grande do sul" to "RS",
+            "distrito federal" to "DF",
+            "espirito santo" to "ES",
+            "santa catarina" to "SC",
+            "rio de janeiro" to "RJ",
+            "minas gerais" to "MG",
+            "mato grosso" to "MT",
+            "sao paulo" to "SP",
+            "maranhao" to "MA",
+            "pernambuco" to "PE",
+            "tocantins" to "TO",
+            "amazonas" to "AM",
             "rondonia" to "RO",
             "roraima" to "RR",
-            "santa catarina" to "SC",
-            "sao paulo" to "SP",
+            "alagoas" to "AL",
+            "paraiba" to "PB",
             "sergipe" to "SE",
-            "tocantins" to "TO"
+            "parana" to "PR",
+            "amapa" to "AP",
+            "bahia" to "BA",
+            "ceara" to "CE",
+            "goias" to "GO",
+            "piaui" to "PI",
+            "acre" to "AC",
+            "para" to "PA"
         )
 
         private fun stripAccents(input: String): String {
@@ -710,8 +739,40 @@ class SyncPreferences(context: Context) {
         }
 
         /**
+         * Resolve exclusivamente a sigla oficial IBGE de 2 letras de cada estado brasileiro
+         * (ex: São Paulo -> SP, Paraná -> PR, Maranhão -> MA), sem jamais usar abreviação lógica
+         * das 2 primeiras letras ("SA" ou "PA" para Paraná).
+         */
+        fun resolveOfficialBrazilStateUf(rawState: String, fallbackCity: String = ""): String {
+            val trimmed = rawState.trim()
+            val upper = trimmed.uppercase(java.util.Locale.ROOT)
+            if (upper in OFFICIAL_IBGE_UFS) return upper
+
+            val cleaned = stripAccents(trimmed)
+                .lowercase(java.util.Locale.ROOT)
+                .replace(Regex("^(state of|estado d[eao]|uf|unidade federativa|provincia d[eao])\\s+"), "")
+                .replace(Regex("\\s+(state|uf|brasil|brazil)$"), "")
+                .trim()
+
+            for ((stateName, uf) in BRAZIL_STATE_UF_ORDERED) {
+                if (cleaned == stateName || cleaned.contains(stateName)) {
+                    return uf
+                }
+            }
+
+            if (fallbackCity.isNotBlank()) {
+                val cleanCity = stripAccents(fallbackCity).lowercase(java.util.Locale.ROOT).trim()
+                for ((stateName, uf) in BRAZIL_STATE_UF_ORDERED) {
+                    if (cleanCity == stateName) return uf
+                }
+            }
+
+            return if (upper.length == 2 && upper.all { it.isLetter() }) upper else ""
+        }
+
+        /**
          * Formata o nome do local para o subtítulo do Canvas de Clima:
-         * 1. Converte o nome do estado para a sigla UF de 2 letras (ex: "Maranhão" -> "MA", "Paraná" -> "PR").
+         * 1. Converte o nome do estado para a sigla oficial IBGE de 2 letras (ex: "São Paulo" -> "SP", "Maranhão" -> "MA", "Paraná" -> "PR").
          * 2. Se o nome da cidade for extenso (> 12 caracteres) e ocupar mais da metade do quadro,
          *    mantém a primeira palavra inteira e metade da segunda com reticências (ex: "São Bernardo do Campo" -> "São Bern..."),
          *    ou abrevia palavras únicas muito longas (ex: "Pindamonhangaba" -> "Pindamonh...").
@@ -736,28 +797,7 @@ class SyncPreferences(context: Context) {
                 statePart = ""
             }
 
-            val ufSigla = if (statePart.isNotBlank()) {
-                val cleanState = stripAccents(statePart)
-                    .lowercase(java.util.Locale.ROOT)
-                    .replace(Regex("^estado d[eao]\\s+"), "")
-                    .trim()
-                when {
-                    BRAZIL_STATE_UF_MAP.containsKey(cleanState) -> BRAZIL_STATE_UF_MAP[cleanState]!!
-                    statePart.trim().length == 2 -> statePart.trim().uppercase(java.util.Locale.ROOT)
-                    else -> {
-                        val stateWords = cleanState.split(Regex("\\s+")).filter {
-                            it.isNotBlank() && it !in setOf("de", "da", "do", "das", "dos")
-                        }
-                        if (stateWords.size >= 2) {
-                            "${stateWords[0].first()}${stateWords[1].first()}".uppercase(java.util.Locale.ROOT)
-                        } else {
-                            statePart.trim().take(2).uppercase(java.util.Locale.ROOT)
-                        }
-                    }
-                }
-            } else {
-                ""
-            }
+            val ufSigla = resolveOfficialBrazilStateUf(statePart, cityPart)
 
             val cleanCity = cityPart.trim().removeSuffix("...")
             val compactCity = if (cityPart.trim().endsWith("...") && cityPart.trim().length <= 16) {

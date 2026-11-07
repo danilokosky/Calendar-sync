@@ -156,6 +156,7 @@ export interface SyncConfiguration {
   tasksSyncEnabled?: boolean;
   tasks?: TaskItem[];
   hasActiveWatchTaskAlert?: boolean;
+  autoFallbackAgendaToTasks?: boolean;
 }
 
 export interface WatchCacheState {
@@ -181,6 +182,7 @@ export interface WatchCacheState {
   hasActiveWatchTaskAlert?: boolean;
   tasksSyncEnabled?: boolean;
   tasks?: TaskItem[];
+  autoFallbackAgendaToTasks?: boolean;
   watchStandaloneWeatherEnabled?: boolean;
   watchStandaloneSolarEnabled?: boolean;
   solarSunriseHHMM?: string;
@@ -192,6 +194,9 @@ export interface WatchCacheState {
 
 export interface ComplicationProgressState {
   hasUpcomingEvent: boolean;
+  hasEventsToday: boolean;
+  agendaDayHeader: string;
+  dayEvents: CalendarEventItem[];
   nextEvent: CalendarEventItem | null;
   upcomingThree: CalendarEventItem[];
   remainingMs: number;
@@ -206,43 +211,84 @@ export interface ComplicationProgressState {
   isOperatingAutonomously: boolean;
 }
 
-const BRAZIL_STATE_UF_MAP: Record<string, string> = {
-  acre: 'AC',
-  alagoas: 'AL',
-  amapa: 'AP',
-  amazonas: 'AM',
-  bahia: 'BA',
-  ceara: 'CE',
-  'distrito federal': 'DF',
-  'espirito santo': 'ES',
-  goias: 'GO',
-  maranhao: 'MA',
-  'mato grosso': 'MT',
-  'mato grosso do sul': 'MS',
-  'minas gerais': 'MG',
-  para: 'PA',
-  paraiba: 'PB',
-  parana: 'PR',
-  pernambuco: 'PE',
-  piaui: 'PI',
-  'rio de janeiro': 'RJ',
-  'rio grande do norte': 'RN',
-  'rio grande do sul': 'RS',
-  rondonia: 'RO',
-  roraima: 'RR',
-  'santa catarina': 'SC',
-  'sao paulo': 'SP',
-  sergipe: 'SE',
-  tocantins: 'TO',
-};
+const OFFICIAL_IBGE_UFS = new Set([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',
+  'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI',
+  'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]);
+
+const BRAZIL_STATE_UF_ORDERED: Array<[string, string]> = [
+  ['mato grosso do sul', 'MS'],
+  ['rio grande do norte', 'RN'],
+  ['rio grande do sul', 'RS'],
+  ['distrito federal', 'DF'],
+  ['espirito santo', 'ES'],
+  ['santa catarina', 'SC'],
+  ['rio de janeiro', 'RJ'],
+  ['minas gerais', 'MG'],
+  ['mato grosso', 'MT'],
+  ['sao paulo', 'SP'],
+  ['maranhao', 'MA'],
+  ['pernambuco', 'PE'],
+  ['tocantins', 'TO'],
+  ['amazonas', 'AM'],
+  ['rondonia', 'RO'],
+  ['roraima', 'RR'],
+  ['alagoas', 'AL'],
+  ['paraiba', 'PB'],
+  ['sergipe', 'SE'],
+  ['parana', 'PR'],
+  ['amapa', 'AP'],
+  ['bahia', 'BA'],
+  ['ceara', 'CE'],
+  ['goias', 'GO'],
+  ['piaui', 'PI'],
+  ['acre', 'AC'],
+  ['para', 'PA'],
+];
 
 function stripAccents(input: string): string {
   return input.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 /**
+ * Resolve exclusivamente a sigla oficial IBGE de 2 letras de cada estado brasileiro
+ * (ex: São Paulo -> SP, Paraná -> PR, Maranhão -> MA), sem jamais usar abreviação lógica
+ * das 2 primeiras letras ("SA" ou "PA" para Paraná).
+ */
+export function resolveOfficialBrazilStateUf(
+  rawState: string,
+  fallbackCity = ''
+): string {
+  const trimmed = rawState.trim();
+  const upper = trimmed.toUpperCase();
+  if (OFFICIAL_IBGE_UFS.has(upper)) return upper;
+
+  const cleaned = stripAccents(trimmed)
+    .toLowerCase()
+    .replace(/^(state of|estado d[eao]|uf|unidade federativa|provincia d[eao])\s+/, '')
+    .replace(/\s+(state|uf|brasil|brazil)$/, '')
+    .trim();
+
+  for (const [stateName, uf] of BRAZIL_STATE_UF_ORDERED) {
+    if (cleaned === stateName || cleaned.includes(stateName)) {
+      return uf;
+    }
+  }
+
+  if (fallbackCity.trim()) {
+    const cleanCity = stripAccents(fallbackCity).toLowerCase().trim();
+    for (const [stateName, uf] of BRAZIL_STATE_UF_ORDERED) {
+      if (cleanCity === stateName) return uf;
+    }
+  }
+
+  return upper.length === 2 && /^[A-Z]{2}$/.test(upper) ? upper : '';
+}
+
+/**
  * Formata o nome do local para o subtítulo do Canvas de Clima:
- * 1. Converte o nome do estado para a sigla UF de 2 letras (ex: "Maranhão" -> "MA", "Paraná" -> "PR").
+ * 1. Converte o nome do estado para a sigla oficial IBGE de 2 letras (ex: "São Paulo" -> "SP", "Maranhão" -> "MA", "Paraná" -> "PR").
  * 2. Se o nome da cidade for extenso (> 12 caracteres) e ocupar mais da metade do quadro,
  *    mantém a primeira palavra inteira e metade da segunda com reticências (ex: "São Bernardo do Campo" -> "São Bern..."),
  *    ou abrevia palavras únicas muito longas (ex: "Pindamonhangaba" -> "Pindamonh...").
@@ -269,28 +315,7 @@ export function formatCompactWeatherLocation(
     }
   }
 
-  let ufSigla = '';
-  if (statePart) {
-    const cleanState = stripAccents(statePart)
-      .toLowerCase()
-      .replace(/^estado d[eao]\s+/, '')
-      .trim();
-    if (BRAZIL_STATE_UF_MAP[cleanState]) {
-      ufSigla = BRAZIL_STATE_UF_MAP[cleanState];
-    } else if (statePart.trim().length === 2) {
-      ufSigla = statePart.trim().toUpperCase();
-    } else {
-      const connectors = new Set(['de', 'da', 'do', 'das', 'dos']);
-      const stateWords = cleanState
-        .split(/\s+/)
-        .filter((w) => w.length > 0 && !connectors.has(w));
-      if (stateWords.length >= 2) {
-        ufSigla = `${stateWords[0][0]}${stateWords[1][0]}`.toUpperCase();
-      } else {
-        ufSigla = statePart.trim().slice(0, 2).toUpperCase();
-      }
-    }
-  }
+  const ufSigla = resolveOfficialBrazilStateUf(statePart, cityPart);
 
   const trimmedCity = cityPart.trim();
   const cleanCity = trimmedCity.endsWith('...')
@@ -452,6 +477,19 @@ export interface AutoModeResolutionOptions {
   wakeMinutesOfDay?: number;
   tasksSyncEnabled?: boolean;
   hasActiveWatchTaskAlert?: boolean;
+  autoFallbackAgendaToTasks?: boolean;
+  hasEventsToday?: boolean;
+  pendingTasksCount?: number;
+}
+
+export function isSameCalendarDay(epochA: number, epochB: number): boolean {
+  const dA = new Date(epochA);
+  const dB = new Date(epochB);
+  return (
+    dA.getFullYear() === dB.getFullYear() &&
+    dA.getMonth() === dB.getMonth() &&
+    dA.getDate() === dB.getDate()
+  );
 }
 
 export function resolveEffectiveWatchContextMode(
@@ -490,7 +528,7 @@ export function resolveEffectiveWatchContextMode(
     return 'WEATHER';
   }
 
-  // 3. Prioridade Máxima: Nascer e Pôr do Sol (dentro da janela unificada)
+  // 4. Prioridade Máxima: Nascer e Pôr do Sol (dentro da janela unificada)
   if (options?.currentMinutesOfDay != null) {
     const curMins = options.currentMinutesOfDay;
     const riseMins = options.sunriseMinutesOfDay ?? 327;
@@ -504,7 +542,7 @@ export function resolveEffectiveWatchContextMode(
       return 'SUN';
     }
 
-    // 4. Prioridade Máxima: Acordar ou Dormir (Resumo de Sono)
+    // 5. Prioridade Máxima: Acordar ou Dormir (Resumo de Sono)
     const sleepEnabled = options.sleepSyncEnabled ?? true;
     const wakeMins = options.wakeMinutesOfDay ?? 420; // 07:00
     const bedMins = options.bedtimeMinutesOfDay ?? 1398; // 23:18
@@ -518,10 +556,23 @@ export function resolveEffectiveWatchContextMode(
     }
   }
 
-  // 5. Canvas Padrão Principal configurado pelo usuário
-  if (primaryContext === 'EVENTS' && !hasUpcomingEvent) {
-    return 'WEATHER';
+  // 6. Regra Inteligente de Foco em Agenda:
+  // Se o foco principal for Agenda (EVENTS) e NÃO houver eventos para hoje (mesmo que haja para amanhã):
+  // - Se houver tarefas ativas pendentes (Google Tasks / Samsung Reminder) e a opção estiver ativa, mostra TASKS;
+  // - Caso não haja tarefas ativas, mantém o foco na Agenda (EVENTS) configurada pelo usuário.
+  if (primaryContext === 'EVENTS') {
+    const hasToday = options?.hasEventsToday ?? hasUpcomingEvent;
+    if (!hasToday) {
+      const autoFallbackTasks = options?.autoFallbackAgendaToTasks ?? true;
+      const tasksEnabled = options?.tasksSyncEnabled ?? true;
+      const pendingTasks = options?.pendingTasksCount ?? 0;
+      if (autoFallbackTasks && tasksEnabled && pendingTasks > 0) {
+        return 'TASKS';
+      }
+    }
+    return 'EVENTS';
   }
+
   return primaryContext;
 }
 
@@ -552,8 +603,37 @@ export function evaluateWatchAutonomousState(
     .filter((ev) => ev.startEpochMs > currentWatchTimeMs)
     .sort((a, b) => a.startEpochMs - b.startEpochMs);
 
+  const todayEvents = futureEvents.filter((ev) =>
+    isSameCalendarDay(currentWatchTimeMs, ev.startEpochMs)
+  );
+  const hasEventsToday = todayEvents.length > 0;
+
+  let agendaDayHeader = 'Hoje';
+  let dayEvents: CalendarEventItem[] = [];
+
+  if (hasEventsToday) {
+    agendaDayHeader = 'Hoje';
+    dayEvents = todayEvents.slice(0, 3);
+  } else if (futureEvents.length > 0) {
+    const firstNext = futureEvents[0];
+    const rel = formatDayRelative(firstNext.startEpochMs, currentWatchTimeMs);
+    if (rel === 'Amanhã') {
+      agendaDayHeader = 'Amanhã';
+    } else {
+      const dEv = new Date(firstNext.startEpochMs);
+      const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      agendaDayHeader = `${weekdays[dEv.getDay()]}, ${String(dEv.getDate()).padStart(2, '0')}`;
+    }
+    dayEvents = futureEvents
+      .filter((ev) => isSameCalendarDay(firstNext.startEpochMs, ev.startEpochMs))
+      .slice(0, 3);
+  } else {
+    agendaDayHeader = 'Hoje';
+    dayEvents = [];
+  }
+
   const upcomingThree = futureEvents.slice(0, 3);
-  const nextEvent = upcomingThree[0] ?? null;
+  const nextEvent = dayEvents[0] ?? upcomingThree[0] ?? null;
 
   const autonomousCacheValidUntilMs =
     cache.lastSyncEpochMs + cache.syncedHorizonDays * 24 * 60 * 60 * 1000;
@@ -562,6 +642,9 @@ export function evaluateWatchAutonomousState(
   const highFreq15MinRule = cache.highFreq15MinRule ?? true;
   const hasWeatherAlert = cache.hasActiveWatchWeatherAlert ?? false;
   const unifiedHold = cache.unifiedCanvasHoldMinutes ?? 30;
+
+  const tasksList = cache.tasks ?? DEFAULT_TASKS_LIST;
+  const pendingTasksCount = tasksList.filter((t) => !t.completed).length;
 
   const d = new Date(currentWatchTimeMs);
   const currentMinutesOfDay = d.getHours() * 60 + d.getMinutes();
@@ -580,15 +663,21 @@ export function evaluateWatchAutonomousState(
     wakeMinutesOfDay: parseHHMMToMinutesOfDay(cache.sleepWakeHHMM, 420),
     tasksSyncEnabled: cache.tasksSyncEnabled ?? true,
     hasActiveWatchTaskAlert: cache.hasActiveWatchTaskAlert ?? false,
+    autoFallbackAgendaToTasks: cache.autoFallbackAgendaToTasks ?? true,
+    hasEventsToday,
+    pendingTasksCount,
   };
 
   if (!nextEvent) {
     return {
       hasUpcomingEvent: false,
+      hasEventsToday: false,
+      agendaDayHeader: 'Hoje',
+      dayEvents: [],
       nextEvent: null,
       upcomingThree: [],
       remainingMs: 0,
-      formattedCountdown: 'Sem eventos',
+      formattedCountdown: 'Não há eventos',
       formattedStartTime: '--:--',
       progressRatio: 0,
       isWithinProgressWindow: false,
@@ -623,6 +712,9 @@ export function evaluateWatchAutonomousState(
 
   return {
     hasUpcomingEvent: true,
+    hasEventsToday,
+    agendaDayHeader,
+    dayEvents,
     nextEvent,
     upcomingThree,
     remainingMs,

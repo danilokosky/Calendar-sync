@@ -93,9 +93,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     });
   };
 
-  const ev1 = watchState.upcomingThree[0] || null;
-  const ev2 = watchState.upcomingThree[1] || null;
-  const ev3 = watchState.upcomingThree[2] || null;
+  const ev1 = watchState.dayEvents[0] || null;
+  const ev2 = watchState.dayEvents[1] || null;
+  const ev3 = watchState.dayEvents[2] || null;
 
   const watchDate = new Date(currentWatchTimeMs);
   const weekdayMap = ['DOM.', 'SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.'];
@@ -202,9 +202,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 
   const handleForceRefreshWatchWeatherLocation = () => {
     const locationPresets = [
-      { loc: 'São Paulo, SP', rise: '05:27', set: '17:40' },
+      { loc: 'São Paulo, State of São Paulo', rise: '05:27', set: '17:40' },
       { loc: 'São Luís, Maranhão', rise: '05:51', set: '17:58' },
-      { loc: 'Curitiba, Paraná', rise: '05:38', set: '18:52' },
+      { loc: 'Curitiba, Estado do Paraná', rise: '05:38', set: '18:52' },
       { loc: 'São Bernardo do Campo, São Paulo', rise: '05:26', set: '17:41' },
       { loc: 'Governador Valadares, Minas Gerais', rise: '05:14', set: '17:32' },
     ];
@@ -690,14 +690,17 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 title="Toque no Canvas para alternar para o próximo contexto (Agenda → Clima → Sol → Passos → Sono)"
                 className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] hover:border-amber-400/50 active:scale-[0.99] transition-all cursor-pointer select-none px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
               >
-                {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — Barra de Progresso fiel 0% → 100% na janela configurada) */}
+                {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — Título dinâmico "Hoje" ou "Amanhã" + Barra de Progresso 0% → 100%) */}
                 {effectiveMode === 'EVENTS' && (
                   <>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="w-4 h-4 text-[#F5C438] shrink-0" />
-                        <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
-                          Hoje
+                        <span
+                          data-testid="agenda-canvas-day-header"
+                          className="text-[14.5px] font-bold text-[#F5C438] leading-none"
+                        >
+                          {watchState.agendaDayHeader}
                         </span>
                       </div>
                       {watchState.isWithinTurbo15MinWindow ? (
@@ -720,13 +723,11 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                             {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
                           </span>
                           <span className="font-bold text-[#F5C438] truncate">
-                            {ev1 ? ev1.title : 'Sem eventos'}
+                            {ev1 ? ev1.title : 'Não há eventos'}
                           </span>
                         </div>
                         <span className="font-mono font-bold text-[12.5px] text-[#67E8F9] shrink-0 ml-1">
-                          {watchState.hasUpcomingEvent
-                            ? watchState.formattedCountdown
-                            : '--'}
+                          {ev1 ? watchState.formattedCountdown : '--'}
                         </span>
                       </div>
                       <div className="w-full h-[5px] bg-[#252E3A] rounded-full overflow-hidden">
@@ -746,7 +747,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                         {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
                       </span>
                       <span className="font-bold text-[#F5C438] truncate">
-                        {ev2 ? ev2.title : 'Livre'}
+                        {ev2 ? ev2.title : ev1 ? 'Livre' : 'Agenda livre'}
                       </span>
                     </div>
 
@@ -756,7 +757,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                         {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
                       </span>
                       <span className="font-bold text-[#F5C438] truncate">
-                        {ev3 ? ev3.title : 'Livre'}
+                        {ev3 ? ev3.title : ev1 ? 'Livre' : 'Sem compromissos'}
                       </span>
                     </div>
                   </>
@@ -1294,11 +1295,13 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
           </button>
           <button
             type="button"
-            onClick={() => onAdvanceTimeMinutes(360)}
-            className="py-2 px-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+            data-testid="watch-advance-no-events-today"
+            onClick={() => onAdvanceTimeMinutes(600)}
+            title="Avança +10h (após o último evento de hoje às 18:00): sem agenda hoje, o modo Auto exibe Tarefas ativas e a Agenda mostra Amanhã"
+            className="py-2 px-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 rounded-lg text-xs font-mono text-emerald-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
           >
-            <FastForward className="w-3 h-3 text-sky-400" />
-            <span>+6 horas</span>
+            <FastForward className="w-3 h-3 text-emerald-400" />
+            <span>Sem Hoje (+10h)</span>
           </button>
           <button
             type="button"

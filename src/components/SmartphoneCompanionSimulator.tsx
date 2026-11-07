@@ -397,37 +397,37 @@ export const SmartphoneCompanionSimulator: React.FC<
               <div className="pt-3 border-t border-[#242A26] grid grid-cols-3 gap-2.5">
                 <div className="rounded-2xl bg-[#1B201D] p-2.5">
                   <div className="text-[10px] text-slate-400">
-                    Barra de Progresso
+                    Agenda (Hoje / Amanhã)
                   </div>
                   <div className="text-xs font-bold text-white truncate mt-0.5">
                     0% → 100% ({config.progressWindowMinutes === 30 ? '30m' : `${config.progressWindowMinutes / 60}h`})
                   </div>
                   <div className="text-[10px] font-mono text-amber-400 mt-0.5">
-                    Próx: {nextEvent ? formatHHMM(nextEvent.startEpochMs) : '--:--'}
+                    Próx: {nextEvent ? formatHHMM(nextEvent.startEpochMs) : 'Não há eventos'}
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-[#1B201D] p-2.5">
                   <div className="text-[10px] text-slate-400">
-                    Nascer / Pôr do Sol
+                    Tarefas Ativas
                   </div>
-                  <div className="text-xs font-bold text-white mt-0.5 font-mono">
+                  <div className="text-xs font-bold text-emerald-300 mt-0.5 truncate">
+                    {(config.tasks ?? DEFAULT_TASKS_LIST).filter((t) => !t.completed).length} pendentes
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">
+                    Reminder &amp; Tasks
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-[#1B201D] p-2.5">
+                  <div className="text-[10px] text-slate-400">
+                    Clima (UF Oficial) &amp; Sol
+                  </div>
+                  <div className="text-xs font-bold text-sky-300 mt-0.5 truncate">
+                    {formatCompactWeatherLocation(config.weatherLocationName ?? 'São Paulo, SP')}
+                  </div>
+                  <div className="text-[10px] font-mono text-amber-300 mt-0.5">
                     {config.solarSunriseHHMM ?? '05:27'} • {config.solarSunsetHHMM ?? '17:40'}
-                  </div>
-                  <div className="text-[10px] font-mono text-sky-400 mt-0.5">
-                    Exposição: {config.autoSunExposureMinutes ?? 30}m
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-[#1B201D] p-2.5">
-                  <div className="text-[10px] text-slate-400">
-                    Resumo de Sono
-                  </div>
-                  <div className="text-xs font-bold text-white mt-0.5 font-mono">
-                    7h 42m • {config.sleepScore ?? 86} pts
-                  </div>
-                  <div className="text-[10px] font-mono text-emerald-400 mt-0.5">
-                    {config.sleepSyncEnabled ?? true ? `Ao acordar (${config.autoSleepExposureMinutes ?? 30}m)` : 'Desativado'}
                   </div>
                 </div>
               </div>
@@ -446,17 +446,34 @@ export const SmartphoneCompanionSimulator: React.FC<
           >
             {renderConnectionBanner()}
 
-            {/* SEÇÃO 1: CONTEXTO & ATUALIZAÇÃO DO CANVAS */}
+            {/* SEÇÃO 1: PERMISSÕES NECESSÁRIAS DO APLICATIVO */}
+            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-2.5 shadow-lg">
+              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
+                1. Permissões Necessárias do Aplicativo
+              </div>
+              <div className="text-[11px] text-slate-300 leading-relaxed">
+                • <strong>Calendário:</strong> {calendarPermGranted ? 'Concedida' : 'Pendente'} &nbsp;•&nbsp; <strong>Localização (Clima/Sol):</strong> Concedida &nbsp;•&nbsp; <strong>Notificações &amp; Bateria:</strong> Sem restrição
+              </div>
+              <button
+                type="button"
+                onClick={() => setCalendarPermGranted(true)}
+                className="w-full py-2 px-4 rounded-2xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-emerald-300 transition-colors cursor-pointer"
+              >
+                Solicitar Todas as Permissões Essenciais (Agenda, Localização e Notificações)
+              </button>
+            </div>
+
+            {/* SEÇÃO 2: CONTEXTO & ATUALIZAÇÃO DO CANVAS */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                1. Contexto e Atualização do Canvas
+                2. Contexto e Atualização do Canvas
               </div>
 
               <div className="space-y-1.5">
                 <span className="text-xs font-bold text-slate-100 block">
                   Função da Janela de Contexto (Canvas Bitmap)
                 </span>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-4 gap-1.5">
                   {contextModeOptions.map((m) => (
                     <button
                       key={m.id}
@@ -517,21 +534,21 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 2: CANVAS PADRÃO PRINCIPAL, TEMPO UNIFICADO E PRIORIDADE */}
+            {/* SEÇÃO 3: CANVAS PADRÃO PRINCIPAL, TEMPO UNIFICADO E PRIORIDADE */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                2. Canvas Padrão Principal, Tempo Unificado e Prioridade
+                3. Canvas Padrão Principal, Tempo Unificado e Prioridade
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Ao tocar (Tap) no Canvas da Watch Face, o próximo Canvas aparece temporariamente e depois retorna ao <strong>Canvas Padrão Principal</strong>. Qualquer mudança de <strong>Clima, Agenda, Pôr/Nascer do Sol, Acordar ou Dormir</strong> tem <strong>Prioridade Máxima</strong>.
+                Ao tocar (Tap) no Canvas da Watch Face, o próximo Canvas aparece temporariamente e depois retorna ao <strong>Canvas Padrão Principal</strong>. Se o foco for <strong>Agenda</strong> e não houver eventos hoje, o modo Auto exibe <strong>Tarefas</strong> ativas.
               </p>
 
-              {/* Canvas Padrão Principal */}
+              {/* Canvas Padrão Principal em 2 fileiras de 3 botões para nunca quebrar texto */}
               <div className="space-y-1.5">
                 <span className="text-xs font-bold text-slate-200 block">
-                  Canvas Padrão Principal (Aparência Padrão de Retorno)
+                  Canvas Padrão Principal (2 fileiras de 3 opções)
                 </span>
-                <div className="grid grid-cols-6 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   {autoPrimaryOptions.map((opt) => (
                     <button
                       key={opt.id}
@@ -539,7 +556,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                       onClick={() =>
                         onUpdateConfig({ autoPrimaryContext: opt.id })
                       }
-                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                      className={`py-2 px-2 rounded-full text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
                         (config.autoPrimaryContext ?? 'EVENTS') === opt.id
                           ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
                           : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
@@ -549,6 +566,29 @@ export const SmartphoneCompanionSimulator: React.FC<
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Alternância Automática Agenda Vazia Hoje -> Tarefas Ativas */}
+              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Exibir Tarefas se Não Houver Agenda Hoje
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Se o foco for Agenda e não houver eventos para hoje (mesmo que haja amanhã), exibe Tarefas ativas do Reminder / Google Tasks
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.autoFallbackAgendaToTasks ?? true}
+                  ariaLabel="Exibir Tarefas se Não Houver Agenda Hoje"
+                  onChange={() =>
+                    onUpdateConfig({
+                      autoFallbackAgendaToTasks: !(
+                        config.autoFallbackAgendaToTasks ?? true
+                      ),
+                    })
+                  }
+                />
               </div>
 
               {/* Tempo Unificado de Permanência de Canvas Não-Padrão */}

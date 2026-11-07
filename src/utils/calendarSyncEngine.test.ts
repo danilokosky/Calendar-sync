@@ -300,11 +300,16 @@ test('resolveEffectiveWatchContextMode switches to EVENTS specifically when <= 1
   assert.equal(modeMorningWake, 'SLEEP');
 });
 
-test('formatCompactWeatherLocation converts full state names to 2-letter UF siglas and truncates long city names', () => {
-  // Full state name converted to 2-letter UF sigla (Maranhão -> MA, Paraná -> PR)
+test('formatCompactWeatherLocation converts full state names to official IBGE 2-letter UF siglas and truncates long city names', () => {
+  // Official IBGE UF sigla even when Geocoder returns "State of ...", "Estado do ...", etc.
   assert.equal(formatCompactWeatherLocation('São Luís, Maranhão'), 'São Luís, MA');
   assert.equal(formatCompactWeatherLocation('Curitiba, Paraná'), 'Curitiba, PR');
+  assert.equal(formatCompactWeatherLocation('Curitiba, Estado do Paraná'), 'Curitiba, PR');
   assert.equal(formatCompactWeatherLocation('Pinheiros, São Paulo'), 'Pinheiros, SP');
+  assert.equal(formatCompactWeatherLocation('São Paulo, State of São Paulo'), 'São Paulo, SP');
+  assert.equal(formatCompactWeatherLocation('Belém, Pará'), 'Belém, PA');
+  assert.equal(formatCompactWeatherLocation('Campo Grande, Mato Grosso do Sul'), 'Campo Grande, MS');
+  assert.equal(formatCompactWeatherLocation('Cuiabá, Mato Grosso'), 'Cuiabá, MT');
 
   // Long multi-word city (> 12 chars): keeps first word whole + half of second word + "..."
   assert.equal(
@@ -353,4 +358,63 @@ test('evaluateWatchAutonomousState supports TASKS context mode and prioritizes T
   const alertState = evaluateWatchAutonomousState(dynamicTaskAlertCache, baseTime);
   assert.equal(alertState.effectiveContextMode, 'TASKS');
 });
+
+test('evaluateWatchAutonomousState shows Amanhã header when next events are tomorrow and auto-switches from empty Today Agenda to active Tasks', () => {
+  const tomorrowEvent: CalendarEventItem = {
+    id: 'ev-tomorrow-1',
+    calendarId: 'cal-work',
+    title: 'Reunião de Alinhamento Amanhã',
+    location: 'Sala 01',
+    startEpochMs: baseTime + 24 * 60 * 60 * 1000, // +1 day (Tomorrow)
+    endEpochMs: baseTime + 25 * 60 * 60 * 1000,
+  };
+
+  // 1) No events today, only tomorrow, AND active tasks exist ->
+  //    agendaDayHeader is 'Amanhã', dayEvents has tomorrow's event, and Auto mode switches to 'TASKS'
+  const cacheTomorrowWithTasks: WatchCacheState = {
+    cachedEvents: [tomorrowEvent],
+    lastSyncEpochMs: baseTime,
+    syncedHorizonDays: 5,
+    progressWindowMinutes: 60,
+    isBluetoothConnected: true,
+    contextWindowMode: 'DYNAMIC',
+    autoPrimaryContext: 'EVENTS',
+    autoFallbackAgendaToTasks: true,
+    tasksSyncEnabled: true,
+    tasks: [
+      {
+        id: 't1',
+        title: 'Enviar relatório trimestral',
+        dueHHMM: '14:00',
+        sourceLabel: 'Reminder',
+        completed: false,
+      },
+    ],
+  };
+
+  const stateTomorrowWithTasks = evaluateWatchAutonomousState(cacheTomorrowWithTasks, baseTime);
+  assert.equal(stateTomorrowWithTasks.hasEventsToday, false);
+  assert.equal(stateTomorrowWithTasks.agendaDayHeader, 'Amanhã');
+  assert.equal(stateTomorrowWithTasks.dayEvents.length, 1);
+  assert.equal(stateTomorrowWithTasks.dayEvents[0].id, 'ev-tomorrow-1');
+  assert.equal(stateTomorrowWithTasks.effectiveContextMode, 'TASKS');
+
+  // 2) If all tasks are completed (no active tasks), Auto mode stays on 'EVENTS' (showing Amanhã or Não há eventos)
+  const cacheTomorrowNoActiveTasks: WatchCacheState = {
+    ...cacheTomorrowWithTasks,
+    tasks: [
+      {
+        id: 't1',
+        title: 'Enviar relatório trimestral',
+        dueHHMM: '14:00',
+        sourceLabel: 'Reminder',
+        completed: true,
+      },
+    ],
+  };
+  const stateNoActiveTasks = evaluateWatchAutonomousState(cacheTomorrowNoActiveTasks, baseTime);
+  assert.equal(stateNoActiveTasks.effectiveContextMode, 'EVENTS');
+  assert.equal(stateNoActiveTasks.agendaDayHeader, 'Amanhã');
+});
+
 

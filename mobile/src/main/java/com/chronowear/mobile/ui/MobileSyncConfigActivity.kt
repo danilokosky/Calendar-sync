@@ -46,6 +46,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -73,16 +74,25 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var btStatusBannerHome: TextView
     private lateinit var btStatusBannerSettings: TextView
 
-    // Elementos da tela Início
+    // Elementos da tela Início (Sem piscar / flickering)
     private lateinit var watchBezelSubtext: TextView
+    private lateinit var watchBezelRuleSubtext: TextView
     private lateinit var welcomeDeviceStatusTitle: TextView
     private lateinit var welcomeDeviceStatusDetail: TextView
     private lateinit var energyBigCountdownText: TextView
     private lateinit var energyNextEventSubtitle: TextView
     private lateinit var energyProgressFillView: View
     private lateinit var energyProgressCaption: TextView
+    private lateinit var homeTileTasksValue: TextView
+    private lateinit var homeTileWeatherSolarValue: TextView
+    private lateinit var homeTileSleepValue: TextView
+    private lateinit var homeTileConfigSummaryValue: TextView
 
-    // Elementos da tela Settings (Separados por Seção, sem emojis)
+    // Elementos da Seção 1: Permissões Necessárias
+    private lateinit var permissionsStatusSummaryTv: TextView
+    private lateinit var btnGrantAllPermissionsPill: Button
+
+    // Elementos da tela Settings (Separados por Seção Específica)
     private lateinit var switchBackgroundService: Switch
     private lateinit var subtitleBackgroundService: TextView
     private lateinit var switchPhoneWeatherAutoCheck: Switch
@@ -100,12 +110,14 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var subtitleSleepInfo: TextView
     private lateinit var switchTasksSync: Switch
     private lateinit var subtitleTasksInfo: TextView
+    private lateinit var switchAutoFallbackAgendaToTasks: Switch
     private lateinit var switchNotifyWatchOnCanvasChange: Switch
     private lateinit var switchNotifyAgenda15Min: Switch
     private lateinit var subtitleWeatherLocationInfo: TextView
     private lateinit var rowContextModeChipsTop: LinearLayout
     private lateinit var rowContextModeChipsBottom: LinearLayout
-    private lateinit var rowAutoPrimaryContextChips: LinearLayout
+    private lateinit var rowAutoPrimaryContextChipsTop: LinearLayout
+    private lateinit var rowAutoPrimaryContextChipsBottom: LinearLayout
     private lateinit var rowUnifiedCanvasHoldChips: LinearLayout
     private lateinit var rowPhoneWeatherIntervalChips: LinearLayout
     private lateinit var rowFrequencyChips: LinearLayout
@@ -139,6 +151,7 @@ class MobileSyncConfigActivity : Activity() {
 
         CalendarSyncEngine.refreshPhoneSolarTimes(this)
         buildSamsungHealthUi()
+        requestInitialPermissionsOnFirstLaunchIfNeeded()
     }
 
     override fun onResume() {
@@ -167,6 +180,49 @@ class MobileSyncConfigActivity : Activity() {
         super.onDestroy()
     }
 
+    /**
+     * Solicita todas as permissões essenciais de sistema logo na primeira abertura do aplicativo
+     * (Calendário, Localização Unificada Clima/Sol e Notificações).
+     */
+    private fun requestInitialPermissionsOnFirstLaunchIfNeeded() {
+        val missingRuntimePerms = collectMissingRuntimePermissions()
+        if (!prefs.hasRequestedInitialPermissionsOnce() && missingRuntimePerms.isNotEmpty()) {
+            prefs.markInitialPermissionsRequested()
+            requestPermissions(missingRuntimePerms.toTypedArray(), REQ_ALL_INITIAL_PERMISSIONS)
+        }
+    }
+
+    private fun collectMissingRuntimePermissions(): List<String> {
+        val needed = mutableListOf<String>()
+        if (checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.READ_CALENDAR)
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            needed.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        return needed
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean {
+        return try {
+            val enabledListeners = Settings.Secure.getString(
+                contentResolver,
+                "enabled_notification_listeners"
+            ) ?: ""
+            enabledListeners.contains(packageName)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun pillDrawable(
@@ -183,11 +239,6 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
-    /**
-     * Cria um Switch moderno estilo Samsung One UI 6 / Material 3 com alto contraste:
-     * - Quando ATIVO (ON): Trilha verde esmeralda vibrante (#22C55E) com círculo branco puro (#FFFFFF)
-     * - Quando INATIVO (OFF): Trilha grafite clara (#2A3441) com borda visível (#64748B) e círculo prata (#CBD5E1)
-     */
     private fun createModernSwitch(): Switch {
         val trackWidth = dp(52)
         val trackHeight = dp(28)
@@ -470,8 +521,21 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
+    private fun formatContextLabelPt(mode: String): String {
+        return when (mode.uppercase(Locale.ROOT)) {
+            "DYNAMIC" -> "Auto (Dinâmico)"
+            "EVENTS" -> "Agenda"
+            "TASKS" -> "Tarefas"
+            "WEATHER" -> "Clima"
+            "SUN" -> "Nascer/Pôr do Sol"
+            "STEPS" -> "Passos"
+            "SLEEP" -> "Sono"
+            else -> mode
+        }
+    }
+
     // =========================================================================
-    // ABA 1: INÍCIO
+    // ABA 1: INÍCIO (Com Resumo Estável do Relógio e Tiles de Contexto)
     // =========================================================================
     private fun buildScreenHome(): LinearLayout {
         return LinearLayout(this).apply {
@@ -498,6 +562,7 @@ class MobileSyncConfigActivity : Activity() {
             headerRow.addView(createOrangeDotBadge())
             addView(headerRow)
 
+            // Mostra do Relógio com Resumo Estável (sem piscar)
             val watchBezel = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
@@ -506,30 +571,32 @@ class MobileSyncConfigActivity : Activity() {
                     setColor(Color.parseColor("#0D1210"))
                     setStroke(dp(10), Color.parseColor("#28332C"))
                 }
-                setPadding(dp(24), dp(20), dp(24), dp(20))
-                layoutParams = LinearLayout.LayoutParams(dp(236), dp(236)).apply {
+                setPadding(dp(22), dp(18), dp(22), dp(18))
+                layoutParams = LinearLayout.LayoutParams(dp(244), dp(244)).apply {
                     bottomMargin = dp(12)
                 }
 
                 val slotTimer = LinearLayout(this@MobileSyncConfigActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     background = pillDrawable("#1E2822", "#34463B", 16)
-                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setPadding(dp(12), dp(7), dp(12), dp(7))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply { bottomMargin = dp(6) }
 
                     val t1 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Janela de Contexto (Canvas)"
+                        text = "Resumo do Canvas no Relógio"
                         textSize = 11f
                         setTextColor(Color.parseColor("#FBBF24"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
                     watchBezelSubtext = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Complication Única SMALL_IMAGE"
-                        textSize = 9.5f
-                        setTextColor(Color.parseColor("#CBD5E1"))
+                        text = "Modo Auto • Padrão: Agenda"
+                        textSize = 10f
+                        setTextColor(Color.parseColor("#F8FAFC"))
+                        setTypeface(typeface, Typeface.BOLD)
+                        setPadding(0, dp(2), 0, 0)
                     }
                     addView(t1)
                     addView(watchBezelSubtext)
@@ -539,25 +606,26 @@ class MobileSyncConfigActivity : Activity() {
                 val slotEvents = LinearLayout(this@MobileSyncConfigActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     background = pillDrawable("#18211C", "#2B3A31", 16)
-                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setPadding(dp(12), dp(7), dp(12), dp(7))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     )
 
                     val t2 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Auto • Agenda • Clima • Passos • Sol"
-                        textSize = 10.5f
+                        text = "Agenda • Tarefas • Clima • Sol • Sono"
+                        textSize = 10f
                         setTextColor(Color.parseColor("#FFFFFF"))
                         setTypeface(typeface, Typeface.BOLD)
                     }
-                    val s2 = TextView(this@MobileSyncConfigActivity).apply {
-                        text = "Turbo 1m nos 15 min finais + Alerta Clima"
+                    watchBezelRuleSubtext = TextView(this@MobileSyncConfigActivity).apply {
+                        text = "Fixo: 30m • Agenda vazia hoje → Tarefas"
                         textSize = 9.5f
                         setTextColor(Color.parseColor("#A7F3D0"))
+                        setPadding(0, dp(2), 0, 0)
                     }
                     addView(t2)
-                    addView(s2)
+                    addView(watchBezelRuleSubtext)
                 }
                 addView(slotEvents)
             }
@@ -572,6 +640,7 @@ class MobileSyncConfigActivity : Activity() {
             }
             addView(btStatusBannerHome)
 
+            // Card de Boas-vindas + Status Wear OS + Resumo das Configurações Ativas
             val welcomeCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 background = pillDrawable("#1D2620", "#2F3D33", 26)
@@ -582,24 +651,33 @@ class MobileSyncConfigActivity : Activity() {
                 ).apply { bottomMargin = dp(16) }
 
                 val wTitle = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Sua agenda e contexto sob controle"
-                    textSize = 20f
+                    text = "Sua agenda, tarefas e contexto sob controle"
+                    textSize = 19.5f
                     setTextColor(Color.parseColor("#FFFFFF"))
                     setTypeface(typeface, Typeface.BOLD)
                 }
                 addView(wTitle)
 
                 val wDesc = TextView(this@MobileSyncConfigActivity).apply {
-                    text = "Sincronize compromissos, previsão climática horária e curva solar de nascer e pôr do sol diretamente na Janela de Contexto do seu smartwatch."
-                    textSize = 14f
+                    text = "Sincronize compromissos (Hoje ou Amanhã), tarefas do Google Tasks e Samsung Reminder, clima com UF oficial e curva solar diretamente no seu smartwatch."
+                    textSize = 13.5f
                     setTextColor(Color.parseColor("#D1D5DB"))
-                    setPadding(0, dp(8), 0, dp(14))
+                    setPadding(0, dp(8), 0, dp(12))
                 }
                 addView(wDesc)
 
+                homeTileConfigSummaryValue = TextView(this@MobileSyncConfigActivity).apply {
+                    text = "Resumo: Modo Auto • Padrão Agenda • Retorno em 30 min"
+                    textSize = 12.5f
+                    setTextColor(Color.parseColor("#FBBF24"))
+                    setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, 0, 0, dp(10))
+                }
+                addView(homeTileConfigSummaryValue)
+
                 welcomeDeviceStatusTitle = TextView(this@MobileSyncConfigActivity).apply {
                     text = "Status do aplicativo no relógio:"
-                    textSize = 13f
+                    textSize = 12.5f
                     setTextColor(Color.parseColor("#9CA3AF"))
                     setTypeface(typeface, Typeface.BOLD)
                 }
@@ -607,7 +685,7 @@ class MobileSyncConfigActivity : Activity() {
 
                 welcomeDeviceStatusDetail = TextView(this@MobileSyncConfigActivity).apply {
                     text = "Verificando dispositivos Wear OS..."
-                    textSize = 14.5f
+                    textSize = 14f
                     setTextColor(Color.parseColor("#4ADE80"))
                     setTypeface(typeface, Typeface.BOLD)
                     setPadding(0, dp(4), 0, 0)
@@ -616,6 +694,7 @@ class MobileSyncConfigActivity : Activity() {
             }
             addView(welcomeCard)
 
+            // Card Principal: Temporizador do Próximo Evento
             val energyScoreCard = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 background = pillDrawable("#141816", "#252C28", 26)
@@ -623,7 +702,7 @@ class MobileSyncConfigActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                ).apply { bottomMargin = dp(14) }
 
                 val topRow = LinearLayout(this@MobileSyncConfigActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -681,11 +760,63 @@ class MobileSyncConfigActivity : Activity() {
                 addView(energyProgressCaption)
             }
             addView(energyScoreCard)
+
+            // Tiles de Resumo Rápido abaixo do Temporizador do Próximo Evento
+            val tasksSummaryTile = createHomeInfoTile(
+                title = "Quadro de Tarefas (Reminder & Google Tasks)",
+                accentHex = "#34D399"
+            ) { tv -> homeTileTasksValue = tv }
+            addView(tasksSummaryTile)
+
+            val weatherSolarSummaryTile = createHomeInfoTile(
+                title = "Clima & Curva Solar (Localização Unificada)",
+                accentHex = "#38BDF8"
+            ) { tv -> homeTileWeatherSolarValue = tv }
+            addView(weatherSolarSummaryTile)
+
+            val sleepSummaryTile = createHomeInfoTile(
+                title = "Monitoramento de Sono (Health Connect)",
+                accentHex = "#A78BFA"
+            ) { tv -> homeTileSleepValue = tv }
+            addView(sleepSummaryTile)
+        }
+    }
+
+    private fun createHomeInfoTile(
+        title: String,
+        accentHex: String,
+        onValueCreated: (TextView) -> Unit
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = pillDrawable("#141816", "#252C28", 22)
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(12) }
+
+            val titleTv = TextView(this@MobileSyncConfigActivity).apply {
+                text = title
+                textSize = 12.5f
+                setTextColor(Color.parseColor(accentHex))
+                setTypeface(typeface, Typeface.BOLD)
+            }
+            val valueTv = TextView(this@MobileSyncConfigActivity).apply {
+                text = "--"
+                textSize = 14f
+                setTextColor(Color.parseColor("#F8FAFC"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, 0)
+            }
+            onValueCreated(valueTv)
+            addView(titleTv)
+            addView(valueTv)
         }
     }
 
     // =========================================================================
-    // ABA 2: CONFIGURAÇÕES (Separada por Seções Organizacionais e Sem Emojis)
+    // ABA 2: CONFIGURAÇÕES (Organizada por Assunto Específico + Seção de Permissões)
     // =========================================================================
     private fun createSectionCard(sectionHeaderTitle: String): LinearLayout {
         return LinearLayout(this).apply {
@@ -742,9 +873,64 @@ class MobileSyncConfigActivity : Activity() {
             addView(btStatusBannerSettings)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 1: JANELA DE CONTEXTO (CANVAS DO RELÓGIO)
+            // SEÇÃO 1: PERMISSÕES NECESSÁRIAS DO APLICATIVO
             // -----------------------------------------------------------------
-            val sectionContextCard = createSectionCard("1. Janela de Contexto (Canvas do Relógio)")
+            val sectionPermissionsCard = createSectionCard("1. Permissões Necessárias do Aplicativo")
+
+            val permDesc = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Conceda todas as permissões abaixo para leitura de agenda, localização unificada (Clima + Sol), notificações e execução contínua."
+                textSize = 12.5f
+                setTextColor(Color.parseColor("#9CA3AF"))
+                setPadding(0, 0, 0, dp(8))
+            }
+            sectionPermissionsCard.addView(permDesc)
+
+            permissionsStatusSummaryTv = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Verificando permissões..."
+                textSize = 13f
+                setTextColor(Color.parseColor("#E2E8F0"))
+                setPadding(0, 0, 0, dp(10))
+            }
+            sectionPermissionsCard.addView(permissionsStatusSummaryTv)
+
+            btnGrantAllPermissionsPill = createOutlineActionPillButton(
+                "Solicitar Permissões de Agenda, Localização e Notificações"
+            ) {
+                val missing = collectMissingRuntimePermissions()
+                if (missing.isNotEmpty()) {
+                    requestPermissions(missing.toTypedArray(), REQ_ALL_INITIAL_PERMISSIONS)
+                } else {
+                    Toast.makeText(
+                        this@MobileSyncConfigActivity,
+                        "Permissões de Agenda, Localização e Notificações já concedidas!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            sectionPermissionsCard.addView(btnGrantAllPermissionsPill)
+
+            val btnNotifAccessPermPill = createOutlineActionPillButton(
+                "Autorizar Leitura de Notificações (Clima e Lembretes)"
+            ) {
+                try {
+                    startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                } catch (_: Exception) {
+                }
+            }
+            sectionPermissionsCard.addView(btnNotifAccessPermPill)
+
+            val btnBatteryPermissionPill = createOutlineActionPillButton(
+                "Autorizar Execução em 2º Plano Sem Restrição de Bateria"
+            ) {
+                requestUnrestrictedBatteryPermissionByUser()
+            }
+            sectionPermissionsCard.addView(btnBatteryPermissionPill)
+            addView(sectionPermissionsCard)
+
+            // -----------------------------------------------------------------
+            // SEÇÃO 2: JANELA DE CONTEXTO, CANVAS PADRÃO E PRIORIDADE AUTOMÁTICA
+            // -----------------------------------------------------------------
+            val sectionContextCard = createSectionCard("2. Janela de Contexto, Canvas Padrão e Prioridade")
 
             val ctxLabel = TextView(this@MobileSyncConfigActivity).apply {
                 text = "Contexto Exibido no Quadro Central"
@@ -771,45 +957,9 @@ class MobileSyncConfigActivity : Activity() {
 
             rowContextModeChipsBottom = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(10))
+                setPadding(0, 0, 0, dp(12))
             }
             sectionContextCard.addView(rowContextModeChipsBottom)
-
-            val turbo15mRow = createSettingToggleRow(
-                title = "Regra Turbo 15 min (Atualizar a cada 1 min)",
-                subtitle = "Quando faltar 15 minutos ou menos para iniciar o evento, atualiza o Canvas minuto a minuto",
-                onSubtitleCreated = {},
-                onSwitchCreated = { sw ->
-                    switchHighFreq15MinRule = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
-                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
-                        prefs.setHighFreq15MinRuleEnabled(isChecked)
-                        syncSettingsToWatchInBackground("Regra Turbo 15m")
-                    }
-                }
-            )
-            sectionContextCard.addView(turbo15mRow)
-
-            val screenWakeRow = createSettingToggleRow(
-                title = "Atualizar Canvas ao Acordar a Tela",
-                subtitle = "Redesenha o quadro ao ligar a tela do relógio (com proteção de 25s)",
-                onSubtitleCreated = {},
-                onSwitchCreated = { sw ->
-                    switchUpdateOnScreenWake = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
-                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
-                        prefs.setUpdateOnScreenWakeEnabled(isChecked)
-                        syncSettingsToWatchInBackground("Atualizar ao Acordar")
-                    }
-                }
-            )
-            sectionContextCard.addView(screenWakeRow)
-            addView(sectionContextCard)
-
-            // -----------------------------------------------------------------
-            // SEÇÃO 2: CANVAS PADRÃO PRINCIPAL, TEMPO UNIFICADO E PRIORIDADE
-            // -----------------------------------------------------------------
-            val sectionAutoBehaviorCard = createSectionCard("2. Canvas Padrão Principal, Tempo Unificado e Prioridade")
 
             val autoPrimaryLabel = TextView(this@MobileSyncConfigActivity).apply {
                 text = "Canvas Padrão Principal"
@@ -818,7 +968,7 @@ class MobileSyncConfigActivity : Activity() {
                 setTypeface(typeface, Typeface.BOLD)
                 setPadding(0, dp(4), 0, dp(3))
             }
-            sectionAutoBehaviorCard.addView(autoPrimaryLabel)
+            sectionContextCard.addView(autoPrimaryLabel)
 
             val autoPrimarySub = TextView(this@MobileSyncConfigActivity).apply {
                 text = "Aparência padrão do relógio para a qual o Canvas sempre retorna após um toque (Tap) ou após uma mudança temporária de contexto"
@@ -826,36 +976,65 @@ class MobileSyncConfigActivity : Activity() {
                 setTextColor(Color.parseColor("#9CA3AF"))
                 setPadding(0, 0, 0, dp(8))
             }
-            sectionAutoBehaviorCard.addView(autoPrimarySub)
+            sectionContextCard.addView(autoPrimarySub)
 
-            rowAutoPrimaryContextChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+            // Dividido em 2 fileiras de 3 botões para que nenhuma palavra quebre no meio
+            rowAutoPrimaryContextChipsTop = LinearLayout(this@MobileSyncConfigActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(6))
+            }
+            sectionContextCard.addView(rowAutoPrimaryContextChipsTop)
+
+            rowAutoPrimaryContextChipsBottom = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, 0, 0, dp(12))
             }
-            sectionAutoBehaviorCard.addView(rowAutoPrimaryContextChips)
+            sectionContextCard.addView(rowAutoPrimaryContextChipsBottom)
+
+            val autoFallbackAgendaTasksRow = createSettingToggleRow(
+                title = "Exibir Tarefas se Não Houver Agenda Hoje",
+                subtitle = "No modo Auto focado em Agenda: se não houver eventos para hoje (mesmo que haja para amanhã), exibe Tarefas ativas do Google Tasks / Reminder. Se não houver tarefas ativas, mantém na Agenda",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchAutoFallbackAgendaToTasks = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setAutoFallbackAgendaToTasksEnabled(isChecked)
+                        refreshUiState()
+                        syncSettingsToWatchInBackground("Fallback Agenda -> Tarefas")
+                    }
+                }
+            )
+            sectionContextCard.addView(autoFallbackAgendaTasksRow)
 
             val unifiedHoldLabel = TextView(this@MobileSyncConfigActivity).apply {
                 text = "Tempo Fixo de Canvas Não-Padrão (Unificado)"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(4), 0, dp(3))
+                setPadding(0, dp(6), 0, dp(3))
             }
-            sectionAutoBehaviorCard.addView(unifiedHoldLabel)
+            sectionContextCard.addView(unifiedHoldLabel)
 
             val unifiedHoldSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Quanto tempo qualquer Canvas diferente do padrão (aberto por Tap na Watch Face ou forçado por Clima, Agenda, Pôr/Nascer do Sol ou Dormir/Acordar) fica fixo antes de retornar ao Canvas Padrão Principal"
+                text = "Quanto tempo qualquer Canvas diferente do padrão (aberto por Tap na Watch Face ou forçado por Clima, Agenda, Tarefas, Sol ou Sono) fica fixo antes de retornar ao Canvas Padrão Principal"
                 textSize = 12f
                 setTextColor(Color.parseColor("#9CA3AF"))
                 setPadding(0, 0, 0, dp(8))
             }
-            sectionAutoBehaviorCard.addView(unifiedHoldSub)
+            sectionContextCard.addView(unifiedHoldSub)
 
             rowUnifiedCanvasHoldChips = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(10))
+                setPadding(0, 0, 0, dp(4))
             }
-            sectionAutoBehaviorCard.addView(rowUnifiedCanvasHoldChips)
+            sectionContextCard.addView(rowUnifiedCanvasHoldChips)
+            addView(sectionContextCard)
+
+            // -----------------------------------------------------------------
+            // SEÇÃO 3: REGRAS DE ATUALIZAÇÃO E NOTIFICAÇÕES NO RELÓGIO
+            // -----------------------------------------------------------------
+            val sectionWatchRulesCard = createSectionCard("3. Regras de Atualização e Notificações no Relógio")
 
             val notifyWatchCanvasRow = createSettingToggleRow(
                 title = "Notificar no Relógio ao Atualizar o Canvas",
@@ -870,7 +1049,7 @@ class MobileSyncConfigActivity : Activity() {
                     }
                 }
             )
-            sectionAutoBehaviorCard.addView(notifyWatchCanvasRow)
+            sectionWatchRulesCard.addView(notifyWatchCanvasRow)
 
             val notifyAgenda15MinRow = createSettingToggleRow(
                 title = "Notificar Compromisso Faltando 15 Minutos",
@@ -885,17 +1064,47 @@ class MobileSyncConfigActivity : Activity() {
                     }
                 }
             )
-            sectionAutoBehaviorCard.addView(notifyAgenda15MinRow)
-            addView(sectionAutoBehaviorCard)
+            sectionWatchRulesCard.addView(notifyAgenda15MinRow)
+
+            val turbo15mRow = createSettingToggleRow(
+                title = "Regra Turbo 15 min (Atualizar a cada 1 min)",
+                subtitle = "Quando faltar 15 minutos ou menos para iniciar o evento, atualiza o Canvas minuto a minuto",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchHighFreq15MinRule = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setHighFreq15MinRuleEnabled(isChecked)
+                        syncSettingsToWatchInBackground("Regra Turbo 15m")
+                    }
+                }
+            )
+            sectionWatchRulesCard.addView(turbo15mRow)
+
+            val screenWakeRow = createSettingToggleRow(
+                title = "Atualizar Canvas ao Acordar a Tela",
+                subtitle = "Redesenha o quadro ao ligar a tela do relógio (com proteção de 25s)",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchUpdateOnScreenWake = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setUpdateOnScreenWakeEnabled(isChecked)
+                        syncSettingsToWatchInBackground("Atualizar ao Acordar")
+                    }
+                }
+            )
+            sectionWatchRulesCard.addView(screenWakeRow)
+            addView(sectionWatchRulesCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 3: AGENDA E CONTAGEM REGRESSIVA
+            // SEÇÃO 4: AGENDA E CONTAGEM REGRESSIVA (HOJE / AMANHÃ)
             // -----------------------------------------------------------------
-            val sectionCalendarCard = createSectionCard("3. Agenda e Contagem Regressiva")
+            val sectionCalendarCard = createSectionCard("4. Agenda e Contagem Regressiva")
 
             val calSyncRow = createSettingToggleRow(
                 title = "Sincronização de Eventos da Agenda",
-                subtitle = "Envia os próximos compromissos e barra de progresso para o Canvas",
+                subtitle = "Exibe 'Hoje' para eventos do dia ou 'Amanhã' quando os próximos eventos forem do dia seguinte",
                 onSubtitleCreated = { subtitleCalendarEventsSync = it },
                 onSwitchCreated = { sw ->
                     switchCalendarEventsSync = sw
@@ -989,13 +1198,53 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionCalendarCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 4: CLIMA E NASCER/PÔR DO SOL (LOCALIZAÇÃO UNIFICADA)
+            // SEÇÃO 5: TAREFAS (SAMSUNG REMINDER E GOOGLE TASKS)
             // -----------------------------------------------------------------
-            val sectionWeatherCard = createSectionCard("4. Clima e Nascer/Pôr do Sol (Localização Unificada)")
+            val sectionTasksCard = createSectionCard("5. Tarefas (Samsung Reminder e Google Tasks)")
+
+            val tasksSyncRow = createSettingToggleRow(
+                title = "Sincronizar Tarefas (Reminder e Google Tasks)",
+                subtitle = "Exibe checklist de tarefas no Canvas e prioriza o quadro quando um lembrete tocar ou quando não houver agenda hoje",
+                onSubtitleCreated = { subtitleTasksInfo = it },
+                onSwitchCreated = { sw ->
+                    switchTasksSync = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setTasksSyncEnabled(isChecked)
+                        refreshUiState()
+                        syncSettingsToWatchInBackground("Sincronização de Tarefas")
+                    }
+                }
+            )
+            sectionTasksCard.addView(tasksSyncRow)
+
+            val btnSyncTasksNowPill = createOutlineActionPillButton(
+                "Sincronizar Tarefas (Reminder / Google Tasks) Agora"
+            ) {
+                prefs.setTasksSyncEnabled(true)
+                prefs.saveTasksJson(
+                    tasksJson = SyncPreferences.DEFAULT_TASKS_JSON,
+                    alertTimestampMs = System.currentTimeMillis()
+                )
+                refreshUiState()
+                syncSettingsToWatchInBackground("Tarefas Reminder/Tasks Atualizadas")
+                Toast.makeText(
+                    this@MobileSyncConfigActivity,
+                    "Quadro de Tarefas (Samsung Reminder / Google Tasks) enviado ao relógio!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            sectionTasksCard.addView(btnSyncTasksNowPill)
+            addView(sectionTasksCard)
+
+            // -----------------------------------------------------------------
+            // SEÇÃO 6: CLIMA E NASCER/PÔR DO SOL (LOCALIZAÇÃO UNIFICADA + UF OFICIAL)
+            // -----------------------------------------------------------------
+            val sectionWeatherCard = createSectionCard("6. Clima e Nascer/Pôr do Sol (Localização Unificada)")
 
             val phoneAutoWeatherRow = createSettingToggleRow(
                 title = "Busca Automática de Clima e Sol pela Localização",
-                subtitle = "Atualização fixa unificada: quando atualiza o Clima pela localização, deduz e atualiza junto o Nascer e Pôr do Sol",
+                subtitle = "Atualização fixa unificada com sigla oficial IBGE do estado (ex: SP, MA, PR): quando atualiza o Clima, atualiza junto o Nascer e Pôr do Sol",
                 onSubtitleCreated = { subtitleWeatherLocationInfo = it },
                 onSwitchCreated = { sw ->
                     switchPhoneWeatherAutoCheck = sw
@@ -1048,16 +1297,6 @@ class MobileSyncConfigActivity : Activity() {
             }
             sectionWeatherCard.addView(btnWeatherTriggerAppsPill)
 
-            val btnNotifAccessPill = createOutlineActionPillButton(
-                "Autorizar Acesso às Notificações"
-            ) {
-                try {
-                    startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
-                } catch (_: Exception) {
-                }
-            }
-            sectionWeatherCard.addView(btnNotifAccessPill)
-
             val watchStandaloneWeatherRow = createSettingToggleRow(
                 title = "Serviço Stand-Alone de Clima e Sol no Relógio (1h)",
                 subtitle = "Permite que o relógio busque o clima e calcule o nascer/pôr do sol juntos pela própria localização",
@@ -1088,49 +1327,9 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionWeatherCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 5: TAREFAS (SAMSUNG REMINDER E GOOGLE TASKS)
+            // SEÇÃO 7: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH)
             // -----------------------------------------------------------------
-            val sectionTasksCard = createSectionCard("5. Tarefas (Samsung Reminder e Google Tasks)")
-
-            val tasksSyncRow = createSettingToggleRow(
-                title = "Sincronizar Tarefas (Reminder e Google Tasks)",
-                subtitle = "Exibe checklist de tarefas no Canvas e prioriza o quadro quando um lembrete tocar",
-                onSubtitleCreated = { subtitleTasksInfo = it },
-                onSwitchCreated = { sw ->
-                    switchTasksSync = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
-                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
-                        prefs.setTasksSyncEnabled(isChecked)
-                        refreshUiState()
-                        syncSettingsToWatchInBackground("Sincronização de Tarefas")
-                    }
-                }
-            )
-            sectionTasksCard.addView(tasksSyncRow)
-
-            val btnSyncTasksNowPill = createOutlineActionPillButton(
-                "Sincronizar Tarefas (Reminder / Google Tasks) Agora"
-            ) {
-                prefs.setTasksSyncEnabled(true)
-                prefs.saveTasksJson(
-                    tasksJson = SyncPreferences.DEFAULT_TASKS_JSON,
-                    alertTimestampMs = System.currentTimeMillis()
-                )
-                refreshUiState()
-                syncSettingsToWatchInBackground("Tarefas Reminder/Tasks Atualizadas")
-                Toast.makeText(
-                    this@MobileSyncConfigActivity,
-                    "Quadro de Tarefas (Samsung Reminder / Google Tasks) enviado ao relógio!",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-            sectionTasksCard.addView(btnSyncTasksNowPill)
-            addView(sectionTasksCard)
-
-            // -----------------------------------------------------------------
-            // SEÇÃO 6: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH)
-            // -----------------------------------------------------------------
-            val sectionSleepCard = createSectionCard("6. Monitoramento de Sono (Health Connect / Samsung Health)")
+            val sectionSleepCard = createSectionCard("7. Monitoramento de Sono (Health Connect / Samsung Health)")
 
             val sleepSyncRow = createSettingToggleRow(
                 title = "Sincronizar Dados de Sono no Canvas",
@@ -1172,9 +1371,9 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionSleepCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 7: SERVIÇO EM SEGUNDO PLANO E SISTEMA
+            // SEÇÃO 8: SERVIÇO EM SEGUNDO PLANO E SISTEMA
             // -----------------------------------------------------------------
-            val sectionSystemCard = createSectionCard("7. Serviço em Segundo Plano e Sistema")
+            val sectionSystemCard = createSectionCard("8. Serviço em Segundo Plano e Sistema")
 
             val bgServiceRow = createSettingToggleRow(
                 title = "Serviço Persistente em 2º Plano",
@@ -1189,13 +1388,6 @@ class MobileSyncConfigActivity : Activity() {
                 }
             )
             sectionSystemCard.addView(bgServiceRow)
-
-            val btnBatteryPermissionPill = createOutlineActionPillButton(
-                "Autorizar Execução em 2º Plano Sem Restrição"
-            ) {
-                requestUnrestrictedBatteryPermissionByUser()
-            }
-            sectionSystemCard.addView(btnBatteryPermissionPill)
 
             val mediaSyncRow = createSettingToggleRow(
                 title = "Sincronização de Reprodução de Mídia",
@@ -1239,12 +1431,12 @@ class MobileSyncConfigActivity : Activity() {
 
             val body = TextView(this@MobileSyncConfigActivity).apply {
                 text = "ChronoWear Health & Calendar Sync (v1.2.1)\n\n" +
-                    "• 6 Modos na Janela de Contexto (Canvas Bitmap):\n" +
-                    "  Auto (Dinâmico), Agenda, Clima, Nascer/Pôr do Sol, Passos Semanais e Sono (Hipnograma).\n\n" +
-                    "• Orquestração Programável do Modo Automático:\n" +
-                    "  Permite escolher o Contexto Principal (ex: Agenda) e configurar por quanto tempo cada contexto temporário fica exposto (Clima após mudança, Nascer/Pôr do Sol, Sono ao acordar e Agenda quando não for a principal).\n\n" +
-                    "• Curva Solar Completa (Dia e Noite) & Barra de Progresso Fiel:\n" +
-                    "  Representa o sol abaixo da linha do horizonte durante a noite e faz a barra de progresso crescer linearmente de 0% a 100% dentro da janela escolhida pelo usuário."
+                    "• 7 Modos na Janela de Contexto (Canvas Bitmap):\n" +
+                    "  Auto (Dinâmico), Agenda (Hoje / Amanhã), Tarefas (Reminder & Google Tasks), Clima (UF Oficial IBGE), Nascer/Pôr do Sol, Passos Semanais e Sono (Hipnograma).\n\n" +
+                    "• Prioridade Inteligente Agenda ↔ Tarefas:\n" +
+                    "  Quando o foco automático é a Agenda e não há compromissos para hoje, exibe automaticamente o quadro de Tarefas se houver tarefas ativas; caso contrário, mantém na Agenda.\n\n" +
+                    "• Clima com Siglas Oficiais IBGE e Curva Solar Unificada:\n" +
+                    "  Abrevia estados respeitando a sigla oficial (SP, MA, PR, RJ, MG, etc.) e atualiza os horários solares junto com a localização do clima."
                 textSize = 14f
                 setTextColor(Color.parseColor("#D1D5DB"))
                 setPadding(0, 0, 0, dp(16))
@@ -1350,10 +1542,6 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
-    /**
-     * Sincroniza imediatamente em segundo plano qualquer mudança de opção (Contexto, Intervalo,
-     * Clima, Sol, Sono, Exposição Auto, Regras) sem travar a interface.
-     */
     private fun syncSettingsToWatchInBackground(reason: String) {
         uiScope.launch {
             withContext(Dispatchers.IO) {
@@ -1479,11 +1667,6 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
-    /**
-     * Verifica os aplicativos instalados no Smartphone, separa por categoria afim de Clima
-     * (Provedores do Sistema, Clima e Meteorologia, Clima e Radar) e apresenta ao usuário
-     * para escolher quais disparam a atualização dinâmica do Canvas.
-     */
     private fun openWeatherTriggerAppsDialog() {
         val catalog = CalendarSyncEngine.discoverInstalledWeatherAppsByCategory(this)
         val currentSelected = prefs.getSelectedWeatherTriggerPackages().toMutableSet()
@@ -1562,6 +1745,14 @@ class MobileSyncConfigActivity : Activity() {
         val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
 
         when (requestCode) {
+            REQ_ALL_INITIAL_PERMISSIONS -> {
+                if (CalendarSyncEngine.hasCalendarPermission(this)) {
+                    prefs.setCalendarEventsSyncEnabled(true)
+                }
+                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    CalendarSyncEngine.refreshPhoneSolarTimes(this)
+                }
+            }
             REQ_CALENDAR_FOR_SYNC -> {
                 if (granted) {
                     prefs.setCalendarEventsSyncEnabled(true)
@@ -1581,8 +1772,39 @@ class MobileSyncConfigActivity : Activity() {
         refreshUiState()
     }
 
+    private fun updateStableHeaderAndTilesSummary() {
+        val ctxLabel = formatContextLabelPt(prefs.getContextWindowMode())
+        val primaryLabel = formatContextLabelPt(prefs.getAutoPrimaryContext())
+        val holdMin = prefs.getUnifiedCanvasHoldMinutes()
+        val fallbackLabel = if (prefs.isAutoFallbackAgendaToTasksEnabled()) {
+            "Agenda vazia hoje → Tarefas"
+        } else {
+            "Agenda fixa"
+        }
+
+        // Texto único e estável na mostra superior (nunca sobrescrito por outra string para evitar piscar)
+        watchBezelSubtext.text = "Modo: $ctxLabel • Padrão: $primaryLabel"
+        watchBezelRuleSubtext.text = "Fixo: ${holdMin}m • $fallbackLabel"
+
+        homeTileConfigSummaryValue.text =
+            "Configuração ativa: $ctxLabel • Padrão: $primaryLabel • Retorno em ${holdMin}m • $fallbackLabel"
+
+        homeTileTasksValue.text = prefs.getTasksSummaryLabel()
+        homeTileWeatherSolarValue.text =
+            "${prefs.getPhoneWeatherLocationName()} • ${prefs.getPhoneWeatherConditionLabel()} (${prefs.getPhoneWeatherUpdatedHHMM()}) • Sol ${prefs.getSolarSunriseHHMM()} → ${prefs.getSolarSunsetHHMM()}"
+
+        val sleepDurMin = prefs.getSleepDurationMinutes()
+        val sleepH = sleepDurMin / 60
+        val sleepM = sleepDurMin % 60
+        homeTileSleepValue.text =
+            "${sleepH}h ${sleepM}m • ${prefs.getSleepScore()} pts (${prefs.getSleepBedtimeHHMM()} → ${prefs.getSleepWakeHHMM()})"
+    }
+
     private fun refreshUiState() {
         val hasCalPerm = CalendarSyncEngine.hasCalendarPermission(this)
+        val hasLocPerm = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasNotifPerm = CalendarSyncEngine.hasNotificationPermission(this)
+        val hasNotifListener = isNotificationListenerEnabled()
         val isBgUnrestricted = CalendarSyncEngine.isIgnoringBatteryOptimizations(this)
         val selectedCalsCount = prefs.getSelectedCalendarIds().size
         val selectedWeatherAppsCount = prefs.getSelectedWeatherTriggerPackages().size
@@ -1594,6 +1816,7 @@ class MobileSyncConfigActivity : Activity() {
         switchWatchStandaloneWeather.isChecked = prefs.isWatchStandaloneWeatherEnabled()
         switchSleepSync.isChecked = prefs.isSleepSyncEnabled()
         switchTasksSync.isChecked = prefs.isTasksSyncEnabled()
+        switchAutoFallbackAgendaToTasks.isChecked = prefs.isAutoFallbackAgendaToTasksEnabled()
         switchNotifyWatchOnCanvasChange.isChecked = prefs.isNotifyWatchOnCanvasChangeEnabled()
         switchNotifyAgenda15Min.isChecked = prefs.isNotifyAgenda15MinEnabled()
         switchMediaPlaybackSync.isChecked = prefs.isMediaPlaybackSyncEnabled()
@@ -1603,8 +1826,17 @@ class MobileSyncConfigActivity : Activity() {
         switchUpdateOnScreenWake.isChecked = prefs.isUpdateOnScreenWakeEnabled()
         suppressSwitchEvents = false
 
+        val calStatus = if (hasCalPerm) "OK" else "Pendente"
+        val locStatus = if (hasLocPerm) "OK" else "Pendente"
+        val notifStatus = if (hasNotifPerm) "OK" else "Pendente"
+        val listenerStatus = if (hasNotifListener) "OK" else "Opcional"
+        val batStatus = if (isBgUnrestricted) "Sem restrição" else "Padrão"
+        permissionsStatusSummaryTv.text =
+            "• Calendário: $calStatus   • Localização (Clima/Sol): $locStatus\n" +
+                "• Notificações: $notifStatus   • Leitor de Lembretes/Clima: $listenerStatus   • Bateria: $batStatus"
+
         subtitleWeatherLocationInfo.text =
-            "📍 ${prefs.getPhoneWeatherLocationName()} (${prefs.getPhoneWeatherUpdatedHHMM()}) • Sol: ${prefs.getSolarSunriseHHMM()} → ${prefs.getSolarSunsetHHMM()}"
+            "${prefs.getPhoneWeatherLocationName()} (${prefs.getPhoneWeatherUpdatedHHMM()}) • Sol: ${prefs.getSolarSunriseHHMM()} → ${prefs.getSolarSunsetHHMM()}"
 
         btnWeatherTriggerAppsPill.text =
             "Escolher Apps de Clima por Categoria ($selectedWeatherAppsCount selecionados)"
@@ -1619,15 +1851,15 @@ class MobileSyncConfigActivity : Activity() {
 
         subtitleBackgroundService.text = if (prefs.isBackgroundServiceEnabled()) {
             if (isBgUnrestricted) "Ativo em 2º plano (Sem restrição)"
-            else "Ativo • Autorize bateria sem restrição abaixo"
+            else "Ativo • Autorize bateria sem restrição na Seção 1"
         } else {
             "Desativado • Ative para sincronização contínua"
         }
 
         subtitleCalendarEventsSync.text = if (hasCalPerm) {
-            "Janela de Contexto (Canvas) • $selectedCalsCount agenda(s)"
+            "Janela de Contexto (Hoje / Amanhã) • $selectedCalsCount agenda(s)"
         } else {
-            "Janela de Contexto (Canvas Bitmap)"
+            "Autorize a permissão de Calendário na Seção 1"
         }
 
         btnSyncedCalendarsPill.text = if (selectedCalsCount > 0) {
@@ -1636,8 +1868,7 @@ class MobileSyncConfigActivity : Activity() {
             "Selecionar Calendários Sincronizados"
         }
 
-        watchBezelSubtext.text = "Modo ${prefs.getContextWindowMode()} • Principal: ${prefs.getAutoPrimaryContext()}"
-
+        updateStableHeaderAndTilesSummary()
         renderChipsRows()
 
         uiScope.launch {
@@ -1689,7 +1920,6 @@ class MobileSyncConfigActivity : Activity() {
                 }
             }
 
-            watchBezelSubtext.text = "Modo ${prefs.getContextWindowMode()} • ${events.size} evento(s)"
             updateLiveEventSummary()
         }
     }
@@ -1707,7 +1937,7 @@ class MobileSyncConfigActivity : Activity() {
             rowContextModeChipsTop.addView(
                 createSelectableChip(label, curCtx == mode) {
                     prefs.setContextWindowMode(mode)
-                    watchBezelSubtext.text = "Modo $mode • ${cachedHorizonEvents.size} evento(s)"
+                    updateStableHeaderAndTilesSummary()
                     renderChipsRows()
                     syncSettingsToWatchInBackground("Contexto: $label")
                 }
@@ -1721,26 +1951,40 @@ class MobileSyncConfigActivity : Activity() {
             rowContextModeChipsBottom.addView(
                 createSelectableChip(label, curCtx == mode) {
                     prefs.setContextWindowMode(mode)
-                    watchBezelSubtext.text = "Modo $mode • ${cachedHorizonEvents.size} evento(s)"
+                    updateStableHeaderAndTilesSummary()
                     renderChipsRows()
                     syncSettingsToWatchInBackground("Contexto: $label")
                 }
             )
         }
 
-        rowAutoPrimaryContextChips.removeAllViews()
+        // 2 fileiras de 3 botões para Canvas Padrão Principal (evita quebra de palavra)
+        rowAutoPrimaryContextChipsTop.removeAllViews()
+        rowAutoPrimaryContextChipsBottom.removeAllViews()
         val curPrimary = prefs.getAutoPrimaryContext()
         listOf(
             "EVENTS" to "Agenda",
             "TASKS" to "Tarefas",
-            "WEATHER" to "Clima",
+            "WEATHER" to "Clima"
+        ).forEach { (mode, label) ->
+            rowAutoPrimaryContextChipsTop.addView(
+                createSelectableChip(label, curPrimary == mode) {
+                    prefs.setAutoPrimaryContext(mode)
+                    updateStableHeaderAndTilesSummary()
+                    renderChipsRows()
+                    syncSettingsToWatchInBackground("Principal Auto: $label")
+                }
+            )
+        }
+        listOf(
             "SUN" to "Sol",
             "STEPS" to "Passos",
             "SLEEP" to "Sono"
         ).forEach { (mode, label) ->
-            rowAutoPrimaryContextChips.addView(
+            rowAutoPrimaryContextChipsBottom.addView(
                 createSelectableChip(label, curPrimary == mode) {
                     prefs.setAutoPrimaryContext(mode)
+                    updateStableHeaderAndTilesSummary()
                     renderChipsRows()
                     syncSettingsToWatchInBackground("Principal Auto: $label")
                 }
@@ -1755,6 +1999,7 @@ class MobileSyncConfigActivity : Activity() {
             rowUnifiedCanvasHoldChips.addView(
                 createSelectableChip(label, curUnifiedHold == mins) {
                     prefs.setUnifiedCanvasHoldMinutes(mins)
+                    updateStableHeaderAndTilesSummary()
                     renderChipsRows()
                     syncSettingsToWatchInBackground("Tempo Fixo Canvas: $label")
                 }
@@ -1823,7 +2068,8 @@ class MobileSyncConfigActivity : Activity() {
             text = label
             isAllCaps = false
             textSize = 12f
-            setPadding(dp(4), 0, dp(4), 0)
+            setSingleLine(true)
+            setPadding(dp(6), 0, dp(6), 0)
             setTextColor(if (selected) Color.parseColor("#081C15") else Color.parseColor("#E5E7EB"))
             setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
             background = pillDrawable(
@@ -1850,12 +2096,23 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
+    private fun isSameDay(msA: Long, msB: Long): Boolean {
+        val calA = Calendar.getInstance().apply { timeInMillis = msA }
+        val calB = Calendar.getInstance().apply { timeInMillis = msB }
+        return calA.get(Calendar.YEAR) == calB.get(Calendar.YEAR) &&
+            calA.get(Calendar.DAY_OF_YEAR) == calB.get(Calendar.DAY_OF_YEAR)
+    }
+
     private fun updateLiveEventSummary() {
         val nowMs = System.currentTimeMillis()
         val nextEv = cachedHorizonEvents.firstOrNull { it.startEpochMs > nowMs }
         if (nextEv == null) {
-            energyBigCountdownText.text = "Livre"
-            energyNextEventSubtitle.text = "Sem próximo compromisso no horizonte"
+            energyBigCountdownText.text = "Não há eventos"
+            energyNextEventSubtitle.text = if (prefs.isAutoFallbackAgendaToTasksEnabled() && prefs.isTasksSyncEnabled()) {
+                "Sem agenda hoje • Relógio exibirá Tarefas ativas no modo Auto"
+            } else {
+                "Sem próximo compromisso no horizonte"
+            }
             energyProgressCaption.text =
                 "Barra no Relógio: 0% • Janela: ${prefs.getProgressWindowMinutes()}m antes"
             energyProgressFillView.layoutParams =
@@ -1876,8 +2133,9 @@ class MobileSyncConfigActivity : Activity() {
             else -> String.format(Locale.getDefault(), "%02dm %02ds", mins, secs)
         }
 
+        val dayBadge = if (isSameDay(nowMs, nextEv.startEpochMs)) "Hoje" else "Amanhã"
         val startHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextEv.startEpochMs))
-        energyNextEventSubtitle.text = "$startHHMM • ${nextEv.title}"
+        energyNextEventSubtitle.text = "[$dayBadge] $startHHMM • ${nextEv.title}"
 
         val windowMs = TimeUnit.MINUTES.toMillis(prefs.getProgressWindowMinutes().toLong()).toFloat()
         val ratio = if (remainingMs >= windowMs) {
@@ -1900,6 +2158,7 @@ class MobileSyncConfigActivity : Activity() {
     }
 
     companion object {
+        private const val REQ_ALL_INITIAL_PERMISSIONS = 3000
         private const val REQ_CALENDAR_FOR_SYNC = 3001
         private const val REQ_CALENDAR_FOR_DIALOG = 3002
         private const val REQ_NOTIFICATION_FOR_BG_SERVICE = 3003

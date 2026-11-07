@@ -92,7 +92,28 @@ object AgendaCardBitmapRenderer {
                 renderSleepSummaryCanvas(repo.getSleepSnapshot())
             }
             else -> {
-                val primary = upcomingThree.firstOrNull()
+                val firstEv = upcomingThree.firstOrNull()
+                val dayHeader: String
+                val dayFilteredEvents: List<CachedWearEvent>
+                if (firstEv == null) {
+                    dayHeader = "Hoje"
+                    dayFilteredEvents = emptyList()
+                } else {
+                    val diffDays = WatchAutonomousRepository.calendarDaysDiff(nowMs, firstEv.startEpochMs)
+                    dayHeader = when {
+                        diffDays <= 0 -> "Hoje"
+                        diffDays == 1 -> "Amanhã"
+                        else -> java.text.SimpleDateFormat("EEE, dd", java.util.Locale.getDefault())
+                            .format(java.util.Date(firstEv.startEpochMs))
+                            .replace(".", "")
+                            .replaceFirstChar { it.uppercase() }
+                    }
+                    dayFilteredEvents = upcomingThree.filter {
+                        WatchAutonomousRepository.isSameCalendarDay(it.startEpochMs, firstEv.startEpochMs)
+                    }
+                }
+
+                val primary = dayFilteredEvents.firstOrNull()
                 val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.toLong()).toFloat()
 
                 // Barra de progresso fiel à configuração do usuário (30m, 1h, 2h, 3h antes do evento):
@@ -109,26 +130,34 @@ object AgendaCardBitmapRenderer {
                     }
                 }
 
-                val rows = listOf(
-                    Triple(
-                        upcomingThree.getOrNull(0)?.formatStartHHMM() ?: "--:--",
-                        upcomingThree.getOrNull(0)?.title ?: "Livre",
-                        upcomingThree.getOrNull(0)?.formatRemaining(nowMs) ?: "--"
-                    ),
-                    Triple(
-                        upcomingThree.getOrNull(1)?.formatStartHHMM() ?: "--:--",
-                        upcomingThree.getOrNull(1)?.title ?: "Livre",
-                        ""
-                    ),
-                    Triple(
-                        upcomingThree.getOrNull(2)?.formatStartHHMM() ?: "--:--",
-                        upcomingThree.getOrNull(2)?.title ?: "Livre",
-                        ""
+                val rows = if (dayFilteredEvents.isEmpty()) {
+                    listOf(
+                        Triple("--:--", "Não há eventos", "--"),
+                        Triple("--:--", "Livre", ""),
+                        Triple("--:--", "Livre", "")
                     )
-                )
+                } else {
+                    listOf(
+                        Triple(
+                            dayFilteredEvents.getOrNull(0)?.formatStartHHMM() ?: "--:--",
+                            dayFilteredEvents.getOrNull(0)?.title ?: "Livre",
+                            dayFilteredEvents.getOrNull(0)?.formatRemaining(nowMs) ?: "--"
+                        ),
+                        Triple(
+                            dayFilteredEvents.getOrNull(1)?.formatStartHHMM() ?: "--:--",
+                            dayFilteredEvents.getOrNull(1)?.title ?: "Livre",
+                            ""
+                        ),
+                        Triple(
+                            dayFilteredEvents.getOrNull(2)?.formatStartHHMM() ?: "--:--",
+                            dayFilteredEvents.getOrNull(2)?.title ?: "Livre",
+                            ""
+                        )
+                    )
+                }
 
                 renderEventsCardCanvas(
-                    headerTitle = "Hoje",
+                    headerTitle = dayHeader,
                     rows = rows,
                     progressFraction = progressFraction
                 )
