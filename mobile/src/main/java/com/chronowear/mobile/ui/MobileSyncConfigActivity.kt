@@ -34,6 +34,7 @@ import com.chronowear.mobile.sync.LocalCalendarEvent
 import com.chronowear.mobile.sync.SyncPreferences
 import com.chronowear.mobile.sync.WearConnectionReport
 import com.chronowear.mobile.sync.WearConnectionState
+import com.chronowear.mobile.sync.WeatherTriggerAppOption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1206,10 +1207,10 @@ class MobileSyncConfigActivity : Activity() {
                 ) {
                     val label = packageManager.getApplicationLabel(app).toString()
                     catalog.add(
-                        SyncPreferences.WeatherTriggerAppOption(
+                        WeatherTriggerAppOption(
                             packageName = app.packageName,
                             displayName = label,
-                            categorySubtitle = "App de Clima instalado (${app.packageName})"
+                            categoryDescription = "App de Clima instalado (${app.packageName})"
                         )
                     )
                     knownPkgs.add(pkgLower)
@@ -1220,7 +1221,7 @@ class MobileSyncConfigActivity : Activity() {
 
         val currentSelected = prefs.getSelectedWeatherTriggerPackages().toMutableSet()
         val labels = catalog.map { opt ->
-            "${opt.displayName} • ${opt.categorySubtitle}"
+            "${opt.displayName} • ${opt.categoryDescription}"
         }.toTypedArray()
         val checkedItems = BooleanArray(catalog.size) { idx ->
             currentSelected.contains(catalog[idx].packageName)
@@ -1423,7 +1424,7 @@ class MobileSyncConfigActivity : Activity() {
 
         rowPhoneWeatherIntervalChips.removeAllViews()
         val curWeatherInt = prefs.getPhoneWeatherCheckIntervalMinutes()
-        listOf(30L to "30m", 60L to "1h", 120L to "2h", 180L to "3h").forEach { (mins, label) ->
+        listOf(30 to "30m", 60 to "1h", 120 to "2h", 180 to "3h").forEach { (mins, label) ->
             rowPhoneWeatherIntervalChips.addView(
                 createSelectableChip(label, curWeatherInt == mins) {
                     prefs.setPhoneWeatherCheckIntervalMinutes(mins)

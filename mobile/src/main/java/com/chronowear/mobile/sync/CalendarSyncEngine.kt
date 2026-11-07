@@ -297,7 +297,7 @@ object CalendarSyncEngine {
         val nowMs = System.currentTimeMillis()
         val lastFetch = prefs.getPhoneWeatherLastFetchMs()
         val checkIntervalMin = prefs.getPhoneWeatherCheckIntervalMinutes()
-        if (!forceRefresh && lastFetch > 0L && (nowMs - lastFetch) < TimeUnit.MINUTES.toMillis(checkIntervalMin)) {
+        if (!forceRefresh && lastFetch > 0L && (nowMs - lastFetch) < TimeUnit.MINUTES.toMillis(checkIntervalMin.toLong())) {
             return false
         }
 
@@ -357,8 +357,8 @@ object CalendarSyncEngine {
                     }
 
                     shiftDetected = prefs.savePhoneFetchedWeatherAndDetectShift(
-                        tempsCsv = pickedTemps.joinToString(","),
-                        hoursCsv = pickedLabels.joinToString(","),
+                        pickedTemps = pickedTemps,
+                        pickedLabels = pickedLabels,
                         rainProbPct = maxRain,
                         fetchTimestampMs = nowMs
                     )
@@ -486,7 +486,7 @@ object CalendarSyncEngine {
                 dataMap.putString("weather_alert_headline", weatherAlertHeadline)
                 dataMap.putLong("weather_alert_timestamp_ms", weatherAlertTsMs)
                 dataMap.putBoolean("watch_standalone_weather_enabled", watchStandaloneWeatherEnabled)
-                dataMap.putLong("watch_standalone_weather_interval_min", watchStandaloneWeatherIntervalMin)
+                dataMap.putInt("watch_standalone_weather_interval_min", watchStandaloneWeatherIntervalMin)
                 dataMap.putString("selected_weather_trigger_packages_csv", selectedWeatherTriggerPackagesCsv)
                 if (preRenderedCardPngB64.isNotBlank()) {
                     dataMap.putString("card_png_b64", preRenderedCardPngB64)
