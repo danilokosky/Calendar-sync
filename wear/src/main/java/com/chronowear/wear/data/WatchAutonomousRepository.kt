@@ -181,8 +181,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (updateOnScreenWake != null) {
             editor.putBoolean("update_on_screen_wake", updateOnScreenWake)
         }
-        if (watchStandaloneWeatherEnabled != null) {
-            editor.putBoolean("watch_standalone_weather_enabled", watchStandaloneWeatherEnabled)
+        val unifiedWatchStandaloneLocation = watchStandaloneWeatherEnabled ?: watchStandaloneSolarEnabled
+        if (unifiedWatchStandaloneLocation != null) {
+            editor.putBoolean("watch_standalone_weather_enabled", unifiedWatchStandaloneLocation)
+            editor.putBoolean("watch_standalone_solar_enabled", unifiedWatchStandaloneLocation)
         }
         if (watchStandaloneWeatherIntervalMin != null && watchStandaloneWeatherIntervalMin >= 15) {
             editor.putInt("watch_standalone_weather_interval_min", watchStandaloneWeatherIntervalMin)
@@ -203,7 +205,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             editor.putString("weather_condition_label", weatherConditionLabel)
         }
         if (!weatherLocationName.isNullOrBlank()) {
-            editor.putString("weather_location_name", weatherLocationName)
+            editor.putString("weather_location_name", formatCompactWeatherLocation(weatherLocationName))
         }
         if (!weatherUpdatedHHMM.isNullOrBlank()) {
             editor.putString("weather_updated_hhmm", weatherUpdatedHHMM)
@@ -228,9 +230,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (!solarSunsetHHMM.isNullOrBlank()) {
             editor.putString("solar_sunset_hhmm", solarSunsetHHMM)
-        }
-        if (watchStandaloneSolarEnabled != null) {
-            editor.putBoolean("watch_standalone_solar_enabled", watchStandaloneSolarEnabled)
         }
         if (sleepSyncEnabled != null) {
             editor.putBoolean("sleep_sync_enabled", sleepSyncEnabled)
@@ -453,11 +452,17 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun isWatchStandaloneWeatherEnabled(): Boolean {
-        return prefs.getBoolean("watch_standalone_weather_enabled", false)
+        return prefs.getBoolean(
+            "watch_standalone_weather_enabled",
+            prefs.getBoolean("watch_standalone_solar_enabled", false)
+        )
     }
 
     fun setWatchStandaloneWeatherEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("watch_standalone_weather_enabled", enabled).commit()
+        prefs.edit()
+            .putBoolean("watch_standalone_weather_enabled", enabled)
+            .putBoolean("watch_standalone_solar_enabled", enabled)
+            .commit()
     }
 
     fun getWatchStandaloneWeatherIntervalMinutes(): Int {
@@ -477,11 +482,24 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun isWatchStandaloneSolarEnabled(): Boolean {
-        return prefs.getBoolean("watch_standalone_solar_enabled", false)
+        return isWatchStandaloneWeatherEnabled()
     }
 
     fun setWatchStandaloneSolarEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("watch_standalone_solar_enabled", enabled).commit()
+        setWatchStandaloneWeatherEnabled(enabled)
+    }
+
+    fun getWeatherLocationName(): String {
+        val raw = prefs.getString("weather_location_name", "São Paulo, SP") ?: "São Paulo, SP"
+        return formatCompactWeatherLocation(raw)
+    }
+
+    fun setWeatherLocationName(locationName: String) {
+        if (locationName.isNotBlank()) {
+            prefs.edit()
+                .putString("weather_location_name", formatCompactWeatherLocation(locationName))
+                .apply()
+        }
     }
 
     fun saveSolarTimes(sunriseHHMM: String, sunsetHHMM: String) {
@@ -565,7 +583,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             .putLong("watch_standalone_last_fetch_ms", nowMs)
 
         if (!locationName.isNullOrBlank()) {
-            editor.putString("weather_location_name", locationName.trim())
+            editor.putString("weather_location_name", formatCompactWeatherLocation(locationName))
         }
 
         if (shiftDetected) {
@@ -636,7 +654,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val headline = prefs.getString("weather_alert_headline", "Previsão para as próximas horas")
             ?: "Previsão para as próximas horas"
         val conditionLabel = prefs.getString("weather_condition_label", "Céu limpo") ?: "Céu limpo"
-        val locationName = prefs.getString("weather_location_name", "São Paulo, SP") ?: "São Paulo, SP"
+        val rawLocation = prefs.getString("weather_location_name", "São Paulo, SP") ?: "São Paulo, SP"
+        val locationName = formatCompactWeatherLocation(rawLocation)
         val fallbackTs = prefs.getLong("watch_standalone_last_fetch_ms", 0L)
             .takeIf { it > 0L }
             ?: prefs.getLong("last_sync_ms", nowMs).takeIf { it > 0L }
@@ -906,6 +925,122 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"
+
+        private val BRAZIL_STATE_UF_MAP = mapOf(
+            "acre" to "AC",
+            "alagoas" to "AL",
+            "amapa" to "AP",
+            "amazonas" to "AM",
+            "bahia" to "BA",
+            "ceara" to "CE",
+            "distrito federal" to "DF",
+            "espirito santo" to "ES",
+            "goias" to "GO",
+            "maranhao" to "MA",
+            "mato grosso" to "MT",
+            "mato grosso do sul" to "MS",
+            "minas gerais" to "MG",
+            "para" to "PA",
+            "paraiba" to "PB",
+            "parana" to "PR",
+            "pernambuco" to "PE",
+            "piaui" to "PI",
+            "rio de janeiro" to "RJ",
+            "rio grande do norte" to "RN",
+            "rio grande do sul" to "RS",
+            "rondonia" to "RO",
+            "roraima" to "RR",
+            "santa catarina" to "SC",
+            "sao paulo" to "SP",
+            "sergipe" to "SE",
+            "tocantins" to "TO"
+        )
+
+        private fun stripAccents(input: String): String {
+            return java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
+                .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        }
+
+        /**
+         * Formata o nome do local para o subtítulo do Canvas de Clima:
+         * 1. Converte o nome do estado para a sigla UF de 2 letras (ex: "Maranhão" -> "MA", "Paraná" -> "PR").
+         * 2. Se o nome da cidade for extenso (> 12 caracteres) e ocupar mais da metade do quadro,
+         *    mantém a primeira palavra inteira e metade da segunda com reticências (ex: "São Bernardo do Campo" -> "São Bern..."),
+         *    ou abrevia palavras únicas muito longas (ex: "Pindamonhangaba" -> "Pindamonh...").
+         */
+        fun formatCompactWeatherLocation(rawCityOrCombined: String, rawState: String = ""): String {
+            val cleaned = rawCityOrCombined.trim()
+            if (cleaned.isBlank()) return "Local, BR"
+
+            val cityPart: String
+            val statePart: String
+            if (rawState.isNotBlank()) {
+                cityPart = cleaned
+                statePart = rawState.trim()
+            } else if (cleaned.contains(",")) {
+                cityPart = cleaned.substringBeforeLast(",").trim()
+                statePart = cleaned.substringAfterLast(",").trim()
+            } else if (cleaned.contains(" - ")) {
+                cityPart = cleaned.substringBeforeLast(" - ").trim()
+                statePart = cleaned.substringAfterLast(" - ").trim()
+            } else {
+                cityPart = cleaned
+                statePart = ""
+            }
+
+            val ufSigla = if (statePart.isNotBlank()) {
+                val cleanState = stripAccents(statePart)
+                    .lowercase(Locale.ROOT)
+                    .replace(Regex("^estado d[eao]\\s+"), "")
+                    .trim()
+                when {
+                    BRAZIL_STATE_UF_MAP.containsKey(cleanState) -> BRAZIL_STATE_UF_MAP[cleanState]!!
+                    statePart.trim().length == 2 -> statePart.trim().uppercase(Locale.ROOT)
+                    else -> {
+                        val stateWords = cleanState.split(Regex("\\s+")).filter {
+                            it.isNotBlank() && it !in setOf("de", "da", "do", "das", "dos")
+                        }
+                        if (stateWords.size >= 2) {
+                            "${stateWords[0].first()}${stateWords[1].first()}".uppercase(Locale.ROOT)
+                        } else {
+                            statePart.trim().take(2).uppercase(Locale.ROOT)
+                        }
+                    }
+                }
+            } else {
+                ""
+            }
+
+            val cleanCity = cityPart.trim().removeSuffix("...")
+            val compactCity = if (cityPart.trim().endsWith("...") && cityPart.trim().length <= 16) {
+                cityPart.trim()
+            } else if (cleanCity.length > 12) {
+                val words = cleanCity.split(Regex("\\s+")).filter { it.isNotBlank() }
+                if (words.size >= 2) {
+                    val firstWord = words[0]
+                    val secondIsConnector = words[1].lowercase(Locale.ROOT) in setOf("de", "da", "do", "das", "dos")
+                    if (secondIsConnector && words.size >= 3) {
+                        val thirdWord = words[2]
+                        val halfThird = thirdWord.take(((thirdWord.length + 1) / 2).coerceAtLeast(2))
+                        "$firstWord ${words[1]} ${halfThird}..."
+                    } else {
+                        val secondWord = words[1]
+                        val halfSecond = secondWord.take(((secondWord.length + 1) / 2).coerceAtLeast(2))
+                        "$firstWord ${halfSecond}..."
+                    }
+                } else {
+                    "${cleanCity.take(9)}..."
+                }
+            } else {
+                cleanCity
+            }
+
+            return if (ufSigla.isNotBlank()) {
+                "$compactCity, $ufSigla"
+            } else {
+                compactCity
+            }
+        }
 
         @Volatile
         private var INSTANCE: WatchAutonomousRepository? = null

@@ -89,9 +89,6 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchNotificationsSync: Switch
     private lateinit var btnWeatherTriggerAppsPill: Button
     private lateinit var switchWatchStandaloneWeather: Switch
-    private lateinit var switchPhoneSolarAutoSync: Switch
-    private lateinit var switchWatchStandaloneSolar: Switch
-    private lateinit var subtitleSolarTimesInfo: TextView
     private lateinit var switchMediaPlaybackSync: Switch
     private lateinit var switchCalendarEventsSync: Switch
     private lateinit var subtitleCalendarEventsSync: TextView
@@ -990,27 +987,31 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionCalendarCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 4: CLIMA E GATILHOS DINÂMICOS
+            // SEÇÃO 4: CLIMA E NASCER/PÔR DO SOL (LOCALIZAÇÃO UNIFICADA)
             // -----------------------------------------------------------------
-            val sectionWeatherCard = createSectionCard("4. Clima e Gatilhos Dinâmicos")
+            val sectionWeatherCard = createSectionCard("4. Clima e Nascer/Pôr do Sol (Localização Unificada)")
 
             val phoneAutoWeatherRow = createSettingToggleRow(
-                title = "Busca Periódica de Clima pelo App (Auto)",
-                subtitle = "Busca a previsão pelo telefone e muda o Canvas se detectar variação de temperatura, chuva ou condição climática",
+                title = "Busca Automática de Clima e Sol pela Localização",
+                subtitle = "Atualização fixa unificada: quando atualiza o Clima pela localização, deduz e atualiza junto o Nascer e Pôr do Sol",
                 onSubtitleCreated = { subtitleWeatherLocationInfo = it },
                 onSwitchCreated = { sw ->
                     switchPhoneWeatherAutoCheck = sw
                     sw.setOnCheckedChangeListener { _, isChecked ->
                         if (suppressSwitchEvents) return@setOnCheckedChangeListener
                         prefs.setPhoneWeatherAutoCheckEnabled(isChecked)
-                        syncSettingsToWatchInBackground("Clima Auto Telefone")
+                        if (isChecked) {
+                            CalendarSyncEngine.refreshPhoneSolarTimes(this@MobileSyncConfigActivity)
+                        }
+                        refreshUiState()
+                        syncSettingsToWatchInBackground("Clima + Sol Auto Telefone")
                     }
                 }
             )
             sectionWeatherCard.addView(phoneAutoWeatherRow)
 
             val weatherCheckLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Intervalo de Busca Automática de Clima (Telefone)"
+                text = "Intervalo de Atualização de Clima e Sol (Telefone)"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
@@ -1056,22 +1057,22 @@ class MobileSyncConfigActivity : Activity() {
             sectionWeatherCard.addView(btnNotifAccessPill)
 
             val watchStandaloneWeatherRow = createSettingToggleRow(
-                title = "Serviço Stand-Alone de Clima no Relógio (1h)",
-                subtitle = "Permite que o próprio relógio busque o clima e detecte chuva/variação de hora em hora quando desconectado",
+                title = "Serviço Stand-Alone de Clima e Sol no Relógio (1h)",
+                subtitle = "Permite que o relógio busque o clima e calcule o nascer/pôr do sol juntos pela própria localização",
                 onSubtitleCreated = {},
                 onSwitchCreated = { sw ->
                     switchWatchStandaloneWeather = sw
                     sw.setOnCheckedChangeListener { _, isChecked ->
                         if (suppressSwitchEvents) return@setOnCheckedChangeListener
                         prefs.setWatchStandaloneWeatherEnabled(isChecked)
-                        syncSettingsToWatchInBackground("Clima Stand-Alone Relógio")
+                        syncSettingsToWatchInBackground("Clima + Sol Stand-Alone Relógio")
                     }
                 }
             )
             sectionWeatherCard.addView(watchStandaloneWeatherRow)
 
             val btnWeatherFetchPill = createOutlineActionPillButton(
-                "Forçar Atualização de Clima e Localização Agora"
+                "Atualizar Clima, Sol e Localização Agora"
             ) {
                 if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) !=
                     PackageManager.PERMISSION_GRANTED
@@ -1085,69 +1086,9 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionWeatherCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 5: NASCER E PÔR DO SOL (LOCALIZAÇÃO)
+            // SEÇÃO 5: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH)
             // -----------------------------------------------------------------
-            val sectionSolarCard = createSectionCard("5. Nascer e Pôr do Sol (Localização)")
-
-            val phoneSolarRow = createSettingToggleRow(
-                title = "Nascer e Pôr do Sol pelo Telefone (Auto)",
-                subtitle = "Calcula e sincroniza a curva solar diária (dia e noite) baseada na localização do smartphone",
-                onSubtitleCreated = { subtitleSolarTimesInfo = it },
-                onSwitchCreated = { sw ->
-                    switchPhoneSolarAutoSync = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
-                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
-                        prefs.setPhoneSolarAutoSyncEnabled(isChecked)
-                        if (isChecked) {
-                            CalendarSyncEngine.refreshPhoneSolarTimes(this@MobileSyncConfigActivity)
-                        }
-                        refreshUiState()
-                        syncSettingsToWatchInBackground("Solar Auto Telefone")
-                    }
-                }
-            )
-            sectionSolarCard.addView(phoneSolarRow)
-
-            val watchStandaloneSolarRow = createSettingToggleRow(
-                title = "Serviço Stand-Alone Solar no Relógio",
-                subtitle = "Permite que o relógio calcule e atualize sozinho os horários de nascer e pôr do sol",
-                onSubtitleCreated = {},
-                onSwitchCreated = { sw ->
-                    switchWatchStandaloneSolar = sw
-                    sw.setOnCheckedChangeListener { _, isChecked ->
-                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
-                        prefs.setWatchStandaloneSolarEnabled(isChecked)
-                        syncSettingsToWatchInBackground("Solar Stand-Alone Relógio")
-                    }
-                }
-            )
-            sectionSolarCard.addView(watchStandaloneSolarRow)
-
-            val btnSolarRefreshPill = createOutlineActionPillButton(
-                "Atualizar Posição Solar pela Localização"
-            ) {
-                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) !=
-                    PackageManager.PERMISSION_GRANTED
-                ) {
-                    requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), REQ_LOCATION_FOR_WEATHER)
-                } else {
-                    CalendarSyncEngine.refreshPhoneSolarTimes(this@MobileSyncConfigActivity)
-                    refreshUiState()
-                    syncSettingsToWatchInBackground("Atualização Solar Manual")
-                    Toast.makeText(
-                        this@MobileSyncConfigActivity,
-                        "Nascer (${prefs.getSolarSunriseHHMM()}) e Pôr do Sol (${prefs.getSolarSunsetHHMM()}) enviados ao relógio!",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-            sectionSolarCard.addView(btnSolarRefreshPill)
-            addView(sectionSolarCard)
-
-            // -----------------------------------------------------------------
-            // SEÇÃO 6: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH)
-            // -----------------------------------------------------------------
-            val sectionSleepCard = createSectionCard("6. Monitoramento de Sono (Health Connect / Samsung Health)")
+            val sectionSleepCard = createSectionCard("5. Monitoramento de Sono (Health Connect / Samsung Health)")
 
             val sleepSyncRow = createSettingToggleRow(
                 title = "Sincronizar Dados de Sono no Canvas",
@@ -1189,9 +1130,9 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionSleepCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 7: SERVIÇO EM SEGUNDO PLANO E SISTEMA
+            // SEÇÃO 6: SERVIÇO EM SEGUNDO PLANO E SISTEMA
             // -----------------------------------------------------------------
-            val sectionSystemCard = createSectionCard("7. Serviço em Segundo Plano e Sistema")
+            val sectionSystemCard = createSectionCard("6. Serviço em Segundo Plano e Sistema")
 
             val bgServiceRow = createSettingToggleRow(
                 title = "Serviço Persistente em 2º Plano",
@@ -1609,8 +1550,6 @@ class MobileSyncConfigActivity : Activity() {
         switchPhoneWeatherAutoCheck.isChecked = prefs.isPhoneWeatherAutoCheckEnabled()
         switchNotificationsSync.isChecked = prefs.isNotificationsSyncEnabled()
         switchWatchStandaloneWeather.isChecked = prefs.isWatchStandaloneWeatherEnabled()
-        switchPhoneSolarAutoSync.isChecked = prefs.isPhoneSolarAutoSyncEnabled()
-        switchWatchStandaloneSolar.isChecked = prefs.isWatchStandaloneSolarEnabled()
         switchSleepSync.isChecked = prefs.isSleepSyncEnabled()
         switchNotifyWatchOnCanvasChange.isChecked = prefs.isNotifyWatchOnCanvasChangeEnabled()
         switchNotifyAgenda15Min.isChecked = prefs.isNotifyAgenda15MinEnabled()
@@ -1622,13 +1561,10 @@ class MobileSyncConfigActivity : Activity() {
         suppressSwitchEvents = false
 
         subtitleWeatherLocationInfo.text =
-            "Local da previsão: ${prefs.getPhoneWeatherLocationName()} • Atualizado ${prefs.getPhoneWeatherUpdatedHHMM()}"
+            "📍 ${prefs.getPhoneWeatherLocationName()} (${prefs.getPhoneWeatherUpdatedHHMM()}) • Sol: ${prefs.getSolarSunriseHHMM()} → ${prefs.getSolarSunsetHHMM()}"
 
         btnWeatherTriggerAppsPill.text =
             "Escolher Apps de Clima por Categoria ($selectedWeatherAppsCount selecionados)"
-
-        subtitleSolarTimesInfo.text =
-            "Calculado p/ sua localização • Nascer: ${prefs.getSolarSunriseHHMM()} | Pôr do Sol: ${prefs.getSolarSunsetHHMM()}"
 
         val sleepDurMin = prefs.getSleepDurationMinutes()
         val sleepH = sleepDurMin / 60

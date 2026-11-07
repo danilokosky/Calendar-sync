@@ -128,8 +128,9 @@ object CalendarSyncEngine {
             if (addr != null) {
                 val city = addr.subAdminArea ?: addr.locality ?: addr.subLocality ?: ""
                 val state = addr.adminArea ?: ""
-                val combined = listOf(city, state).filter { it.isNotBlank() }.joinToString(", ")
-                if (combined.isNotBlank()) return combined
+                if (city.isNotBlank()) {
+                    return SyncPreferences.formatCompactWeatherLocation(city, state)
+                }
             }
         } catch (_: Exception) {
         }
@@ -499,35 +500,32 @@ object CalendarSyncEngine {
     }
 
     /**
-     * Atualiza os horários de Nascer e Pôr do Sol baseados na localização do Smartphone
-     * (calcula astronomicamente de imediato e refina via Open-Meteo quando disponível).
+     * Atualiza os horários de Nascer e Pôr do Sol baseados na mesma localização do Clima no Smartphone.
      */
     fun refreshPhoneSolarTimes(context: Context) {
         val prefs = SyncPreferences(context)
-        if (!prefs.isPhoneSolarAutoSyncEnabled()) return
+        if (!prefs.isPhoneWeatherAutoCheckEnabled()) return
         val (lat, lon) = resolveDeviceCoordinates(context)
         val (astroSunrise, astroSunset) = calculateAstronomicalSunriseSunset(lat, lon)
         prefs.saveSolarTimes(astroSunrise, astroSunset)
     }
 
     /**
-     * Busca as previsões horárias reais pelo Smartphone (temperatura, probabilidade de chuva,
-     * código meteorológico WMO e horários de nascer/pôr do sol), detectando tanto mudanças de
-     * temperatura quanto mudanças climáticas (chuva, garoa, tempestade, neblina).
+     * Atualização Unificada de Localização (Clima + Nascer e Pôr do Sol):
+     * Quando o Clima é atualizado pelo Smartphone, os horários de Nascer e Pôr do Sol são
+     * calculados e atualizados conjuntamente com base na mesma localização.
      */
     fun fetchPhoneHourlyWeatherIfNeeded(context: Context, forceRefresh: Boolean = false): Boolean {
         val prefs = SyncPreferences(context)
-        val (lat, lon) = resolveDeviceCoordinates(context)
-
-        // Garante que o cálculo solar baseado na localização esteja sempre atualizado
-        if (prefs.isPhoneSolarAutoSyncEnabled()) {
-            val (astroRise, astroSet) = calculateAstronomicalSunriseSunset(lat, lon)
-            prefs.saveSolarTimes(astroRise, astroSet)
-        }
-
         if (!forceRefresh && !prefs.isPhoneWeatherAutoCheckEnabled()) {
             return false
         }
+
+        val (lat, lon) = resolveDeviceCoordinates(context)
+        // Sempre atualiza os horários solares em conjunto com a localização do clima
+        val (astroRise, astroSet) = calculateAstronomicalSunriseSunset(lat, lon)
+        prefs.saveSolarTimes(astroRise, astroSet)
+
         val nowMs = System.currentTimeMillis()
         val lastFetch = prefs.getPhoneWeatherLastFetchMs()
         val checkIntervalMin = prefs.getPhoneWeatherCheckIntervalMinutes()
@@ -551,18 +549,16 @@ object CalendarSyncEngine {
                 val body = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = JSONObject(body)
 
-                // Extrai Nascer e Pôr do Sol exatos da localização
-                if (prefs.isPhoneSolarAutoSyncEnabled()) {
-                    val daily = root.optJSONObject("daily")
-                    val sunriseArr = daily?.optJSONArray("sunrise")
-                    val sunsetArr = daily?.optJSONArray("sunset")
-                    val rawRise = sunriseArr?.optString(0, "") ?: ""
-                    val rawSet = sunsetArr?.optString(0, "") ?: ""
-                    val riseHHMM = rawRise.substringAfter("T", "").take(5)
-                    val setHHMM = rawSet.substringAfter("T", "").take(5)
-                    if (riseHHMM.length == 5 && setHHMM.length == 5) {
-                        prefs.saveSolarTimes(riseHHMM, setHHMM)
-                    }
+                // Extrai Nascer e Pôr do Sol exatos da mesma localização do Clima
+                val daily = root.optJSONObject("daily")
+                val sunriseArr = daily?.optJSONArray("sunrise")
+                val sunsetArr = daily?.optJSONArray("sunset")
+                val rawRise = sunriseArr?.optString(0, "") ?: ""
+                val rawSet = sunsetArr?.optString(0, "") ?: ""
+                val riseHHMM = rawRise.substringAfter("T", "").take(5)
+                val setHHMM = rawSet.substringAfter("T", "").take(5)
+                if (riseHHMM.length == 5 && setHHMM.length == 5) {
+                    prefs.saveSolarTimes(riseHHMM, setHHMM)
                 }
 
                 val hourly = root.optJSONObject("hourly")

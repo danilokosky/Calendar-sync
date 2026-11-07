@@ -162,6 +162,130 @@ export interface ComplicationProgressState {
   isOperatingAutonomously: boolean;
 }
 
+const BRAZIL_STATE_UF_MAP: Record<string, string> = {
+  acre: 'AC',
+  alagoas: 'AL',
+  amapa: 'AP',
+  amazonas: 'AM',
+  bahia: 'BA',
+  ceara: 'CE',
+  'distrito federal': 'DF',
+  'espirito santo': 'ES',
+  goias: 'GO',
+  maranhao: 'MA',
+  'mato grosso': 'MT',
+  'mato grosso do sul': 'MS',
+  'minas gerais': 'MG',
+  para: 'PA',
+  paraiba: 'PB',
+  parana: 'PR',
+  pernambuco: 'PE',
+  piaui: 'PI',
+  'rio de janeiro': 'RJ',
+  'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS',
+  rondonia: 'RO',
+  roraima: 'RR',
+  'santa catarina': 'SC',
+  'sao paulo': 'SP',
+  sergipe: 'SE',
+  tocantins: 'TO',
+};
+
+function stripAccents(input: string): string {
+  return input.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Formata o nome do local para o subtítulo do Canvas de Clima:
+ * 1. Converte o nome do estado para a sigla UF de 2 letras (ex: "Maranhão" -> "MA", "Paraná" -> "PR").
+ * 2. Se o nome da cidade for extenso (> 12 caracteres) e ocupar mais da metade do quadro,
+ *    mantém a primeira palavra inteira e metade da segunda com reticências (ex: "São Bernardo do Campo" -> "São Bern..."),
+ *    ou abrevia palavras únicas muito longas (ex: "Pindamonhangaba" -> "Pindamonh...").
+ */
+export function formatCompactWeatherLocation(
+  rawCityOrCombined: string,
+  rawState = ''
+): string {
+  const cleaned = rawCityOrCombined.trim();
+  if (!cleaned) return 'Local, BR';
+
+  let cityPart = cleaned;
+  let statePart = rawState.trim();
+
+  if (!statePart) {
+    if (cleaned.includes(',')) {
+      const lastComma = cleaned.lastIndexOf(',');
+      cityPart = cleaned.slice(0, lastComma).trim();
+      statePart = cleaned.slice(lastComma + 1).trim();
+    } else if (cleaned.includes(' - ')) {
+      const lastDash = cleaned.lastIndexOf(' - ');
+      cityPart = cleaned.slice(0, lastDash).trim();
+      statePart = cleaned.slice(lastDash + 3).trim();
+    }
+  }
+
+  let ufSigla = '';
+  if (statePart) {
+    const cleanState = stripAccents(statePart)
+      .toLowerCase()
+      .replace(/^estado d[eao]\s+/, '')
+      .trim();
+    if (BRAZIL_STATE_UF_MAP[cleanState]) {
+      ufSigla = BRAZIL_STATE_UF_MAP[cleanState];
+    } else if (statePart.trim().length === 2) {
+      ufSigla = statePart.trim().toUpperCase();
+    } else {
+      const connectors = new Set(['de', 'da', 'do', 'das', 'dos']);
+      const stateWords = cleanState
+        .split(/\s+/)
+        .filter((w) => w.length > 0 && !connectors.has(w));
+      if (stateWords.length >= 2) {
+        ufSigla = `${stateWords[0][0]}${stateWords[1][0]}`.toUpperCase();
+      } else {
+        ufSigla = statePart.trim().slice(0, 2).toUpperCase();
+      }
+    }
+  }
+
+  const trimmedCity = cityPart.trim();
+  const cleanCity = trimmedCity.endsWith('...')
+    ? trimmedCity.slice(0, -3)
+    : trimmedCity;
+
+  let compactCity: string;
+  if (trimmedCity.endsWith('...') && trimmedCity.length <= 16) {
+    compactCity = trimmedCity;
+  } else if (cleanCity.length > 12) {
+    const words = cleanCity.split(/\s+/).filter(Boolean);
+    const connectors = new Set(['de', 'da', 'do', 'das', 'dos']);
+    if (words.length >= 2) {
+      const firstWord = words[0];
+      if (connectors.has(words[1].toLowerCase()) && words.length >= 3) {
+        const thirdWord = words[2];
+        const halfThird = thirdWord.slice(
+          0,
+          Math.max(2, Math.floor((thirdWord.length + 1) / 2))
+        );
+        compactCity = `${firstWord} ${words[1]} ${halfThird}...`;
+      } else {
+        const secondWord = words[1];
+        const halfSecond = secondWord.slice(
+          0,
+          Math.max(2, Math.floor((secondWord.length + 1) / 2))
+        );
+        compactCity = `${firstWord} ${halfSecond}...`;
+      }
+    } else {
+      compactCity = `${cleanCity.slice(0, 9)}...`;
+    }
+  } else {
+    compactCity = cleanCity;
+  }
+
+  return ufSigla ? `${compactCity}, ${ufSigla}` : compactCity;
+}
+
 export function parseHHMMToMinutesOfDay(hhmm: string | undefined, fallbackMinutes: number): number {
   if (!hhmm) return fallbackMinutes;
   const parts = hhmm.split(':');

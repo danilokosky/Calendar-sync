@@ -4,6 +4,7 @@ import {
   CalendarEventItem,
   SyncConfiguration,
   WEATHER_TRIGGER_CATALOG,
+  formatCompactWeatherLocation,
 } from '../utils/calendarSyncEngine';
 import {
   Bluetooth,
@@ -723,53 +724,79 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 4: INTELIGÊNCIA DE CLIMA & GATILHOS */}
+            {/* SEÇÃO 4: CLIMA E NASCER/PÔR DO SOL (LOCALIZAÇÃO UNIFICADA) */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                4. Inteligência de Clima e Gatilhos
+                4. Clima e Nascer/Pôr do Sol (Localização Unificada)
               </div>
 
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Busca Periódica de Clima (Telefone)
+                    Busca Automática de Clima e Sol pela Localização
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Local atual no Canvas:{' '}
+                    Atualização fixa unificada:{' '}
                     <strong className="text-sky-300">
-                      📍 {config.weatherLocationName ?? 'São Paulo, SP'} • Atualizado{' '}
-                      {config.weatherUpdatedHHMM ?? '09:00'}
+                      📍{' '}
+                      {formatCompactWeatherLocation(
+                        config.weatherLocationName ?? 'São Paulo, SP'
+                      )}{' '}
+                      ({config.weatherUpdatedHHMM ?? '09:00'})
+                    </strong>{' '}
+                    • Sol:{' '}
+                    <strong className="text-amber-300 font-mono">
+                      {config.solarSunriseHHMM ?? '05:27'} →{' '}
+                      {config.solarSunsetHHMM ?? '17:40'}
                     </strong>
                   </div>
                 </div>
                 <ModernOneUiSwitch
                   checked={config.phoneWeatherAutoCheckEnabled ?? true}
-                  ariaLabel="Busca Periódica de Clima (Telefone)"
-                  onChange={() =>
+                  ariaLabel="Busca Automática de Clima e Sol pela Localização"
+                  onChange={() => {
+                    const next = !(config.phoneWeatherAutoCheckEnabled ?? true);
                     onUpdateConfig({
-                      phoneWeatherAutoCheckEnabled: !(
-                        config.phoneWeatherAutoCheckEnabled ?? true
-                      ),
-                    })
-                  }
+                      phoneWeatherAutoCheckEnabled: next,
+                      phoneSolarAutoSyncEnabled: next,
+                    });
+                  }}
                 />
               </div>
 
               <button
                 type="button"
                 onClick={() => {
-                  const locations = [
-                    'São Paulo, SP',
-                    'Pinheiros, São Paulo',
-                    'Campinas, SP',
-                    'Rio de Janeiro, RJ',
+                  const locationPresets = [
+                    { loc: 'São Paulo, SP', rise: '05:27', set: '17:40' },
+                    { loc: 'São Luís, Maranhão', rise: '05:51', set: '17:58' },
+                    { loc: 'Curitiba, Paraná', rise: '05:38', set: '18:52' },
+                    {
+                      loc: 'São Bernardo do Campo, São Paulo',
+                      rise: '05:26',
+                      set: '17:41',
+                    },
+                    {
+                      loc: 'Governador Valadares, Minas Gerais',
+                      rise: '05:14',
+                      set: '17:32',
+                    },
                   ];
                   const curLoc = config.weatherLocationName ?? 'São Paulo, SP';
-                  const nextLoc =
-                    locations[(locations.indexOf(curLoc) + 1) % locations.length];
+                  const curIdx = locationPresets.findIndex(
+                    (p) =>
+                      formatCompactWeatherLocation(p.loc) ===
+                      formatCompactWeatherLocation(curLoc)
+                  );
+                  const nextPreset =
+                    locationPresets[(curIdx + 1) % locationPresets.length];
                   onUpdateConfig({
-                    weatherLocationName: nextLoc,
+                    weatherLocationName: formatCompactWeatherLocation(
+                      nextPreset.loc
+                    ),
                     weatherUpdatedHHMM: formatHHMM(referenceTimeMs),
+                    solarSunriseHHMM: nextPreset.rise,
+                    solarSunsetHHMM: nextPreset.set,
                   });
                   onTriggerManualSync();
                 }}
@@ -777,13 +804,17 @@ export const SmartphoneCompanionSimulator: React.FC<
               >
                 <CloudRain className="w-4 h-4 text-sky-400" />
                 <span>
-                  Forçar Atualização de Clima e Localização Agora ({config.weatherLocationName ?? 'São Paulo, SP'})
+                  Atualizar Clima, Sol e Localização Agora (
+                  {formatCompactWeatherLocation(
+                    config.weatherLocationName ?? 'São Paulo, SP'
+                  )}
+                  )
                 </span>
               </button>
 
               <div className="space-y-1.5 pt-2 border-t border-[#232925]">
                 <span className="text-xs font-bold text-slate-200 block">
-                  Intervalo de Busca Automática de Clima
+                  Intervalo de Atualização de Clima e Sol (Telefone)
                 </span>
                 <div className="grid grid-cols-4 gap-1.5">
                   {([30, 60, 120, 180] as const).map((mins) => (
@@ -839,81 +870,32 @@ export const SmartphoneCompanionSimulator: React.FC<
               <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Clima Stand-Alone no Relógio (1 em 1h)
+                    Serviço Stand-Alone de Clima e Sol no Relógio (1h)
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Opcional: próprio relógio busca o clima de hora em hora via Wi-Fi/LTE
+                    Permite que o relógio busque o clima e calcule o nascer/pôr do sol juntos pela própria localização
                   </div>
                 </div>
                 <ModernOneUiSwitch
                   checked={config.watchStandaloneWeatherEnabled ?? false}
-                  ariaLabel="Clima Stand-Alone no Relógio"
-                  onChange={() =>
+                  ariaLabel="Serviço Stand-Alone de Clima e Sol no Relógio"
+                  onChange={() => {
+                    const next = !(
+                      config.watchStandaloneWeatherEnabled ?? false
+                    );
                     onUpdateConfig({
-                      watchStandaloneWeatherEnabled: !(
-                        config.watchStandaloneWeatherEnabled ?? false
-                      ),
-                    })
-                  }
+                      watchStandaloneWeatherEnabled: next,
+                      watchStandaloneSolarEnabled: next,
+                    });
+                  }}
                 />
               </div>
             </div>
 
-            {/* SEÇÃO 5: NASCER E PÔR DO SOL (LOCALIZAÇÃO & CURVA NOTURNA) */}
+            {/* SEÇÃO 5: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH) */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                5. Nascer e Pôr do Sol (Localização)
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-bold text-slate-100">
-                    Sincronizar Sol pelo Smartphone (GPS)
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Calcula nascer ({config.solarSunriseHHMM ?? '05:27'}), pôr do sol ({config.solarSunsetHHMM ?? '17:40'}) e trajetória noturna abaixo do horizonte
-                  </div>
-                </div>
-                <ModernOneUiSwitch
-                  checked={config.phoneSolarAutoSyncEnabled ?? true}
-                  ariaLabel="Sincronizar Sol pelo Smartphone"
-                  onChange={() =>
-                    onUpdateConfig({
-                      phoneSolarAutoSyncEnabled: !(
-                        config.phoneSolarAutoSyncEnabled ?? true
-                      ),
-                    })
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
-                <div>
-                  <div className="text-xs font-bold text-slate-100">
-                    Sol Stand-Alone no Relógio
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Permite ao relógio calcular a curva solar autonomamente quando desconectado
-                  </div>
-                </div>
-                <ModernOneUiSwitch
-                  checked={config.watchStandaloneSolarEnabled ?? false}
-                  ariaLabel="Sol Stand-Alone no Relógio"
-                  onChange={() =>
-                    onUpdateConfig({
-                      watchStandaloneSolarEnabled: !(
-                        config.watchStandaloneSolarEnabled ?? false
-                      ),
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            {/* SEÇÃO 6: MONITORAMENTO DE SONO (HEALTH CONNECT / SAMSUNG HEALTH) */}
-            <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
-              <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                6. Monitoramento de Sono (Health Connect / Samsung Health)
+                5. Monitoramento de Sono (Health Connect / Samsung Health)
               </div>
 
               <div className="flex items-center justify-between gap-4">
@@ -937,10 +919,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 7: SERVIÇO EM SEGUNDO PLANO */}
+            {/* SEÇÃO 6: SERVIÇO EM SEGUNDO PLANO */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-2.5 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                7. Serviço em Segundo Plano
+                6. Serviço em Segundo Plano
               </div>
 
               <div className="flex items-center justify-between gap-4">

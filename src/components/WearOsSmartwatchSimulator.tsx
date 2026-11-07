@@ -8,6 +8,7 @@ import {
   formatTimeHHMM,
   formatDayRelative,
   computeSolarCurvePoint,
+  formatCompactWeatherLocation,
 } from '../utils/calendarSyncEngine';
 import {
   Bluetooth,
@@ -149,7 +150,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     if (!isPriorityContextActive) return '';
     switch (watchState.effectiveContextMode) {
       case 'WEATHER':
-        return `${config.weatherLocationName ?? 'São Paulo, SP'} • ${
+        return `${formatCompactWeatherLocation(config.weatherLocationName ?? 'São Paulo, SP')} • ${
           hasActiveWatchWeatherAlert
             ? `${weatherNotifSource}: Chuva e queda 29°→23°C`
             : 'Previsão atualizada'
@@ -168,18 +169,26 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   })();
 
   const handleForceRefreshWatchWeatherLocation = () => {
-    const locations = [
-      'São Paulo, SP',
-      'Pinheiros, São Paulo',
-      'Campinas, SP',
-      'Rio de Janeiro, RJ',
+    const locationPresets = [
+      { loc: 'São Paulo, SP', rise: '05:27', set: '17:40' },
+      { loc: 'São Luís, Maranhão', rise: '05:51', set: '17:58' },
+      { loc: 'Curitiba, Paraná', rise: '05:38', set: '18:52' },
+      { loc: 'São Bernardo do Campo, São Paulo', rise: '05:26', set: '17:41' },
+      { loc: 'Governador Valadares, Minas Gerais', rise: '05:14', set: '17:32' },
     ];
     const curLoc = config.weatherLocationName ?? 'São Paulo, SP';
-    const nextLoc =
-      locations[(locations.indexOf(curLoc) + 1) % locations.length];
+    const curIdx = locationPresets.findIndex(
+      (p) =>
+        formatCompactWeatherLocation(p.loc) ===
+        formatCompactWeatherLocation(curLoc)
+    );
+    const nextPreset =
+      locationPresets[(curIdx + 1) % locationPresets.length];
     onUpdateConfig({
-      weatherLocationName: nextLoc,
+      weatherLocationName: formatCompactWeatherLocation(nextPreset.loc),
       weatherUpdatedHHMM: formatTimeHHMM(currentWatchTimeMs),
+      solarSunriseHHMM: nextPreset.rise,
+      solarSunsetHHMM: nextPreset.set,
     });
   };
 
@@ -722,7 +731,11 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       data-testid="weather-canvas-location-subtitle"
                       className="text-[11px] font-semibold text-slate-200 truncate leading-none"
                     >
-                      📍 {config.weatherLocationName ?? 'São Paulo, SP'} • Atualizado{' '}
+                      📍{' '}
+                      {formatCompactWeatherLocation(
+                        config.weatherLocationName ?? 'São Paulo, SP'
+                      )}{' '}
+                      • Atualizado{' '}
                       {config.weatherUpdatedHHMM ??
                         formatTimeHHMM(watchCache.lastSyncEpochMs)}
                     </div>

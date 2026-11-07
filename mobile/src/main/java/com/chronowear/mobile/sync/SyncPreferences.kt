@@ -248,14 +248,21 @@ class SyncPreferences(context: Context) {
     }
 
     /**
-     * GATILHO 1: Busca Periódica Autônoma pelo Próprio App do Telefone (independente de apps de terceiros).
+     * GATILHO 1 UNIFICADO (TELEFONE): Busca Periódica Autônoma de Clima + Nascer/Pôr do Sol
+     * pela mesma Localização do Smartphone (quando um atualiza, o outro atualiza junto).
      */
     fun isPhoneWeatherAutoCheckEnabled(): Boolean {
-        return prefs.getBoolean(KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED, true)
+        return prefs.getBoolean(
+            KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED,
+            prefs.getBoolean(KEY_PHONE_SOLAR_AUTO_SYNC_ENABLED, true)
+        )
     }
 
     fun setPhoneWeatherAutoCheckEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED, enabled).commit()
+        prefs.edit()
+            .putBoolean(KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED, enabled)
+            .putBoolean(KEY_PHONE_SOLAR_AUTO_SYNC_ENABLED, enabled)
+            .commit()
     }
 
     fun getPhoneWeatherCheckIntervalMinutes(): Int {
@@ -280,14 +287,21 @@ class SyncPreferences(context: Context) {
     }
 
     /**
-     * GATILHO 3: Serviço Stand-Alone Opcional de Clima no Relógio (de hora em hora).
+     * GATILHO 3 UNIFICADO (RELÓGIO STAND-ALONE): Serviço Stand-Alone Opcional de Clima + Sol
+     * no Relógio (de hora em hora, usando a mesma localização).
      */
     fun isWatchStandaloneWeatherEnabled(): Boolean {
-        return prefs.getBoolean(KEY_WATCH_STANDALONE_WEATHER_ENABLED, false)
+        return prefs.getBoolean(
+            KEY_WATCH_STANDALONE_WEATHER_ENABLED,
+            prefs.getBoolean(KEY_WATCH_STANDALONE_SOLAR_ENABLED, false)
+        )
     }
 
     fun setWatchStandaloneWeatherEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_WATCH_STANDALONE_WEATHER_ENABLED, enabled).commit()
+        prefs.edit()
+            .putBoolean(KEY_WATCH_STANDALONE_WEATHER_ENABLED, enabled)
+            .putBoolean(KEY_WATCH_STANDALONE_SOLAR_ENABLED, enabled)
+            .commit()
     }
 
     fun getWatchStandaloneWeatherIntervalMinutes(): Int {
@@ -299,22 +313,22 @@ class SyncPreferences(context: Context) {
     }
 
     /**
-     * NASCER E PÔR DO SOL (SOLAR) — Direto do Smartphone e Stand-Alone no Relógio.
+     * NASCER E PÔR DO SOL (SOLAR) — Unificado com a atualização de localização do Clima.
      */
     fun isPhoneSolarAutoSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_PHONE_SOLAR_AUTO_SYNC_ENABLED, true)
+        return isPhoneWeatherAutoCheckEnabled()
     }
 
     fun setPhoneSolarAutoSyncEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_PHONE_SOLAR_AUTO_SYNC_ENABLED, enabled).commit()
+        setPhoneWeatherAutoCheckEnabled(enabled)
     }
 
     fun isWatchStandaloneSolarEnabled(): Boolean {
-        return prefs.getBoolean(KEY_WATCH_STANDALONE_SOLAR_ENABLED, false)
+        return isWatchStandaloneWeatherEnabled()
     }
 
     fun setWatchStandaloneSolarEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_WATCH_STANDALONE_SOLAR_ENABLED, enabled).commit()
+        setWatchStandaloneWeatherEnabled(enabled)
     }
 
     fun saveSolarTimes(sunriseHHMM: String, sunsetHHMM: String) {
@@ -362,7 +376,7 @@ class SyncPreferences(context: Context) {
         val shiftDetected = isPhoneWeatherAutoCheckEnabled() &&
             (shiftAcrossHours || shiftFromPreviousFetch || rainAlert || weatherConditionChanged)
 
-        val resolvedLoc = locationName.ifBlank { getPhoneWeatherLocationName() }
+        val resolvedLoc = formatCompactWeatherLocation(locationName.ifBlank { getPhoneWeatherLocationName() })
         val updatedHHMM = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
             .format(java.util.Date(fetchTimestampMs))
 
@@ -402,12 +416,13 @@ class SyncPreferences(context: Context) {
     }
 
     fun getPhoneWeatherLocationName(): String {
-        return prefs.getString(KEY_WEATHER_LOCATION_NAME, "São Paulo, SP") ?: "São Paulo, SP"
+        val raw = prefs.getString(KEY_WEATHER_LOCATION_NAME, "São Paulo, SP") ?: "São Paulo, SP"
+        return formatCompactWeatherLocation(raw)
     }
 
     fun setPhoneWeatherLocationName(locationName: String) {
         if (locationName.isNotBlank()) {
-            prefs.edit().putString(KEY_WEATHER_LOCATION_NAME, locationName.trim()).apply()
+            prefs.edit().putString(KEY_WEATHER_LOCATION_NAME, formatCompactWeatherLocation(locationName)).apply()
         }
     }
 
@@ -559,6 +574,122 @@ class SyncPreferences(context: Context) {
             "com.accuweather.android",
             "com.weather.Weather"
         )
+
+        private val BRAZIL_STATE_UF_MAP = mapOf(
+            "acre" to "AC",
+            "alagoas" to "AL",
+            "amapa" to "AP",
+            "amazonas" to "AM",
+            "bahia" to "BA",
+            "ceara" to "CE",
+            "distrito federal" to "DF",
+            "espirito santo" to "ES",
+            "goias" to "GO",
+            "maranhao" to "MA",
+            "mato grosso" to "MT",
+            "mato grosso do sul" to "MS",
+            "minas gerais" to "MG",
+            "para" to "PA",
+            "paraiba" to "PB",
+            "parana" to "PR",
+            "pernambuco" to "PE",
+            "piaui" to "PI",
+            "rio de janeiro" to "RJ",
+            "rio grande do norte" to "RN",
+            "rio grande do sul" to "RS",
+            "rondonia" to "RO",
+            "roraima" to "RR",
+            "santa catarina" to "SC",
+            "sao paulo" to "SP",
+            "sergipe" to "SE",
+            "tocantins" to "TO"
+        )
+
+        private fun stripAccents(input: String): String {
+            return java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
+                .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        }
+
+        /**
+         * Formata o nome do local para o subtítulo do Canvas de Clima:
+         * 1. Converte o nome do estado para a sigla UF de 2 letras (ex: "Maranhão" -> "MA", "Paraná" -> "PR").
+         * 2. Se o nome da cidade for extenso (> 12 caracteres) e ocupar mais da metade do quadro,
+         *    mantém a primeira palavra inteira e metade da segunda com reticências (ex: "São Bernardo do Campo" -> "São Bern..."),
+         *    ou abrevia palavras únicas muito longas (ex: "Pindamonhangaba" -> "Pindamonh...").
+         */
+        fun formatCompactWeatherLocation(rawCityOrCombined: String, rawState: String = ""): String {
+            val cleaned = rawCityOrCombined.trim()
+            if (cleaned.isBlank()) return "Local, BR"
+
+            val cityPart: String
+            val statePart: String
+            if (rawState.isNotBlank()) {
+                cityPart = cleaned
+                statePart = rawState.trim()
+            } else if (cleaned.contains(",")) {
+                cityPart = cleaned.substringBeforeLast(",").trim()
+                statePart = cleaned.substringAfterLast(",").trim()
+            } else if (cleaned.contains(" - ")) {
+                cityPart = cleaned.substringBeforeLast(" - ").trim()
+                statePart = cleaned.substringAfterLast(" - ").trim()
+            } else {
+                cityPart = cleaned
+                statePart = ""
+            }
+
+            val ufSigla = if (statePart.isNotBlank()) {
+                val cleanState = stripAccents(statePart)
+                    .lowercase(java.util.Locale.ROOT)
+                    .replace(Regex("^estado d[eao]\\s+"), "")
+                    .trim()
+                when {
+                    BRAZIL_STATE_UF_MAP.containsKey(cleanState) -> BRAZIL_STATE_UF_MAP[cleanState]!!
+                    statePart.trim().length == 2 -> statePart.trim().uppercase(java.util.Locale.ROOT)
+                    else -> {
+                        val stateWords = cleanState.split(Regex("\\s+")).filter {
+                            it.isNotBlank() && it !in setOf("de", "da", "do", "das", "dos")
+                        }
+                        if (stateWords.size >= 2) {
+                            "${stateWords[0].first()}${stateWords[1].first()}".uppercase(java.util.Locale.ROOT)
+                        } else {
+                            statePart.trim().take(2).uppercase(java.util.Locale.ROOT)
+                        }
+                    }
+                }
+            } else {
+                ""
+            }
+
+            val cleanCity = cityPart.trim().removeSuffix("...")
+            val compactCity = if (cityPart.trim().endsWith("...") && cityPart.trim().length <= 16) {
+                cityPart.trim()
+            } else if (cleanCity.length > 12) {
+                val words = cleanCity.split(Regex("\\s+")).filter { it.isNotBlank() }
+                if (words.size >= 2) {
+                    val firstWord = words[0]
+                    val secondIsConnector = words[1].lowercase(java.util.Locale.ROOT) in setOf("de", "da", "do", "das", "dos")
+                    if (secondIsConnector && words.size >= 3) {
+                        val thirdWord = words[2]
+                        val halfThird = thirdWord.take(((thirdWord.length + 1) / 2).coerceAtLeast(2))
+                        "$firstWord ${words[1]} ${halfThird}..."
+                    } else {
+                        val secondWord = words[1]
+                        val halfSecond = secondWord.take(((secondWord.length + 1) / 2).coerceAtLeast(2))
+                        "$firstWord ${halfSecond}..."
+                    }
+                } else {
+                    "${cleanCity.take(9)}..."
+                }
+            } else {
+                cleanCity
+            }
+
+            return if (ufSigla.isNotBlank()) {
+                "$compactCity, $ufSigla"
+            } else {
+                compactCity
+            }
+        }
 
         val KNOWN_WEATHER_TRIGGER_CATALOG = listOf(
             WeatherTriggerAppOption(

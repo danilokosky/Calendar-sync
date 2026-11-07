@@ -52,7 +52,6 @@ class WearMainActivity : Activity() {
     private lateinit var notifyAgenda15MinButton: Button
     private lateinit var turboRuleButton: Button
     private lateinit var standaloneWeatherButton: Button
-    private lateinit var standaloneSolarButton: Button
 
     private var upcomingThree: List<CachedWearEvent> = emptyList()
 
@@ -302,7 +301,7 @@ class WearMainActivity : Activity() {
 
         standaloneWeatherButton = Button(this).apply {
             val enabled = repo.isWatchStandaloneWeatherEnabled()
-            text = if (enabled) "Clima Stand-Alone (1h): ON" else "Clima Stand-Alone (1h): OFF"
+            text = if (enabled) "Clima + Sol Stand-Alone (1h): ON" else "Clima + Sol Stand-Alone (1h): OFF"
             isAllCaps = false
             textSize = 10.5f
             setTextColor(Color.parseColor(if (enabled) "#4ADE80" else "#94A3B8"))
@@ -314,7 +313,7 @@ class WearMainActivity : Activity() {
             setOnClickListener {
                 val next = !repo.isWatchStandaloneWeatherEnabled()
                 repo.setWatchStandaloneWeatherEnabled(next)
-                text = if (next) "Clima Stand-Alone (1h): ON" else "Clima Stand-Alone (1h): OFF"
+                text = if (next) "Clima + Sol Stand-Alone (1h): ON" else "Clima + Sol Stand-Alone (1h): OFF"
                 setTextColor(Color.parseColor(if (next) "#4ADE80" else "#94A3B8"))
                 if (next) {
                     AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
@@ -327,34 +326,6 @@ class WearMainActivity : Activity() {
             }
         }
         container.addView(standaloneWeatherButton)
-
-        standaloneSolarButton = Button(this).apply {
-            val enabled = repo.isWatchStandaloneSolarEnabled()
-            text = if (enabled) "Solar Stand-Alone: ON" else "Solar Stand-Alone: OFF"
-            isAllCaps = false
-            textSize = 10.5f
-            setTextColor(Color.parseColor(if (enabled) "#4ADE80" else "#94A3B8"))
-            background = pillBg("#161D1B", "#2B3935", 18)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(32)
-            ).apply { bottomMargin = dp(6) }
-            setOnClickListener {
-                val next = !repo.isWatchStandaloneSolarEnabled()
-                repo.setWatchStandaloneSolarEnabled(next)
-                text = if (next) "Solar Stand-Alone: ON" else "Solar Stand-Alone: OFF"
-                setTextColor(Color.parseColor(if (next) "#4ADE80" else "#94A3B8"))
-                if (next) {
-                    AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
-                        this@WearMainActivity,
-                        forceRefresh = true
-                    )
-                }
-                AutonomousCountdownScheduler.scheduleNextTransition(this@WearMainActivity)
-                forceUpdateComplicationsAndTile()
-            }
-        }
-        container.addView(standaloneSolarButton)
 
         val notifAccessBtn = Button(this).apply {
             text = "Acesso Notificações (Clima)"
@@ -381,7 +352,7 @@ class WearMainActivity : Activity() {
         container.addView(notifAccessBtn)
 
         val syncBtn = Button(this).apply {
-            text = "Atualizar Clima e Canvas"
+            text = "Atualizar Clima, Sol e Local"
             isAllCaps = false
             textSize = 11.5f
             setTextColor(Color.parseColor("#0B191E"))
@@ -393,7 +364,7 @@ class WearMainActivity : Activity() {
             )
             setPadding(dp(18), 0, dp(18), 0)
             setOnClickListener {
-                Toast.makeText(this@WearMainActivity, "Atualizando Clima, Local e Canvas...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@WearMainActivity, "Atualizando Clima, Sol, Local e Canvas...", Toast.LENGTH_SHORT).show()
                 AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
                     this@WearMainActivity,
                     forceRefresh = true
@@ -437,21 +408,12 @@ class WearMainActivity : Activity() {
         }
         val standAloneOn = repo.isWatchStandaloneWeatherEnabled()
         standaloneWeatherButton.text = if (standAloneOn) {
-            "Clima Stand-Alone (1h): ON"
+            "Clima + Sol Stand-Alone (1h): ON"
         } else {
-            "Clima Stand-Alone (1h): OFF"
+            "Clima + Sol Stand-Alone (1h): OFF"
         }
         standaloneWeatherButton.setTextColor(
             Color.parseColor(if (standAloneOn) "#4ADE80" else "#94A3B8")
-        )
-        val solarStandAloneOn = repo.isWatchStandaloneSolarEnabled()
-        standaloneSolarButton.text = if (solarStandAloneOn) {
-            "Solar Stand-Alone: ON"
-        } else {
-            "Solar Stand-Alone: OFF"
-        }
-        standaloneSolarButton.setTextColor(
-            Color.parseColor(if (solarStandAloneOn) "#4ADE80" else "#94A3B8")
         )
         updateCountdownTick()
 

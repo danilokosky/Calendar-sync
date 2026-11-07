@@ -217,13 +217,10 @@ object AutonomousCountdownScheduler {
             val addresses = Geocoder(context, Locale.getDefault()).getFromLocation(lat, lon, 1)
             val addr = addresses?.firstOrNull()
             if (addr != null) {
-                val city = addr.locality ?: addr.subAdminArea ?: addr.featureName
-                val state = addr.adminArea
-                if (!city.isNullOrBlank() && !state.isNullOrBlank()) {
-                    val stateShort = if (state.length > 3) state.take(2).uppercase(Locale.getDefault()) else state
-                    return "$city, $stateShort"
-                } else if (!city.isNullOrBlank()) {
-                    return city
+                val city = addr.locality ?: addr.subAdminArea ?: addr.featureName ?: ""
+                val state = addr.adminArea ?: ""
+                if (city.isNotBlank()) {
+                    return WatchAutonomousRepository.formatCompactWeatherLocation(city, state)
                 }
             }
         } catch (_: Exception) {
@@ -290,21 +287,19 @@ object AutonomousCountdownScheduler {
     }
 
     /**
-     * Serviços Stand-Alone de Clima e Solar no Relógio:
-     * Busca diretamente do relógio (de hora em hora ou no intervalo configurado) as previsões
-     * de temperatura, chuva, condição meteorológica e horários de nascer/pôr do sol.
+     * Serviço Stand-Alone Unificado de Clima + Nascer/Pôr do Sol no Relógio:
+     * Quando atualiza a localização para o Clima, deduz e atualiza conjuntamente os horários
+     * de Nascer e Pôr do Sol em uma única operação fixa.
      */
     fun runStandaloneWatchWeatherCheckIfDue(context: Context, forceRefresh: Boolean = false) {
         val appCtx = context.applicationContext
         val repo = WatchAutonomousRepository.getInstance(appCtx)
-        val (lat, lon) = resolveWatchCoordinates(appCtx)
-
-        if (repo.isWatchStandaloneSolarEnabled()) {
-            val (astroRise, astroSet) = calculateAstronomicalSunriseSunset(lat, lon)
-            repo.saveSolarTimes(astroRise, astroSet)
-        }
-
         if (!forceRefresh && !repo.isWatchStandaloneWeatherEnabled()) return
+
+        val (lat, lon) = resolveWatchCoordinates(appCtx)
+        // Sempre recalcula astronomicamente os horários de Nascer e Pôr do Sol com base na mesma localização do Clima
+        val (astroRise, astroSet) = calculateAstronomicalSunriseSunset(lat, lon)
+        repo.saveSolarTimes(astroRise, astroSet)
 
         val nowMs = System.currentTimeMillis()
         val intervalMs = TimeUnit.MINUTES.toMillis(repo.getWatchStandaloneWeatherIntervalMinutes().toLong())
@@ -327,15 +322,14 @@ object AutonomousCountdownScheduler {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
                     val root = JSONObject(body)
 
-                    if (repo.isWatchStandaloneSolarEnabled()) {
-                        val daily = root.optJSONObject("daily")
-                        val riseRaw = daily?.optJSONArray("sunrise")?.optString(0, "") ?: ""
-                        val setRaw = daily?.optJSONArray("sunset")?.optString(0, "") ?: ""
-                        val riseHHMM = riseRaw.substringAfter("T", "").take(5)
-                        val setHHMM = setRaw.substringAfter("T", "").take(5)
-                        if (riseHHMM.length == 5 && setHHMM.length == 5) {
-                            repo.saveSolarTimes(riseHHMM, setHHMM)
-                        }
+                    // Atualiza conjuntamente o Nascer e Pôr do Sol a partir da mesma resposta da localização do Clima
+                    val daily = root.optJSONObject("daily")
+                    val riseRaw = daily?.optJSONArray("sunrise")?.optString(0, "") ?: ""
+                    val setRaw = daily?.optJSONArray("sunset")?.optString(0, "") ?: ""
+                    val riseHHMM = riseRaw.substringAfter("T", "").take(5)
+                    val setHHMM = setRaw.substringAfter("T", "").take(5)
+                    if (riseHHMM.length == 5 && setHHMM.length == 5) {
+                        repo.saveSolarTimes(riseHHMM, setHHMM)
                     }
 
                     val hourly = root.optJSONObject("hourly")

@@ -7,6 +7,7 @@ import {
   detectHourlyWeatherShift,
   computeSolarCurvePoint,
   resolveEffectiveWatchContextMode,
+  formatCompactWeatherLocation,
   CalendarSource,
   CalendarEventItem,
   WatchCacheState,
@@ -298,5 +299,29 @@ test('resolveEffectiveWatchContextMode switches to EVENTS specifically when <= 1
   );
   assert.equal(modeMorningWake, 'SLEEP');
 });
+
+test('formatCompactWeatherLocation converts full state names to 2-letter UF siglas and truncates long city names', () => {
+  // Full state name converted to 2-letter UF sigla (Maranhão -> MA, Paraná -> PR)
+  assert.equal(formatCompactWeatherLocation('São Luís, Maranhão'), 'São Luís, MA');
+  assert.equal(formatCompactWeatherLocation('Curitiba, Paraná'), 'Curitiba, PR');
+  assert.equal(formatCompactWeatherLocation('Pinheiros, São Paulo'), 'Pinheiros, SP');
+
+  // Long multi-word city (> 12 chars): keeps first word whole + half of second word + "..."
+  assert.equal(
+    formatCompactWeatherLocation('São Bernardo do Campo, São Paulo'),
+    'São Bern..., SP'
+  );
+  assert.equal(
+    formatCompactWeatherLocation('Governador Valadares, Minas Gerais'),
+    'Governador Valad..., MG'
+  );
+
+  // Single very long word (> 12 chars): truncated with ellipsis + UF sigla
+  assert.equal(
+    formatCompactWeatherLocation('Pindamonhangaba, São Paulo'),
+    'Pindamonh..., SP'
+  );
+});
+
 
 

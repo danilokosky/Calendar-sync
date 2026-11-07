@@ -317,14 +317,15 @@ object AgendaCardBitmapRenderer {
         }
         canvas.drawText(rightBadgeText, CARD_WIDTH - 24f, 49f, rightConditionPaint)
 
-        // Subtítulo com a localização da previsão e horário da última atualização
-        // para que o usuário saiba se o clima está atualizado e no local onde se situa
+        // Subtítulo com a localização compacta da previsão (Cidade abreviada se extensa + sigla UF de 2 letras)
+        // e horário da última atualização para que o usuário saiba se o clima está atualizado e no local onde se situa
         val subPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#E2E8F0")
             textSize = 28f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        val locationSubtitle = "📍 ${weather.locationName} • Atualizado ${weather.updatedTimeHHMM}"
+        val compactLoc = WatchAutonomousRepository.formatCompactWeatherLocation(weather.locationName)
+        val locationSubtitle = "📍 $compactLoc • Atualizado ${weather.updatedTimeHHMM}"
         val ellipsizedLocation = TextUtils.ellipsize(
             locationSubtitle,
             subPaint,
