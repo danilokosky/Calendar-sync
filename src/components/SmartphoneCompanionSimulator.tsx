@@ -296,7 +296,7 @@ export const SmartphoneCompanionSimulator: React.FC<
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="text-sm font-bold text-white leading-snug">
-                    Janela de Contexto em Canvas Bitmap (v1.1.3)
+                    Janela de Contexto em Canvas Bitmap (v1.2.1)
                   </div>
                   <p className="text-[11px] text-[#C8D3CC] leading-relaxed">
                     6 modos (Auto, Agenda, Clima, Passos, Sol com curva noturna e Sono via Health Connect) com tempos de exposição configuráveis.

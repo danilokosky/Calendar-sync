@@ -1255,7 +1255,7 @@ class MobileSyncConfigActivity : Activity() {
             }
 
             val body = TextView(this@MobileSyncConfigActivity).apply {
-                text = "ChronoWear Health & Calendar Sync (v1.2.0)\n\n" +
+                text = "ChronoWear Health & Calendar Sync (v1.2.1)\n\n" +
                     "• 6 Modos na Janela de Contexto (Canvas Bitmap):\n" +
                     "  Auto (Dinâmico), Agenda, Clima, Nascer/Pôr do Sol, Passos Semanais e Sono (Hipnograma).\n\n" +
                     "• Orquestração Programável do Modo Automático:\n" +
