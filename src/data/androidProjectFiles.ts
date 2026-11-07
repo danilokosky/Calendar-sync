@@ -4,6 +4,7 @@ import settingsGradleRaw from '../../settings.gradle.kts?raw';
 import readmeRaw from '../../README.md?raw';
 import workflowRaw from '../../.github/workflows/android-build.yml?raw';
 import mobileManifestRaw from '../../mobile/src/main/AndroidManifest.xml?raw';
+import mobileLauncherIconRaw from '../../mobile/src/main/res/drawable/ic_launcher_chronowear.xml?raw';
 import mobileActivityRaw from '../../mobile/src/main/java/com/chronowear/mobile/ui/MobileSyncConfigActivity.kt?raw';
 import mobileEngineRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncEngine.kt?raw';
 import mobilePrefsRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/SyncPreferences.kt?raw';
@@ -11,6 +12,7 @@ import mobileWearListenerRaw from '../../mobile/src/main/java/com/chronowear/mob
 import mobileWorkerRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncWorker.kt?raw';
 import wearBuildGradleRaw from '../../wear/build.gradle.kts?raw';
 import wearManifestRaw from '../../wear/src/main/AndroidManifest.xml?raw';
+import wearLauncherIconRaw from '../../wear/src/main/res/drawable/ic_launcher_chronowear.xml?raw';
 import wearCapabilitiesXmlRaw from '../../wear/src/main/res/values/wear.xml?raw';
 import wearMainActivityRaw from '../../wear/src/main/java/com/chronowear/wear/ui/WearMainActivity.kt?raw';
 import wearPhoneDataListenerRaw from '../../wear/src/main/java/com/chronowear/wear/data/PhoneDataListenerService.kt?raw';
@@ -64,10 +66,19 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     path: 'mobile/src/main/AndroidManifest.xml',
     module: 'mobile',
     language: 'xml',
-    title: 'Manifesto do Smartphone (:mobile) + Detector de Clima (Google/Clima)',
+    title: 'Manifesto do Smartphone (:mobile) + Ícone Dedicado ChronoWear',
     description:
-      'Declara permissões de Calendário, Internet/Localização aproximada (para previsão horária) e PhoneWeatherNotificationListenerService para observar notificações do App Google e App Clima.',
+      'Declara @drawable/ic_launcher_chronowear, permissões de Calendário, Saúde (Sono), Localização e PhoneWeatherNotificationListenerService.',
     content: mobileManifestRaw,
+  },
+  {
+    path: 'mobile/src/main/res/drawable/ic_launcher_chronowear.xml',
+    module: 'mobile',
+    language: 'xml',
+    title: 'ic_launcher_chronowear.xml (Ícone Vetorial do APK :mobile)',
+    description:
+      'Ícone vetorial exclusivo para o aplicativo de Smartphone estilo One UI Watch com arcos laterais e curva solar/climática.',
+    content: mobileLauncherIconRaw,
   },
   {
     path: 'mobile/src/main/java/com/chronowear/mobile/ui/MobileSyncConfigActivity.kt',
@@ -127,10 +138,19 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     path: 'wear/src/main/AndroidManifest.xml',
     module: 'wear',
     language: 'xml',
-    title: 'Manifesto Exclusivo Wear OS (:wear) — Única Complication Canvas + NotificationListener',
+    title: 'Manifesto Exclusivo Wear OS (:wear) — Ícone Dedicado + Tap-to-Cycle + Notificação',
     description:
-      'Expõe apenas 1 Complication (ChronoWear • Janela de Contexto (Canvas), SMALL_IMAGE/PHOTO_IMAGE) e registra o WearContextNotificationListenerService.',
+      'Define @drawable/ic_launcher_chronowear, permissão POST_NOTIFICATIONS, ACTION_TAP_CYCLE_CONTEXT e Complication Única do Canvas.',
     content: wearManifestRaw,
+  },
+  {
+    path: 'wear/src/main/res/drawable/ic_launcher_chronowear.xml',
+    module: 'wear',
+    language: 'xml',
+    title: 'ic_launcher_chronowear.xml (Ícone Vetorial do APK :wear)',
+    description:
+      'Ícone vetorial exclusivo para o aplicativo de Relógio Wear OS, Complication e Tile.',
+    content: wearLauncherIconRaw,
   },
   {
     path: 'wear/src/main/res/values/wear.xml',

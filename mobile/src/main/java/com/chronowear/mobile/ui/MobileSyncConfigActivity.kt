@@ -101,13 +101,11 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchUpdateOnScreenWake: Switch
     private lateinit var switchSleepSync: Switch
     private lateinit var subtitleSleepInfo: TextView
+    private lateinit var switchNotifyWatchOnCanvasChange: Switch
     private lateinit var rowContextModeChipsTop: LinearLayout
     private lateinit var rowContextModeChipsBottom: LinearLayout
     private lateinit var rowAutoPrimaryContextChips: LinearLayout
-    private lateinit var rowAutoAgendaExposureChips: LinearLayout
-    private lateinit var rowAutoWeatherExposureChips: LinearLayout
-    private lateinit var rowAutoSunExposureChips: LinearLayout
-    private lateinit var rowAutoSleepExposureChips: LinearLayout
+    private lateinit var rowUnifiedCanvasHoldChips: LinearLayout
     private lateinit var rowPhoneWeatherIntervalChips: LinearLayout
     private lateinit var rowFrequencyChips: LinearLayout
     private lateinit var rowProgressWindowChips: LinearLayout
@@ -808,12 +806,12 @@ class MobileSyncConfigActivity : Activity() {
             addView(sectionContextCard)
 
             // -----------------------------------------------------------------
-            // SEÇÃO 2: COMPORTAMENTO DO MODO AUTOMÁTICO (EXPOSIÇÃO E PRIORIDADE)
+            // SEÇÃO 2: CANVAS PADRÃO PRINCIPAL, TEMPO UNIFICADO E PRIORIDADE
             // -----------------------------------------------------------------
-            val sectionAutoBehaviorCard = createSectionCard("2. Modo Automático (Prioridade e Exposição)")
+            val sectionAutoBehaviorCard = createSectionCard("2. Canvas Padrão Principal, Tempo Unificado e Prioridade")
 
             val autoPrimaryLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Contexto Principal no Modo Automático"
+                text = "Canvas Padrão Principal"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
@@ -822,7 +820,7 @@ class MobileSyncConfigActivity : Activity() {
             sectionAutoBehaviorCard.addView(autoPrimaryLabel)
 
             val autoPrimarySub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Permanece no Canvas quando não houver alerta climático, evento próximo, crepúsculo solar ou despertar"
+                text = "Aparência padrão do relógio para a qual o Canvas sempre retorna após um toque (Tap) ou após uma mudança temporária de contexto"
                 textSize = 12f
                 setTextColor(Color.parseColor("#9CA3AF"))
                 setPadding(0, 0, 0, dp(8))
@@ -835,96 +833,43 @@ class MobileSyncConfigActivity : Activity() {
             }
             sectionAutoBehaviorCard.addView(rowAutoPrimaryContextChips)
 
-            val autoAgendaExpLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Exposição da Agenda (quando não for a principal)"
+            val unifiedHoldLabel = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Tempo Fixo de Canvas Não-Padrão (Unificado)"
                 textSize = 15f
                 setTextColor(Color.parseColor("#FFFFFF"))
                 setTypeface(typeface, Typeface.BOLD)
                 setPadding(0, dp(4), 0, dp(3))
             }
-            sectionAutoBehaviorCard.addView(autoAgendaExpLabel)
+            sectionAutoBehaviorCard.addView(unifiedHoldLabel)
 
-            val autoAgendaExpSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Quanto tempo antes do evento o quadro assume a Agenda temporariamente"
+            val unifiedHoldSub = TextView(this@MobileSyncConfigActivity).apply {
+                text = "Quanto tempo qualquer Canvas diferente do padrão (aberto por Tap na Watch Face ou forçado por Clima, Agenda, Pôr/Nascer do Sol ou Dormir/Acordar) fica fixo antes de retornar ao Canvas Padrão Principal"
                 textSize = 12f
                 setTextColor(Color.parseColor("#9CA3AF"))
                 setPadding(0, 0, 0, dp(8))
             }
-            sectionAutoBehaviorCard.addView(autoAgendaExpSub)
+            sectionAutoBehaviorCard.addView(unifiedHoldSub)
 
-            rowAutoAgendaExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
+            rowUnifiedCanvasHoldChips = LinearLayout(this@MobileSyncConfigActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(12))
+                setPadding(0, 0, 0, dp(10))
             }
-            sectionAutoBehaviorCard.addView(rowAutoAgendaExposureChips)
+            sectionAutoBehaviorCard.addView(rowUnifiedCanvasHoldChips)
 
-            val autoWeatherExpLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Exposição do Clima (após mudança ou alerta)"
-                textSize = 15f
-                setTextColor(Color.parseColor("#FFFFFF"))
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(4), 0, dp(3))
-            }
-            sectionAutoBehaviorCard.addView(autoWeatherExpLabel)
-
-            val autoWeatherExpSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Duração da curva climática no Canvas quando ocorre mudança de temperatura ou previsão de chuva"
-                textSize = 12f
-                setTextColor(Color.parseColor("#9CA3AF"))
-                setPadding(0, 0, 0, dp(8))
-            }
-            sectionAutoBehaviorCard.addView(autoWeatherExpSub)
-
-            rowAutoWeatherExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(12))
-            }
-            sectionAutoBehaviorCard.addView(rowAutoWeatherExposureChips)
-
-            val autoSunExpLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Exposição de Nascer e Pôr do Sol"
-                textSize = 15f
-                setTextColor(Color.parseColor("#FFFFFF"))
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(4), 0, dp(3))
-            }
-            sectionAutoBehaviorCard.addView(autoSunExpLabel)
-
-            val autoSunExpSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Janela total de exibição em torno do horário de nascer e pôr do sol"
-                textSize = 12f
-                setTextColor(Color.parseColor("#9CA3AF"))
-                setPadding(0, 0, 0, dp(8))
-            }
-            sectionAutoBehaviorCard.addView(autoSunExpSub)
-
-            rowAutoSunExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(12))
-            }
-            sectionAutoBehaviorCard.addView(rowAutoSunExposureChips)
-
-            val autoSleepExpLabel = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Exposição do Resumo de Sono (ao acordar)"
-                textSize = 15f
-                setTextColor(Color.parseColor("#FFFFFF"))
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(4), 0, dp(3))
-            }
-            sectionAutoBehaviorCard.addView(autoSleepExpLabel)
-
-            val autoSleepExpSub = TextView(this@MobileSyncConfigActivity).apply {
-                text = "Quanto tempo o hipnograma e pontuação de sono ficam expostos pela manhã após despertar"
-                textSize = 12f
-                setTextColor(Color.parseColor("#9CA3AF"))
-                setPadding(0, 0, 0, dp(8))
-            }
-            sectionAutoBehaviorCard.addView(autoSleepExpSub)
-
-            rowAutoSleepExposureChips = LinearLayout(this@MobileSyncConfigActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-            sectionAutoBehaviorCard.addView(rowAutoSleepExposureChips)
+            val notifyWatchCanvasRow = createSettingToggleRow(
+                title = "Notificar no Relógio ao Forçar Mudança do Canvas",
+                subtitle = "Exibe uma notificação no relógio quando uma mudança de Clima, Agenda, Sol ou Sono assumir o Canvas com prioridade máxima",
+                onSubtitleCreated = {},
+                onSwitchCreated = { sw ->
+                    switchNotifyWatchOnCanvasChange = sw
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        if (suppressSwitchEvents) return@setOnCheckedChangeListener
+                        prefs.setNotifyWatchOnCanvasChangeEnabled(isChecked)
+                        syncSettingsToWatchInBackground("Notificar Mudança Canvas")
+                    }
+                }
+            )
+            sectionAutoBehaviorCard.addView(notifyWatchCanvasRow)
             addView(sectionAutoBehaviorCard)
 
             // -----------------------------------------------------------------
@@ -1650,6 +1595,7 @@ class MobileSyncConfigActivity : Activity() {
         switchPhoneSolarAutoSync.isChecked = prefs.isPhoneSolarAutoSyncEnabled()
         switchWatchStandaloneSolar.isChecked = prefs.isWatchStandaloneSolarEnabled()
         switchSleepSync.isChecked = prefs.isSleepSyncEnabled()
+        switchNotifyWatchOnCanvasChange.isChecked = prefs.isNotifyWatchOnCanvasChangeEnabled()
         switchMediaPlaybackSync.isChecked = prefs.isMediaPlaybackSyncEnabled()
         switchCalendarEventsSync.isChecked = prefs.isCalendarEventsSyncEnabled() && hasCalPerm
         switchAutoReadOnChange.isChecked = prefs.isAutoSyncOnCalendarChangeEnabled()
@@ -1797,52 +1743,16 @@ class MobileSyncConfigActivity : Activity() {
             )
         }
 
-        val exposureOptions = listOf(15 to "15m", 30 to "30m", 45 to "45m", 60 to "1h")
+        val unifiedHoldOptions = listOf(5 to "5m", 15 to "15m", 30 to "30m", 45 to "45m", 60 to "1h")
 
-        rowAutoAgendaExposureChips.removeAllViews()
-        val curAgendaExp = prefs.getAutoAgendaExposureMinutes()
-        exposureOptions.forEach { (mins, label) ->
-            rowAutoAgendaExposureChips.addView(
-                createSelectableChip(label, curAgendaExp == mins) {
-                    prefs.setAutoAgendaExposureMinutes(mins)
+        rowUnifiedCanvasHoldChips.removeAllViews()
+        val curUnifiedHold = prefs.getUnifiedCanvasHoldMinutes()
+        unifiedHoldOptions.forEach { (mins, label) ->
+            rowUnifiedCanvasHoldChips.addView(
+                createSelectableChip(label, curUnifiedHold == mins) {
+                    prefs.setUnifiedCanvasHoldMinutes(mins)
                     renderChipsRows()
-                    syncSettingsToWatchInBackground("Exposição Agenda: $label")
-                }
-            )
-        }
-
-        rowAutoWeatherExposureChips.removeAllViews()
-        val curWeatherExp = prefs.getAutoWeatherExposureMinutes()
-        exposureOptions.forEach { (mins, label) ->
-            rowAutoWeatherExposureChips.addView(
-                createSelectableChip(label, curWeatherExp == mins) {
-                    prefs.setAutoWeatherExposureMinutes(mins)
-                    renderChipsRows()
-                    syncSettingsToWatchInBackground("Exposição Clima: $label")
-                }
-            )
-        }
-
-        rowAutoSunExposureChips.removeAllViews()
-        val curSunExp = prefs.getAutoSunExposureMinutes()
-        exposureOptions.forEach { (mins, label) ->
-            rowAutoSunExposureChips.addView(
-                createSelectableChip(label, curSunExp == mins) {
-                    prefs.setAutoSunExposureMinutes(mins)
-                    renderChipsRows()
-                    syncSettingsToWatchInBackground("Exposição Sol: $label")
-                }
-            )
-        }
-
-        rowAutoSleepExposureChips.removeAllViews()
-        val curSleepExp = prefs.getAutoSleepExposureMinutes()
-        exposureOptions.forEach { (mins, label) ->
-            rowAutoSleepExposureChips.addView(
-                createSelectableChip(label, curSleepExp == mins) {
-                    prefs.setAutoSleepExposureMinutes(mins)
-                    renderChipsRows()
-                    syncSettingsToWatchInBackground("Exposição Sono: $label")
+                    syncSettingsToWatchInBackground("Tempo Fixo Canvas: $label")
                 }
             )
         }

@@ -2,6 +2,9 @@ package com.chronowear.wear.data
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -9,9 +12,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.os.Build
 import androidx.wear.tiles.TileService
+import com.chronowear.wear.R
 import com.chronowear.wear.complication.ChronoWearComplicationUpdater
 import com.chronowear.wear.tile.UpNextThreeEventsTileService
+import com.chronowear.wear.ui.WearMainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,9 +39,109 @@ object AutonomousCountdownScheduler {
 
     const val ACTION_TRANSITION = "com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION"
     const val ACTION_TAP_CYCLE_CONTEXT = "com.chronowear.wear.ACTION_TAP_CYCLE_CONTEXT"
+    private const val CHANNEL_CANVAS_SHIFT_ID = "chronowear_canvas_shift_channel"
+    private const val NOTIF_ID_CANVAS_SHIFT = 4102
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var screenWakeReceiverRegistered = false
     private var lastScreenWakeUpdateMs = 0L
+
+    /**
+     * Exibe uma notificação no Relógio quando o app recebe ou detecta uma mudança de contexto
+     * de prioridade máxima (Clima, Agenda, Nascer/Pôr do Sol, Dormir/Acordar) que força a mudança do Canvas.
+     */
+    fun notifyWatchOnForcedCanvasChangeIfNeeded(
+        context: Context,
+        explicitReasonOverride: String? = null
+    ) {
+        val appCtx = context.applicationContext
+        val repo = WatchAutonomousRepository.getInstance(appCtx)
+        if (!repo.isNotifyOnCanvasChangeEnabled()) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (appCtx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+        }
+
+        val nowMs = System.currentTimeMillis()
+        val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
+        val priorityPair = repo.evaluatePriorityContextOverride(nowMs, upcomingThree) ?: return
+        val (forcedMode, autoReason) = priorityPair
+
+        val lastMode = repo.getLastNotifiedForcedContext()
+        val lastTs = repo.getLastNotifiedForcedContextTimestampMs()
+        // Evita repetir a mesma notificação para o mesmo gatilho em menos de 10 minutos
+        if (forcedMode == lastMode && (nowMs - lastTs) < TimeUnit.MINUTES.toMillis(10L) && explicitReasonOverride == null) {
+            return
+        }
+        repo.recordNotifiedForcedContext(forcedMode, nowMs)
+
+        val modeTitle = when (forcedMode) {
+            WatchAutonomousRepository.MODE_WEATHER -> "Canvas • Clima"
+            WatchAutonomousRepository.MODE_EVENTS -> "Canvas • Agenda"
+            WatchAutonomousRepository.MODE_SUN -> "Canvas • Nascer e Pôr do Sol"
+            WatchAutonomousRepository.MODE_SLEEP -> "Canvas • Sono"
+            WatchAutonomousRepository.MODE_STEPS -> "Canvas • Passos"
+            else -> "Canvas Atualizado"
+        }
+        val holdMins = repo.getUnifiedCanvasHoldMinutes()
+        val primaryLabel = when (repo.getAutoPrimaryContext()) {
+            WatchAutonomousRepository.MODE_EVENTS -> "Agenda"
+            WatchAutonomousRepository.MODE_WEATHER -> "Clima"
+            WatchAutonomousRepository.MODE_SUN -> "Sol"
+            WatchAutonomousRepository.MODE_STEPS -> "Passos"
+            WatchAutonomousRepository.MODE_SLEEP -> "Sono"
+            else -> "Padrão"
+        }
+        val bodyText = (explicitReasonOverride ?: autoReason) +
+            " • Fixo por ${holdMins}m (retorna p/ $primaryLabel)"
+
+        try {
+            val nm = appCtx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_CANVAS_SHIFT_ID,
+                    "Mudança Prioritária do Canvas",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Avulso quando Clima, Agenda, Sol ou Sono assumem o Canvas do relógio"
+                    enableVibration(true)
+                }
+                nm.createNotificationChannel(channel)
+            }
+
+            val openIntent = Intent(appCtx, WearMainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val contentPi = PendingIntent.getActivity(
+                appCtx,
+                4103,
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(appCtx, CHANNEL_CANVAS_SHIFT_ID)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(appCtx)
+            }
+
+            val notification = builder
+                .setSmallIcon(R.drawable.ic_launcher_chronowear)
+                .setContentTitle(modeTitle)
+                .setContentText(bodyText)
+                .setStyle(Notification.BigTextStyle().bigText(bodyText))
+                .setAutoCancel(true)
+                .setContentIntent(contentPi)
+                .build()
+
+            nm.notify(NOTIF_ID_CANVAS_SHIFT, notification)
+        } catch (_: Exception) {
+        }
+    }
 
     private val screenOnReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -245,6 +351,10 @@ object AutonomousCountdownScheduler {
                             nowMs = nowMs
                         )
 
+                        if (shiftDetected) {
+                            notifyWatchOnForcedCanvasChangeIfNeeded(appCtx)
+                        }
+
                         if (shiftDetected ||
                             repo.getContextWindowMode() == WatchAutonomousRepository.MODE_WEATHER ||
                             repo.getContextWindowMode() == WatchAutonomousRepository.MODE_SUN
@@ -276,6 +386,10 @@ object AutonomousCountdownScheduler {
             Long.MAX_VALUE
         }
 
+        // Quando o usuário toca (Tap) no Canvas e vai para um Canvas que não é o Padrão Principal,
+        // agenda o retorno exato para o Canvas Padrão Principal após o Tempo Unificado configurado
+        val tapOverrideReturnMs = repo.getTapOverrideExpiryEpochMs(nowMs)
+
         val eventWakeUpMs = if (nextEvent == null) {
             Long.MAX_VALUE
         } else {
@@ -302,7 +416,7 @@ object AutonomousCountdownScheduler {
             }
         }
 
-        val nextWakeUpMs = minOf(eventWakeUpMs, standaloneWeatherWakeMs)
+        val nextWakeUpMs = minOf(eventWakeUpMs, minOf(standaloneWeatherWakeMs, tapOverrideReturnMs))
         if (nextWakeUpMs == Long.MAX_VALUE) return
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -335,12 +449,14 @@ object AutonomousCountdownScheduler {
 class AutonomousTransitionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_CONTEXT) {
-            // Toque direto na imagem do Canvas na Watch Face: avança imediatamente para o próximo Canvas!
+            // Toque direto na imagem do Canvas na Watch Face: avança imediatamente para o próximo Canvas
+            // e agenda o retorno automático ao Canvas Padrão Principal após o Tempo Unificado configurado!
             val repo = WatchAutonomousRepository.getInstance(context)
             val nowMs = System.currentTimeMillis()
             val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
             repo.cycleNextVisualCanvasOnTap(nowMs, upcomingThree)
             ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
+            AutonomousCountdownScheduler.scheduleNextTransition(context)
             context.sendBroadcast(
                 Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
                     .setPackage(context.packageName)
@@ -349,6 +465,7 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
         }
 
         AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+        AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(context)
 
         ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
 

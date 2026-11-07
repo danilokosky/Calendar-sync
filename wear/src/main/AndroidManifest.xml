@@ -12,10 +12,13 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:allowBackup="true"
-        android:icon="@android:drawable/ic_menu_my_calendar"
+        android:icon="@drawable/ic_launcher_chronowear"
+        android:roundIcon="@drawable/ic_launcher_chronowear"
         android:label="ChronoWear Watch"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
@@ -70,7 +73,7 @@
         <service
             android:name=".complication.NextEventComplicationService"
             android:exported="true"
-            android:icon="@android:drawable/ic_menu_my_calendar"
+            android:icon="@drawable/ic_launcher_chronowear"
             android:label="ChronoWear • Janela de Contexto (Canvas)"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
@@ -100,7 +103,7 @@
         <service
             android:name=".tile.UpNextThreeEventsTileService"
             android:exported="true"
-            android:icon="@android:drawable/ic_menu_today"
+            android:icon="@drawable/ic_launcher_chronowear"
             android:label="Próximos 3 Eventos"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
             <intent-filter>

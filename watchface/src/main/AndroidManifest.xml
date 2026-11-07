@@ -7,8 +7,11 @@
         android:required="true" />
 
     <!-- hasCode="false" é obrigatório no Watch Face Format -->
+    <!-- @drawable/preview é usado tanto no seletor de Watch Faces quanto como ícone do APK :watchface -->
     <application
         android:label="@string/watch_face_name"
+        android:icon="@drawable/preview"
+        android:roundIcon="@drawable/preview"
         android:hasCode="false">
 
         <meta-data

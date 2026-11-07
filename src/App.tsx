@@ -113,6 +113,8 @@ export default function App() {
     autoSyncOnCalendarChange: true,
     contextWindowMode: 'DYNAMIC',
     autoPrimaryContext: 'EVENTS',
+    unifiedCanvasHoldMinutes: 30,
+    notifyWatchOnCanvasChange: true,
     autoAgendaExposureMinutes: 30,
     autoWeatherExposureMinutes: 30,
     autoSunExposureMinutes: 30,
@@ -160,13 +162,16 @@ export default function App() {
 
   // Effective Watch Cache State: if connected, reflects latest phone sync; if disconnected, uses frozen autonomous Room cache
   const watchCache: WatchCacheState = useMemo(() => {
+    const unifiedHold = config.unifiedCanvasHoldMinutes ?? 30;
     const sharedSettings = {
       contextWindowMode: config.contextWindowMode,
       autoPrimaryContext: config.autoPrimaryContext,
-      autoAgendaExposureMinutes: config.autoAgendaExposureMinutes,
-      autoWeatherExposureMinutes: config.autoWeatherExposureMinutes,
-      autoSunExposureMinutes: config.autoSunExposureMinutes,
-      autoSleepExposureMinutes: config.autoSleepExposureMinutes,
+      unifiedCanvasHoldMinutes: unifiedHold,
+      notifyWatchOnCanvasChange: config.notifyWatchOnCanvasChange ?? true,
+      autoAgendaExposureMinutes: unifiedHold,
+      autoWeatherExposureMinutes: unifiedHold,
+      autoSunExposureMinutes: unifiedHold,
+      autoSleepExposureMinutes: unifiedHold,
       highFreq15MinRule: config.highFreq15MinRule,
       updateOnScreenWake: config.updateOnScreenWake,
       hasActiveWatchWeatherAlert,
@@ -175,6 +180,7 @@ export default function App() {
       solarSunriseHHMM: config.solarSunriseHHMM,
       solarSunsetHHMM: config.solarSunsetHHMM,
       sleepSyncEnabled: config.sleepSyncEnabled,
+      sleepBedtimeHHMM: config.sleepBedtimeHHMM,
       sleepWakeHHMM: config.sleepWakeHHMM,
     };
     if (isBluetoothConnected) {
@@ -203,10 +209,8 @@ export default function App() {
     config.progressWindowMinutes,
     config.contextWindowMode,
     config.autoPrimaryContext,
-    config.autoAgendaExposureMinutes,
-    config.autoWeatherExposureMinutes,
-    config.autoSunExposureMinutes,
-    config.autoSleepExposureMinutes,
+    config.unifiedCanvasHoldMinutes,
+    config.notifyWatchOnCanvasChange,
     config.highFreq15MinRule,
     config.updateOnScreenWake,
     config.watchStandaloneWeatherEnabled,
@@ -214,6 +218,7 @@ export default function App() {
     config.solarSunriseHHMM,
     config.solarSunsetHHMM,
     config.sleepSyncEnabled,
+    config.sleepBedtimeHHMM,
     config.sleepWakeHHMM,
     hasActiveWatchWeatherAlert,
     offlineFrozenCache,
@@ -234,7 +239,17 @@ export default function App() {
   };
 
   const handleUpdateConfig = (partial: Partial<SyncConfiguration>) => {
-    setConfig((prev) => ({ ...prev, ...partial }));
+    setConfig((prev) => {
+      const next = { ...prev, ...partial };
+      if (partial.unifiedCanvasHoldMinutes != null) {
+        const u = partial.unifiedCanvasHoldMinutes;
+        next.autoAgendaExposureMinutes = u;
+        next.autoWeatherExposureMinutes = u;
+        next.autoSunExposureMinutes = u;
+        next.autoSleepExposureMinutes = u;
+      }
+      return next;
+    });
   };
 
   const handleAddEvent = (newEvent: Omit<CalendarEventItem, 'id'>) => {

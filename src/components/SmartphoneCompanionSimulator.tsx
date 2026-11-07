@@ -213,7 +213,7 @@ export const SmartphoneCompanionSimulator: React.FC<
     { id: 'SLEEP', label: 'Sono' },
   ] as const;
 
-  const exposureMinuteOptions = [15, 30, 45, 60] as const;
+  const exposureMinuteOptions = [5, 15, 30, 45, 60] as const;
 
   return (
     <div
@@ -512,19 +512,19 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 2: MODO AUTOMÁTICO (PRIORIDADE E TEMPOS DE EXPOSIÇÃO) */}
+            {/* SEÇÃO 2: CANVAS PADRÃO PRINCIPAL, TEMPO UNIFICADO E PRIORIDADE */}
             <div className="rounded-[24px] bg-[#151816] border border-[#252B27] p-4 space-y-3 shadow-lg">
               <div className="text-[11px] font-bold tracking-wider uppercase text-emerald-400">
-                2. Modo Automático (Prioridade e Exposição)
+                2. Canvas Padrão Principal, Tempo Unificado e Prioridade
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Define qual é o contexto principal no modo Auto e por quanto tempo cada contexto temporário permanece exposto no relógio.
+                Ao tocar (Tap) no Canvas da Watch Face, o próximo Canvas aparece temporariamente e depois retorna ao <strong>Canvas Padrão Principal</strong>. Qualquer mudança de <strong>Clima, Agenda, Pôr/Nascer do Sol, Acordar ou Dormir</strong> tem <strong>Prioridade Máxima</strong>.
               </p>
 
-              {/* Contexto Principal Padrão */}
+              {/* Canvas Padrão Principal */}
               <div className="space-y-1.5">
                 <span className="text-xs font-bold text-slate-200 block">
-                  Contexto Principal (Padrão em Modo Auto)
+                  Canvas Padrão Principal (Aparência Padrão de Retorno)
                 </span>
                 <div className="grid grid-cols-5 gap-1.5">
                   {autoPrimaryOptions.map((opt) => (
@@ -546,21 +546,24 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </div>
               </div>
 
-              {/* Tempo de Exposição da Agenda (quando não for a principal) */}
-              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
+              {/* Tempo Unificado de Permanência de Canvas Não-Padrão */}
+              <div className="space-y-1.5 pt-2.5 border-t border-[#232925]">
                 <span className="text-xs font-bold text-slate-200 block">
-                  Exposição da Agenda (quando não for a principal, antes do evento)
+                  Tempo Fixo de Canvas Não-Padrão (Toque no Canvas ou Gatilho)
                 </span>
-                <div className="grid grid-cols-4 gap-1.5">
+                <span className="text-[11px] text-slate-400 block">
+                  Define por quanto tempo um Canvas que não seja o padrão fica fixo no relógio antes de retornar ao Canvas Padrão Principal
+                </span>
+                <div className="grid grid-cols-5 gap-1.5 pt-1">
                   {exposureMinuteOptions.map((mins) => (
                     <button
                       key={mins}
                       type="button"
                       onClick={() =>
-                        onUpdateConfig({ autoAgendaExposureMinutes: mins })
+                        onUpdateConfig({ unifiedCanvasHoldMinutes: mins })
                       }
                       className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                        (config.autoAgendaExposureMinutes ?? 30) === mins
+                        (config.unifiedCanvasHoldMinutes ?? 30) === mins
                           ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
                           : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
                       }`}
@@ -571,79 +574,27 @@ export const SmartphoneCompanionSimulator: React.FC<
                 </div>
               </div>
 
-              {/* Tempo de Exposição do Clima */}
-              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
-                <span className="text-xs font-bold text-slate-200 block">
-                  Exposição do Clima (após alerta de chuva ou mudança de temp.)
-                </span>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {exposureMinuteOptions.map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      onClick={() =>
-                        onUpdateConfig({ autoWeatherExposureMinutes: mins })
-                      }
-                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                        (config.autoWeatherExposureMinutes ?? 30) === mins
-                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
-                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
-                      }`}
-                    >
-                      {mins === 60 ? '1h' : `${mins}m`}
-                    </button>
-                  ))}
+              {/* Notificar no Relógio ao Forçar Mudança do Canvas */}
+              <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-[#232925]">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Notificar no Relógio ao Forçar Mudança do Canvas
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Exibe uma notificação no relógio quando Clima, Agenda, Sol ou Sono assumirem o Canvas com prioridade máxima
+                  </div>
                 </div>
-              </div>
-
-              {/* Tempo de Exposição de Nascer e Pôr do Sol */}
-              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
-                <span className="text-xs font-bold text-slate-200 block">
-                  Exposição de Nascer e Pôr do Sol (janela ao redor do evento solar)
-                </span>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {exposureMinuteOptions.map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      onClick={() =>
-                        onUpdateConfig({ autoSunExposureMinutes: mins })
-                      }
-                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                        (config.autoSunExposureMinutes ?? 30) === mins
-                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
-                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
-                      }`}
-                    >
-                      {mins === 60 ? '1h' : `${mins}m`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tempo de Exposição do Sono */}
-              <div className="space-y-1.5 pt-2 border-t border-[#232925]">
-                <span className="text-xs font-bold text-slate-200 block">
-                  Exposição do Resumo de Sono (após despertar pela manhã)
-                </span>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {exposureMinuteOptions.map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      onClick={() =>
-                        onUpdateConfig({ autoSleepExposureMinutes: mins })
-                      }
-                      className={`py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                        (config.autoSleepExposureMinutes ?? 30) === mins
-                          ? 'bg-[#22C55E] text-[#052E16] font-bold border border-[#4ADE80]'
-                          : 'bg-[#1D2420] text-[#E2E8F0] border border-[#38463E]'
-                      }`}
-                    >
-                      {mins === 60 ? '1h' : `${mins}m`}
-                    </button>
-                  ))}
-                </div>
+                <ModernOneUiSwitch
+                  checked={config.notifyWatchOnCanvasChange ?? true}
+                  ariaLabel="Notificar no Relógio ao Forçar Mudança do Canvas"
+                  onChange={() =>
+                    onUpdateConfig({
+                      notifyWatchOnCanvasChange: !(
+                        config.notifyWatchOnCanvasChange ?? true
+                      ),
+                    })
+                  }
+                />
               </div>
             </div>
 
@@ -966,20 +917,110 @@ export const SmartphoneCompanionSimulator: React.FC<
             key="tab-about"
             className="space-y-4 flex-1 transition-all duration-300 ease-out"
           >
-            <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-5 space-y-2.5 text-xs text-slate-300 leading-relaxed shadow-lg">
+            <div className="relative rounded-[26px] bg-[#151816] border border-[#252B27] p-4 space-y-3 text-xs text-slate-300 leading-relaxed shadow-lg">
               <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#F97316]" />
               <div className="text-sm font-bold text-white">
-                ChronoWear Sync v1.1.3 — Recursos da Janela Canvas
+                Ícones dos APKs &amp; Preview Oficial da Watch Face
               </div>
-              <p>
-                • <strong>Curva Solar Dia e Noite Abaixo do Horizonte</strong>: A trajetória cosseno cruza a linha azul do horizonte no nascer e pôr do sol e continua abaixo do horizonte durante a noite, indicando quanto falta para o sol nascer.
-              </p>
-              <p>
-                • <strong>Barra de Progresso Fiel à Janela Configurada (0% → 100%)</strong>: Permanece em 0% antes da janela escolhida (30m, 1h, 2h ou 3h) e cresce linearmente de 0% até 100% na hora exata do evento.
-              </p>
-              <p>
-                • <strong>Modo Automático Programável e Contexto de Sono</strong>: Escolha o contexto principal, o tempo de exposição (15m, 30m, 45m ou 1h) para Clima, Sol, Agenda e o novo hipnograma de Sono (Health Connect / Samsung Health).
-              </p>
+              <div className="grid grid-cols-2 gap-3 items-center pt-1">
+                <div className="bg-[#0E110F] border border-[#252D28] rounded-2xl p-3 flex items-center gap-3">
+                  <svg
+                    viewBox="0 0 108 108"
+                    className="w-12 h-12 shrink-0 rounded-full border border-slate-700"
+                    aria-label="Ícone Vetorial ChronoWear (:mobile e :wear)"
+                  >
+                    <circle cx="54" cy="54" r="50" fill="#090D14" />
+                    <circle
+                      cx="54"
+                      cy="54"
+                      r="46"
+                      fill="none"
+                      stroke="#1E293B"
+                      strokeWidth="3.5"
+                    />
+                    <path
+                      d="M15,36 C11,47 11,61 15,72"
+                      fill="none"
+                      stroke="#F59E0B"
+                      strokeWidth="4.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M93,36 C97,47 97,61 93,72"
+                      fill="none"
+                      stroke="#4ADE80"
+                      strokeWidth="4.5"
+                      strokeLinecap="round"
+                    />
+                    <rect
+                      x="39"
+                      y="17"
+                      width="30"
+                      height="6"
+                      rx="3"
+                      fill="#F5C438"
+                    />
+                    <rect
+                      x="16"
+                      y="33"
+                      width="76"
+                      height="42"
+                      rx="8"
+                      fill="#0F172A"
+                      stroke="#334155"
+                      strokeWidth="2"
+                    />
+                    <line
+                      x1="22"
+                      y1="58"
+                      x2="86"
+                      y2="58"
+                      stroke="#60A5FA"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M22,66 C30,66 34,58 38,58 C45,42 63,42 70,58 C74,58 78,66 86,66"
+                      fill="none"
+                      stroke="#F8FAFC"
+                      strokeWidth="2.8"
+                      strokeLinecap="round"
+                    />
+                    <circle cx="54" cy="47" r="5" fill="#FACC15" />
+                    <path
+                      d="M38,91 C48,94 60,94 70,91"
+                      fill="none"
+                      stroke="#67E8F9"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white truncate">
+                      APKs :mobile &amp; :wear
+                    </div>
+                    <div className="text-[10px] text-emerald-400 font-mono truncate">
+                      @drawable/ic_launcher_chronowear
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#0E110F] border border-[#252D28] rounded-2xl p-3 flex items-center gap-3">
+                  <img
+                    src="/assets/aistudio/Screenshot_20261107_095843_One_UI_Watch_Home_0c7022c2.png"
+                    alt="Preview do Seletor e Ícone do APK :watchface"
+                    className="w-12 h-12 shrink-0 rounded-full border border-amber-400/50 object-cover"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white truncate">
+                      Seletor &amp; APK :watchface
+                    </div>
+                    <div className="text-[10px] text-amber-300 font-mono truncate">
+                      @drawable/preview (PNG Anexo)
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Simulador de Alteração na Agenda */}

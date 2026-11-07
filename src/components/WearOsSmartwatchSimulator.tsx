@@ -61,9 +61,11 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   onResetTime,
 }) => {
   const [watchScreenMode, setWatchScreenMode] = useState<'wff' | 'tile' | 'cache'>('wff');
-  const [tapOverrideMode, setTapOverrideMode] = useState<
-    'EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP' | null
-  >(null);
+  const [tapOverrideState, setTapOverrideState] = useState<{
+    mode: 'EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP';
+    startedAtWatchMs: number;
+  } | null>(null);
+  const [dismissedNotifKey, setDismissedNotifKey] = useState<string | null>(null);
   const [weatherNotifSource, setWeatherNotifSource] = useState<
     'ChronoWear Auto (1h)' | 'App Clima (Escolhido)' | 'Relógio Stand-Alone (1h)'
   >('ChronoWear Auto (1h)');
@@ -78,7 +80,77 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   const dayOfMonth = String(watchDate.getDate()).padStart(2, '0');
   const timeHHMMSS = `${formatTimeHHMM(currentWatchTimeMs)}:06`;
 
-  const effectiveMode = tapOverrideMode ?? watchState.effectiveContextMode;
+  const unifiedHoldMins = config.unifiedCanvasHoldMinutes ?? 30;
+  const unifiedHoldMs = unifiedHoldMins * 60_000;
+  const primaryCtx = config.autoPrimaryContext ?? 'EVENTS';
+
+  // Prioridade máxima: qualquer gatilho real de contexto (Clima, Agenda próxima, Nascer/Pôr do Sol, Sono/Acordar)
+  // tem prioridade máxima sobre o toque manual e assume o Canvas imediatamente.
+  const isPriorityContextActive =
+    config.contextWindowMode === 'DYNAMIC' &&
+    watchState.effectiveContextMode !== primaryCtx;
+
+  const isTapOverrideValid =
+    !isPriorityContextActive &&
+    tapOverrideState !== null &&
+    tapOverrideState.mode !== primaryCtx &&
+    currentWatchTimeMs >= tapOverrideState.startedAtWatchMs &&
+    currentWatchTimeMs - tapOverrideState.startedAtWatchMs <= unifiedHoldMs;
+
+  const tapRemainingMins =
+    isTapOverrideValid && tapOverrideState
+      ? Math.max(
+          1,
+          Math.ceil(
+            (tapOverrideState.startedAtWatchMs + unifiedHoldMs - currentWatchTimeMs) /
+              60_000
+          )
+        )
+      : 0;
+
+  const effectiveMode = isPriorityContextActive
+    ? watchState.effectiveContextMode
+    : isTapOverrideValid && tapOverrideState
+    ? tapOverrideState.mode
+    : watchState.effectiveContextMode;
+
+  const contextLabels: Record<'EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP', string> = {
+    EVENTS: 'Agenda',
+    WEATHER: 'Clima',
+    SUN: 'Nascer/Pôr do Sol',
+    STEPS: 'Passos',
+    SLEEP: 'Sono',
+  };
+
+  // Notificação no relógio quando uma mudança real de contexto força a troca do Canvas
+  const forcedNotifKey = isPriorityContextActive
+    ? `${watchState.effectiveContextMode}-${hasActiveWatchWeatherAlert ? 'alert' : 'auto'}`
+    : null;
+  const showWatchForcedNotification =
+    (config.notifyWatchOnCanvasChange ?? true) &&
+    isPriorityContextActive &&
+    forcedNotifKey !== null &&
+    dismissedNotifKey !== forcedNotifKey;
+
+  const forcedNotificationDetail = (() => {
+    if (!isPriorityContextActive) return '';
+    switch (watchState.effectiveContextMode) {
+      case 'WEATHER':
+        return hasActiveWatchWeatherAlert
+          ? `${weatherNotifSource}: Mudança p/ Chuva e queda 29°→23°C`
+          : 'Atualização de clima detectada';
+      case 'EVENTS':
+        return ev1
+          ? `Compromisso próximo: ${ev1.title} às ${formatTimeHHMM(ev1.startEpochMs)}`
+          : 'Janela de evento da agenda ativa';
+      case 'SUN':
+        return `Janela solar (${config.solarSunriseHHMM ?? '05:27'} / ${config.solarSunsetHHMM ?? '17:40'})`;
+      case 'SLEEP':
+        return `Resumo de sono (${config.sleepBedtimeHHMM ?? '23:18'} → ${config.sleepWakeHHMM ?? '07:00'})`;
+      default:
+        return 'Mudança prioritária de contexto';
+    }
+  })();
 
   const handleTapCanvasToCycle = () => {
     const order: ('EVENTS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP')[] = [
@@ -91,9 +163,16 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     const currentIdx = order.indexOf(effectiveMode);
     const nextMode = order[(currentIdx + 1) % order.length];
     if (config.contextWindowMode === 'DYNAMIC') {
-      setTapOverrideMode(nextMode);
+      if (nextMode === primaryCtx) {
+        setTapOverrideState(null);
+      } else {
+        setTapOverrideState({
+          mode: nextMode,
+          startedAtWatchMs: currentWatchTimeMs,
+        });
+      }
     } else {
-      setTapOverrideMode(null);
+      setTapOverrideState(null);
       onUpdateConfig({ contextWindowMode: nextMode });
     }
   };
@@ -250,7 +329,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   key={m.id}
                   type="button"
                   onClick={() => {
-                    setTapOverrideMode(null);
+                    setTapOverrideState(null);
                     onUpdateConfig({ contextWindowMode: m.id });
                   }}
                   className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
@@ -283,6 +362,47 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
             </span>
           </button>
         </div>
+
+        {/* Status do Tempo Fixo Unificado (Toque no Canvas vs Prioridade Máxima com Notificação no Relógio) */}
+        {isTapOverrideValid && tapOverrideState && (
+          <div
+            data-testid="watch-tap-hold-banner"
+            className="flex items-center justify-between gap-2 bg-amber-500/10 border border-amber-500/35 rounded-xl px-3 py-1.5 text-[11px]"
+          >
+            <span className="text-amber-200 font-medium">
+              Toque no Canvas: exibindo <strong>{contextLabels[tapOverrideState.mode]}</strong> temporariamente (retorna ao padrão <strong>{contextLabels[primaryCtx]}</strong> em <strong>{tapRemainingMins} min</strong> de {unifiedHoldMins}m)
+            </span>
+            <button
+              type="button"
+              onClick={() => setTapOverrideState(null)}
+              className="text-amber-300 hover:text-amber-100 font-mono underline cursor-pointer shrink-0"
+            >
+              Voltar agora
+            </button>
+          </div>
+        )}
+
+        {showWatchForcedNotification && (
+          <div
+            data-testid="watch-forced-canvas-notification"
+            className="flex items-center justify-between gap-2 bg-emerald-500/15 border border-emerald-500/40 rounded-xl px-3 py-1.5 text-[11px]"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <BellRing className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-emerald-200 truncate">
+                <strong>Notificação no Relógio:</strong> Canvas alterado para{' '}
+                <strong>{contextLabels[watchState.effectiveContextMode]}</strong> ({forcedNotificationDetail}) • Fixo por {unifiedHoldMins}m (Prioridade Máxima)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDismissedNotifKey(forcedNotifKey)}
+              className="text-emerald-300 hover:text-emerald-100 font-mono underline cursor-pointer shrink-0"
+            >
+              OK
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Center Circular Watch Bezel (450x450 logical representation) */}

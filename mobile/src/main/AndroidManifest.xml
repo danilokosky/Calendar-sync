@@ -23,7 +23,8 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@android:drawable/ic_menu_my_calendar"
+        android:icon="@drawable/ic_launcher_chronowear"
+        android:roundIcon="@drawable/ic_launcher_chronowear"
         android:label="ChronoWear Sync"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">

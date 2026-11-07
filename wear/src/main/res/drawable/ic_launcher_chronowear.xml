@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Fundo Circular Escuro Estilo One UI Watch -->
+    <path
+        android:fillColor="#090D14"
+        android:pathData="M54,4A50,50 0,1 1,54 104A50,50 0,1 1,54 4Z" />
+
+    <!-- Anel Externo do Bisel (Cinza Azulado Escuro) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,8A46,46 0,1 1,54 100A46,46 0,1 1,54 8Z"
+        android:strokeWidth="3.5"
+        android:strokeColor="#1E293B" />
+
+    <!-- Arco Esquerdo Laranja/Âmbar (Progresso / Eventos) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M15,36 C11,47 11,61 15,72"
+        android:strokeWidth="4.5"
+        android:strokeColor="#F59E0B"
+        android:strokeLineCap="round" />
+
+    <!-- Arco Direito Verde Esmeralda (Saúde / Passos / Sono) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M93,36 C97,47 97,61 93,72"
+        android:strokeWidth="4.5"
+        android:strokeColor="#4ADE80"
+        android:strokeLineCap="round" />
+
+    <!-- Topo Dourado (Dia da Semana) -->
+    <path
+        android:fillColor="#F5C438"
+        android:pathData="M42,17h24c1.66,0 3,1.34 3,3s-1.34,3 -3,3H42c-1.66,0 -3,-1.34 -3,-3S40.34,17 42,17z" />
+
+    <!-- Quadro Central do Canvas Inteligente -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M24,33h60c4.42,0 8,3.58 8,8v26c0,4.42 -3.58,8 -8,8H24c-4.42,0 -8,-3.58 -8,-8V41C16,36.58 19.58,33 24,33z"
+        android:strokeWidth="2"
+        android:strokeColor="#334155" />
+
+    <!-- Linha do Horizonte Azul Claro dentro do Canvas -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M22,58L86,58"
+        android:strokeWidth="2.2"
+        android:strokeColor="#60A5FA"
+        android:strokeLineCap="round" />
+
+    <!-- Curva Solar / Climática (Dia acima + Noite abaixo do horizonte) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M22,66 C30,66 34,58 38,58 C45,42 63,42 70,58 C74,58 78,66 86,66"
+        android:strokeWidth="2.8"
+        android:strokeColor="#F8FAFC"
+        android:strokeLineCap="round" />
+
+    <!-- Sol Dourado no Pico / Horizonte -->
+    <path
+        android:fillColor="#FACC15"
+        android:pathData="M54,42A5,5 0,1 1,54 52A5,5 0,1 1,54 42Z" />
+
+    <!-- Barra Inferior Ciano Estilo Tubo de Bateria -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M38,91 C48,94 60,94 70,91"
+        android:strokeWidth="5"
+        android:strokeColor="#67E8F9"
+        android:strokeLineCap="round" />
+</vector>

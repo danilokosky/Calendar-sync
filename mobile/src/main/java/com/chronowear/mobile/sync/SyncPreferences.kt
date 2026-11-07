@@ -114,12 +114,13 @@ class SyncPreferences(context: Context) {
     }
 
     /**
-     * REGRAS DO MODO AUTOMÁTICO (DYNAMIC):
-     * - Contexto Principal (EVENTS, WEATHER, SUN, STEPS, SLEEP)
-     * - Tempo de exposição da Agenda quando não for a principal (15, 30, 45, 60 min antes do evento)
-     * - Tempo de exposição do Clima ao detectar mudança/chuva (15, 30, 45, 60 min)
-     * - Tempo de exposição do Nascer/Pôr do Sol (15, 30, 45, 60 min)
-     * - Tempo de exposição do Sono ao acordar (15, 30, 45, 60 min)
+     * REGRAS UNIFICADAS DE PRIORIDADE E RETORNO AO CANVAS PADRÃO:
+     * - Canvas Padrão Principal (EVENTS, WEATHER, SUN, STEPS, SLEEP)
+     * - Tempo Unificado de Permanência de Canvas Não-Padrão (5, 15, 30, 45, 60 min):
+     *   Define por quanto tempo qualquer Canvas que não seja o padrão principal (seja aberto por
+     *   Toque/Tap na Watch Face ou forçado por mudança de Clima, Agenda, Sol ou Sono) fica fixo
+     *   no relógio antes de retornar automaticamente à aparência padrão (Canvas Padrão Principal).
+     * - Notificação no Relógio quando uma mudança de contexto forçar a troca do Canvas.
      */
     fun getAutoPrimaryContext(): String {
         return prefs.getString(KEY_AUTO_PRIMARY_CONTEXT, "EVENTS") ?: "EVENTS"
@@ -129,37 +130,44 @@ class SyncPreferences(context: Context) {
         prefs.edit().putString(KEY_AUTO_PRIMARY_CONTEXT, mode).commit()
     }
 
-    fun getAutoAgendaExposureMinutes(): Int {
-        return prefs.getInt(KEY_AUTO_AGENDA_EXPOSURE_MIN, 30).coerceIn(15, 180)
+    fun getUnifiedCanvasHoldMinutes(): Int {
+        return prefs.getInt(KEY_UNIFIED_CANVAS_HOLD_MIN, 30).coerceIn(5, 180)
     }
 
-    fun setAutoAgendaExposureMinutes(minutes: Int) {
-        prefs.edit().putInt(KEY_AUTO_AGENDA_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
+    fun setUnifiedCanvasHoldMinutes(minutes: Int) {
+        val clamped = minutes.coerceIn(5, 180)
+        prefs.edit()
+            .putInt(KEY_UNIFIED_CANVAS_HOLD_MIN, clamped)
+            .putInt(KEY_AUTO_AGENDA_EXPOSURE_MIN, clamped)
+            .putInt(KEY_AUTO_WEATHER_EXPOSURE_MIN, clamped)
+            .putInt(KEY_AUTO_SUN_EXPOSURE_MIN, clamped)
+            .putInt(KEY_AUTO_SLEEP_EXPOSURE_MIN, clamped)
+            .commit()
     }
 
-    fun getAutoWeatherExposureMinutes(): Int {
-        return prefs.getInt(KEY_AUTO_WEATHER_EXPOSURE_MIN, 30).coerceIn(15, 180)
+    fun isNotifyWatchOnCanvasChangeEnabled(): Boolean {
+        return prefs.getBoolean(KEY_NOTIFY_ON_CANVAS_CHANGE, true)
     }
 
-    fun setAutoWeatherExposureMinutes(minutes: Int) {
-        prefs.edit().putInt(KEY_AUTO_WEATHER_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
+    fun setNotifyWatchOnCanvasChangeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFY_ON_CANVAS_CHANGE, enabled).commit()
     }
 
-    fun getAutoSunExposureMinutes(): Int {
-        return prefs.getInt(KEY_AUTO_SUN_EXPOSURE_MIN, 30).coerceIn(15, 180)
-    }
+    fun getAutoAgendaExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
 
-    fun setAutoSunExposureMinutes(minutes: Int) {
-        prefs.edit().putInt(KEY_AUTO_SUN_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
-    }
+    fun setAutoAgendaExposureMinutes(minutes: Int) = setUnifiedCanvasHoldMinutes(minutes)
 
-    fun getAutoSleepExposureMinutes(): Int {
-        return prefs.getInt(KEY_AUTO_SLEEP_EXPOSURE_MIN, 30).coerceIn(15, 180)
-    }
+    fun getAutoWeatherExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
 
-    fun setAutoSleepExposureMinutes(minutes: Int) {
-        prefs.edit().putInt(KEY_AUTO_SLEEP_EXPOSURE_MIN, minutes.coerceIn(15, 180)).commit()
-    }
+    fun setAutoWeatherExposureMinutes(minutes: Int) = setUnifiedCanvasHoldMinutes(minutes)
+
+    fun getAutoSunExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
+
+    fun setAutoSunExposureMinutes(minutes: Int) = setUnifiedCanvasHoldMinutes(minutes)
+
+    fun getAutoSleepExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
+
+    fun setAutoSleepExposureMinutes(minutes: Int) = setUnifiedCanvasHoldMinutes(minutes)
 
     /**
      * DADOS DE SONO (Health Connect / Samsung Health / Monitoramento Noturno)
@@ -475,6 +483,8 @@ class SyncPreferences(context: Context) {
         private const val KEY_CHANGE_DEBOUNCE_SEC = "change_debounce_seconds"
         private const val KEY_CONTEXT_WINDOW_MODE = "context_window_mode"
         private const val KEY_AUTO_PRIMARY_CONTEXT = "auto_primary_context"
+        private const val KEY_UNIFIED_CANVAS_HOLD_MIN = "unified_canvas_hold_min"
+        private const val KEY_NOTIFY_ON_CANVAS_CHANGE = "notify_on_canvas_change"
         private const val KEY_AUTO_AGENDA_EXPOSURE_MIN = "auto_agenda_exposure_min"
         private const val KEY_AUTO_WEATHER_EXPOSURE_MIN = "auto_weather_exposure_min"
         private const val KEY_AUTO_SUN_EXPOSURE_MIN = "auto_sun_exposure_min"

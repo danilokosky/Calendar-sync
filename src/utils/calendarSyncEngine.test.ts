@@ -277,14 +277,39 @@ test('resolveEffectiveWatchContextMode respects programmable Automatic Mode prim
     false,
     {
       autoPrimaryContext: 'EVENTS',
-      autoSleepExposureMinutes: 30,
+      unifiedCanvasHoldMinutes: 30,
       sleepSyncEnabled: true,
       wakeMinutesOfDay: 420,
       currentMinutesOfDay: 430,
     }
   );
   assert.equal(modeMorningWake, 'SLEEP');
+
+  // With unifiedCanvasHoldMinutes=15, an event 20m away stays on primary context (STEPS), whereas at 12m away it switches to EVENTS
+  const outsideUnified15m = resolveEffectiveWatchContextMode(
+    'DYNAMIC',
+    true,
+    20 * 60 * 1000,
+    false,
+    {
+      autoPrimaryContext: 'STEPS',
+      unifiedCanvasHoldMinutes: 15,
+      currentMinutesOfDay: 14 * 60,
+    }
+  );
+  assert.equal(outsideUnified15m, 'STEPS');
+
+  const insideUnified15m = resolveEffectiveWatchContextMode(
+    'DYNAMIC',
+    true,
+    12 * 60 * 1000,
+    false,
+    {
+      autoPrimaryContext: 'STEPS',
+      unifiedCanvasHoldMinutes: 15,
+      currentMinutesOfDay: 14 * 60,
+    }
+  );
+  assert.equal(insideUnified15m, 'EVENTS');
 });
-
-
 

@@ -50,6 +50,12 @@ class PhoneDataListenerService : WearableListenerService() {
                 val cardPngB64 = dataMap.getString("card_png_b64")
                 val contextMode = dataMap.getString("context_window_mode")
                 val autoPrimaryContext = dataMap.getString("auto_primary_context")
+                val unifiedCanvasHoldMin = if (dataMap.containsKey("unified_canvas_hold_min")) {
+                    dataMap.getInt("unified_canvas_hold_min", 30)
+                } else null
+                val notifyOnCanvasChange = if (dataMap.containsKey("notify_on_canvas_change")) {
+                    dataMap.getBoolean("notify_on_canvas_change", true)
+                } else null
                 val autoAgendaExpMin = if (dataMap.containsKey("auto_agenda_exposure_min")) {
                     dataMap.getInt("auto_agenda_exposure_min", 30)
                 } else null
@@ -119,6 +125,8 @@ class PhoneDataListenerService : WearableListenerService() {
                     cardPngBase64 = cardPngB64,
                     contextMode = contextMode,
                     autoPrimaryContext = autoPrimaryContext,
+                    unifiedCanvasHoldMin = unifiedCanvasHoldMin,
+                    notifyOnCanvasChange = notifyOnCanvasChange,
                     autoAgendaExposureMin = autoAgendaExpMin,
                     autoWeatherExposureMin = autoWeatherExpMin,
                     autoSunExposureMin = autoSunExpMin,
@@ -182,6 +190,12 @@ class PhoneDataListenerService : WearableListenerService() {
                     val cardPngB64 = json.optString("card_png_b64", "").takeIf { it.isNotBlank() }
                     val contextMode = json.optString("context_window_mode", "").takeIf { it.isNotBlank() }
                     val autoPrimaryContext = json.optString("auto_primary_context", "").takeIf { it.isNotBlank() }
+                    val unifiedCanvasHoldMin = if (json.has("unified_canvas_hold_min")) {
+                        json.optInt("unified_canvas_hold_min", 30)
+                    } else null
+                    val notifyOnCanvasChange = if (json.has("notify_on_canvas_change")) {
+                        json.optBoolean("notify_on_canvas_change", true)
+                    } else null
                     val autoAgendaExpMin = if (json.has("auto_agenda_exposure_min")) {
                         json.optInt("auto_agenda_exposure_min", 30)
                     } else null
@@ -252,6 +266,8 @@ class PhoneDataListenerService : WearableListenerService() {
                         cardPngBase64 = cardPngB64,
                         contextMode = contextMode,
                         autoPrimaryContext = autoPrimaryContext,
+                        unifiedCanvasHoldMin = unifiedCanvasHoldMin,
+                        notifyOnCanvasChange = notifyOnCanvasChange,
                         autoAgendaExposureMin = autoAgendaExpMin,
                         autoWeatherExposureMin = autoWeatherExpMin,
                         autoSunExposureMin = autoSunExpMin,
@@ -293,6 +309,8 @@ class PhoneDataListenerService : WearableListenerService() {
         cardPngBase64: String? = null,
         contextMode: String? = null,
         autoPrimaryContext: String? = null,
+        unifiedCanvasHoldMin: Int? = null,
+        notifyOnCanvasChange: Boolean? = null,
         autoAgendaExposureMin: Int? = null,
         autoWeatherExposureMin: Int? = null,
         autoSunExposureMin: Int? = null,
@@ -330,6 +348,8 @@ class PhoneDataListenerService : WearableListenerService() {
                 cardPngBase64 = cardPngBase64,
                 contextMode = contextMode,
                 autoPrimaryContext = autoPrimaryContext,
+                unifiedCanvasHoldMin = unifiedCanvasHoldMin,
+                notifyOnCanvasChange = notifyOnCanvasChange,
                 autoAgendaExposureMin = autoAgendaExposureMin,
                 autoWeatherExposureMin = autoWeatherExposureMin,
                 autoSunExposureMin = autoSunExposureMin,
@@ -358,6 +378,7 @@ class PhoneDataListenerService : WearableListenerService() {
                 sleepWakeTimestampMs = sleepWakeTimestampMs
             )
 
+            AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)
             AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
 
             ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
@@ -440,6 +461,11 @@ class WearContextNotificationListenerService : NotificationListenerService() {
                 )
             }
 
+            AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(
+                applicationContext,
+                headline
+            )
+            AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
             ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
             applicationContext.sendBroadcast(
                 Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
@@ -462,6 +488,8 @@ class WearContextNotificationListenerService : NotificationListenerService() {
 
         if (isSleepNotification && repo.isSleepSyncEnabled()) {
             repo.recordWatchSleepNotification(nowMs = System.currentTimeMillis())
+            AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)
+            AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
             ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
             applicationContext.sendBroadcast(
                 Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)

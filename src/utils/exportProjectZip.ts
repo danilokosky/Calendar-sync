@@ -12,6 +12,19 @@ export async function downloadAndroidRepoZip(
     zip.file(file.path, file.content);
   }
 
+  // Inclui a imagem real anexada pelo usuário como preview do seletor e ícone do APK :watchface
+  try {
+    const previewResp = await fetch(
+      '/assets/aistudio/Screenshot_20261107_095843_One_UI_Watch_Home_0c7022c2.png'
+    );
+    if (previewResp.ok) {
+      const previewBuffer = await previewResp.arrayBuffer();
+      zip.file('watchface/src/main/res/drawable/preview.png', previewBuffer);
+    }
+  } catch {
+    // Fallback silencioso caso offline
+  }
+
   // Also add a pre-configured JSON file with the user's current simulator settings
   const defaultConfigJson = JSON.stringify(
     {
@@ -20,6 +33,8 @@ export async function downloadAndroidRepoZip(
       defaultProgressWindowMinutes: config.progressWindowMinutes,
       syncIntervalMinutes: config.syncIntervalMinutes,
       autoSyncOnCalendarChange: config.autoSyncOnCalendarChange,
+      unifiedCanvasHoldMinutes: config.unifiedCanvasHoldMinutes ?? 30,
+      notifyWatchOnCanvasChange: config.notifyWatchOnCanvasChange ?? true,
       preconfiguredCalendars: calendars,
     },
     null,

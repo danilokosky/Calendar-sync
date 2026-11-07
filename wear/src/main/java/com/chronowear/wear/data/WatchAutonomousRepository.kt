@@ -108,6 +108,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         cardPngBase64: String? = null,
         contextMode: String? = null,
         autoPrimaryContext: String? = null,
+        unifiedCanvasHoldMin: Int? = null,
+        notifyOnCanvasChange: Boolean? = null,
         autoAgendaExposureMin: Int? = null,
         autoWeatherExposureMin: Int? = null,
         autoSunExposureMin: Int? = null,
@@ -149,17 +151,21 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!autoPrimaryContext.isNullOrBlank()) {
             editor.putString("auto_primary_context", autoPrimaryContext)
         }
-        if (autoAgendaExposureMin != null && autoAgendaExposureMin >= 5) {
-            editor.putInt("auto_agenda_exposure_min", autoAgendaExposureMin.coerceIn(5, 180))
+        val effectiveUnifiedMin = unifiedCanvasHoldMin
+            ?: autoWeatherExposureMin
+            ?: autoAgendaExposureMin
+            ?: autoSunExposureMin
+            ?: autoSleepExposureMin
+        if (effectiveUnifiedMin != null && effectiveUnifiedMin >= 5) {
+            val clamped = effectiveUnifiedMin.coerceIn(5, 180)
+            editor.putInt("unified_canvas_hold_min", clamped)
+            editor.putInt("auto_agenda_exposure_min", clamped)
+            editor.putInt("auto_weather_exposure_min", clamped)
+            editor.putInt("auto_sun_exposure_min", clamped)
+            editor.putInt("auto_sleep_exposure_min", clamped)
         }
-        if (autoWeatherExposureMin != null && autoWeatherExposureMin >= 5) {
-            editor.putInt("auto_weather_exposure_min", autoWeatherExposureMin.coerceIn(5, 180))
-        }
-        if (autoSunExposureMin != null && autoSunExposureMin >= 5) {
-            editor.putInt("auto_sun_exposure_min", autoSunExposureMin.coerceIn(5, 180))
-        }
-        if (autoSleepExposureMin != null && autoSleepExposureMin >= 5) {
-            editor.putInt("auto_sleep_exposure_min", autoSleepExposureMin.coerceIn(5, 180))
+        if (notifyOnCanvasChange != null) {
+            editor.putBoolean("notify_on_canvas_change", notifyOnCanvasChange)
         }
         if (highFreq15MinRule != null) {
             editor.putBoolean("high_freq_15min_rule", highFreq15MinRule)
@@ -198,6 +204,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             val currentTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
             if (weatherAlertTimestampMs > currentTs) {
                 editor.putLong("weather_alert_timestamp_ms", weatherAlertTimestampMs)
+                // Mudança climática tem prioridade máxima: cancela toque manual no Canvas
+                editor.remove("tap_override_context_mode")
+                editor.putLong("tap_override_timestamp_ms", 0L)
             }
         }
         if (!solarSunriseHHMM.isNullOrBlank()) {
@@ -231,6 +240,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             val currentWakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
             if (sleepWakeTimestampMs > currentWakeTs) {
                 editor.putLong("sleep_wake_timestamp_ms", sleepWakeTimestampMs)
+                // Novo registro de despertar/sono tem prioridade máxima: cancela toque manual
+                editor.remove("tap_override_context_mode")
+                editor.putLong("tap_override_timestamp_ms", 0L)
             }
         }
         editor.commit()
@@ -269,28 +281,60 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun setContextWindowMode(mode: String) {
-        prefs.edit().putString("context_window_mode", mode).commit()
+        val editor = prefs.edit().putString("context_window_mode", mode)
+        if (mode != MODE_DYNAMIC) {
+            editor.putString("auto_primary_context", mode)
+        }
+        editor.remove("tap_override_context_mode")
+        editor.putLong("tap_override_timestamp_ms", 0L)
+        editor.commit()
     }
 
+    /**
+     * Canvas Padrão Principal: aparência padrão para a qual o relógio sempre retorna
+     * após expirar o tempo unificado de permanência de um Canvas temporário ou de um toque (Tap).
+     */
     fun getAutoPrimaryContext(): String {
+        val cfg = getContextWindowMode()
+        if (cfg != MODE_DYNAMIC) return cfg
         return prefs.getString("auto_primary_context", MODE_EVENTS) ?: MODE_EVENTS
     }
 
-    fun getAutoAgendaExposureMinutes(): Int {
-        return prefs.getInt("auto_agenda_exposure_min", 30).coerceIn(5, 180)
+    /**
+     * Tempo Unificado (em minutos) em que qualquer Canvas que não seja o Padrão Principal
+     * (aberto por Toque no Canvas da Watch Face ou disparado por Clima, Agenda, Sol ou Sono)
+     * permanece fixo antes de retornar automaticamente ao Canvas Padrão Principal.
+     */
+    fun getUnifiedCanvasHoldMinutes(): Int {
+        return prefs.getInt("unified_canvas_hold_min", 30).coerceIn(5, 180)
     }
 
-    fun getAutoWeatherExposureMinutes(): Int {
-        return prefs.getInt("auto_weather_exposure_min", 30).coerceIn(5, 180)
+    fun setUnifiedCanvasHoldMinutes(minutes: Int) {
+        val clamped = minutes.coerceIn(5, 180)
+        prefs.edit()
+            .putInt("unified_canvas_hold_min", clamped)
+            .putInt("auto_agenda_exposure_min", clamped)
+            .putInt("auto_weather_exposure_min", clamped)
+            .putInt("auto_sun_exposure_min", clamped)
+            .putInt("auto_sleep_exposure_min", clamped)
+            .commit()
     }
 
-    fun getAutoSunExposureMinutes(): Int {
-        return prefs.getInt("auto_sun_exposure_min", 30).coerceIn(5, 180)
+    fun isNotifyOnCanvasChangeEnabled(): Boolean {
+        return prefs.getBoolean("notify_on_canvas_change", true)
     }
 
-    fun getAutoSleepExposureMinutes(): Int {
-        return prefs.getInt("auto_sleep_exposure_min", 30).coerceIn(5, 180)
+    fun setNotifyOnCanvasChangeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("notify_on_canvas_change", enabled).commit()
     }
+
+    fun getAutoAgendaExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
+
+    fun getAutoWeatherExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
+
+    fun getAutoSunExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
+
+    fun getAutoSleepExposureMinutes(): Int = getUnifiedCanvasHoldMinutes()
 
     fun isSleepSyncEnabled(): Boolean {
         return prefs.getBoolean("sleep_sync_enabled", true)
@@ -322,10 +366,13 @@ class WatchAutonomousRepository private constructor(context: Context) :
             .putInt("sleep_duration_minutes", durationMinutes.coerceIn(60, 960))
             .putInt("sleep_score", sleepScore.coerceIn(1, 100))
             .putLong("sleep_wake_timestamp_ms", nowMs)
+            // Prioridade máxima: cancela toque manual no Canvas
+            .remove("tap_override_context_mode")
+            .putLong("tap_override_timestamp_ms", 0L)
             .apply()
     }
 
-    fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getAutoSleepExposureMinutes()): Boolean {
+    fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getUnifiedCanvasHoldMinutes()): Boolean {
         if (!isSleepSyncEnabled()) return false
         val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
         val windowMs = TimeUnit.MINUTES.toMillis(exposureMinutes.toLong())
@@ -333,14 +380,24 @@ class WatchAutonomousRepository private constructor(context: Context) :
             return true
         }
         val sleep = getSleepSnapshot()
-        val parts = sleep.wakeHHMM.split(":")
-        if (parts.size == 2) {
-            val wh = parts[0].trim().toIntOrNull() ?: 7
-            val wm = parts[1].trim().toIntOrNull() ?: 0
+        val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
+        val curMinsOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+
+        val wakeParts = sleep.wakeHHMM.split(":")
+        if (wakeParts.size == 2) {
+            val wh = wakeParts[0].trim().toIntOrNull() ?: 7
+            val wm = wakeParts[1].trim().toIntOrNull() ?: 0
             val wakeMinsOfDay = wh * 60 + wm
-            val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
-            val curMinsOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
             if (curMinsOfDay in wakeMinsOfDay..(wakeMinsOfDay + exposureMinutes)) {
+                return true
+            }
+        }
+        val bedParts = sleep.bedtimeHHMM.split(":")
+        if (bedParts.size == 2) {
+            val bh = bedParts[0].trim().toIntOrNull() ?: 23
+            val bm = bedParts[1].trim().toIntOrNull() ?: 18
+            val bedMinsOfDay = bh * 60 + bm
+            if (curMinsOfDay in bedMinsOfDay..(bedMinsOfDay + exposureMinutes)) {
                 return true
             }
         }
@@ -488,6 +545,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             editor.putString("weather_alert_source", "Clima")
             editor.putString("weather_alert_headline", headline)
             editor.putLong("weather_alert_timestamp_ms", nowMs)
+            // Mudança climática tem prioridade máxima sobre toque manual
+            editor.remove("tap_override_context_mode")
+            editor.putLong("tap_override_timestamp_ms", 0L)
         }
         editor.apply()
         return shiftDetected
@@ -505,6 +565,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             .putString("weather_alert_source", sourceAppLabel)
             .putString("weather_alert_headline", headline)
             .putLong("weather_alert_timestamp_ms", nowMs)
+            // Prioridade máxima: cancela toque manual
+            .remove("tap_override_context_mode")
+            .putLong("tap_override_timestamp_ms", 0L)
 
         if (!tempsCsv.isNullOrBlank()) {
             editor.putString("weather_temps_csv", tempsCsv)
@@ -520,7 +583,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     fun hasActiveWeatherNotificationOverride(
         nowMs: Long,
-        windowMinutes: Long = getAutoWeatherExposureMinutes().toLong()
+        windowMinutes: Long = getUnifiedCanvasHoldMinutes().toLong()
     ): Boolean {
         val alertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
         if (alertTs <= 0L) return false
@@ -569,11 +632,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     /**
      * Chamado quando o usuário toca diretamente na imagem do Canvas na Watch Face (Complication Tap Action).
-     * Alterna imediatamente para o próximo cenário visual na ordem:
-     * Agenda (EVENTS) -> Clima (WEATHER) -> Nascer/Pôr do Sol (SUN) -> Passos (STEPS) -> Sono (SLEEP) -> Agenda (EVENTS)
-     * - Se o relógio estiver em Modo Automático (DYNAMIC), aplica um override temporário de 3 minutos
-     *   para cada toque sem desativar o Modo Automático.
-     * - Se estiver em modo fixo, muda diretamente para o próximo contexto.
+     * - NÃO fica em definitivo: o próximo Canvas permanece fixo pelo Tempo Unificado configurado
+     *   (getUnifiedCanvasHoldMinutes(), ex: 15m, 30m, 45m, 1h) e depois retorna automaticamente
+     *   ao Canvas Padrão Principal selecionado nas configurações.
+     * - Se o toque chegar de volta ao próprio Canvas Padrão Principal, limpa o override temporário.
      */
     fun cycleNextVisualCanvasOnTap(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
         val visualOrder = listOf(
@@ -586,95 +648,157 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val currentVisual = resolveEffectiveContextMode(nowMs, upcomingThree)
         val currentIdx = visualOrder.indexOf(currentVisual).takeIf { it >= 0 } ?: 0
         val nextVisual = visualOrder[(currentIdx + 1) % visualOrder.size]
+        val defaultPrimary = getAutoPrimaryContext()
 
-        if (getContextWindowMode() == MODE_DYNAMIC) {
+        if (nextVisual == defaultPrimary) {
+            clearTapOverride()
+        } else {
             prefs.edit()
                 .putString("tap_override_context_mode", nextVisual)
                 .putLong("tap_override_timestamp_ms", nowMs)
                 .commit()
-        } else {
-            setContextWindowMode(nextVisual)
         }
         return nextVisual
     }
 
-    private fun getActiveTapOverrideMode(nowMs: Long, maxAgeMinutes: Long = 3L): String? {
+    fun clearTapOverride() {
+        prefs.edit()
+            .remove("tap_override_context_mode")
+            .putLong("tap_override_timestamp_ms", 0L)
+            .commit()
+    }
+
+    fun getTapOverrideExpiryEpochMs(nowMs: Long): Long {
+        val ts = prefs.getLong("tap_override_timestamp_ms", 0L)
+        if (ts <= 0L) return Long.MAX_VALUE
+        val holdMs = TimeUnit.MINUTES.toMillis(getUnifiedCanvasHoldMinutes().toLong())
+        val expiry = ts + holdMs
+        return if (expiry > nowMs) expiry else Long.MAX_VALUE
+    }
+
+    private fun getActiveTapOverrideMode(
+        nowMs: Long,
+        holdMinutes: Long = getUnifiedCanvasHoldMinutes().toLong()
+    ): String? {
         val ts = prefs.getLong("tap_override_timestamp_ms", 0L)
         if (ts <= 0L) return null
         val elapsed = nowMs - ts
-        if (elapsed !in 0..TimeUnit.MINUTES.toMillis(maxAgeMinutes)) return null
+        if (elapsed !in 0..TimeUnit.MINUTES.toMillis(holdMinutes)) return null
         return prefs.getString("tap_override_context_mode", null)?.takeIf { it.isNotBlank() }
     }
 
+    fun getLastNotifiedForcedContext(): String {
+        return prefs.getString("last_notified_forced_context", "") ?: ""
+    }
+
+    fun getLastNotifiedForcedContextTimestampMs(): Long {
+        return prefs.getLong("last_notified_forced_context_ts_ms", 0L)
+    }
+
+    fun recordNotifiedForcedContext(contextMode: String, nowMs: Long) {
+        prefs.edit()
+            .putString("last_notified_forced_context", contextMode)
+            .putLong("last_notified_forced_context_ts_ms", nowMs)
+            .apply()
+    }
+
     /**
-     * Resolve qual contexto deve ser desenhado no Canvas agora com base nas regras programadas
-     * pelo usuário para o Modo Automático (DYNAMIC):
-     * - Se o usuário fixou EVENTS, WEATHER, STEPS, SUN ou SLEEP, respeita a escolha fixa.
-     * - Se escolheu DYNAMIC (Auto):
-     *   0. Toque Manual no Canvas (Tap-to-Cycle):
-     *      - Se o usuário tocou na imagem do Canvas nos últimos 3 minutos, exibe o Canvas escolhido no toque.
-     *   1. Prioridade de Evento Próximo:
-     *      - Se Agenda é o Contexto Principal: faltando <= 15m (Turbo) garante foco em EVENTS.
-     *      - Se Agenda NÃO é o Contexto Principal: faltando <= autoAgendaExposureMinutes (ex: 30m)
-     *        exibe EVENTS temporariamente até o início do compromisso.
-     *   2. Exposição de Mudança Climática (WEATHER):
-     *      - Se houve alerta/mudança de temperatura ou chuva nos últimos autoWeatherExposureMinutes (ex: 30m),
-     *        exibe WEATHER pelo tempo configurado.
-     *   3. Exposição de Nascer e Pôr do Sol (SUN):
-     *      - Dentro da janela total autoSunExposureMinutes (ex: 30m -> ±15m do nascer ou pôr do sol),
-     *        exibe SUN.
-     *   4. Exposição de Resumo de Sono (SLEEP):
-     *      - Ao acordar / receber resumo do Health Connect ou Samsung Health, exibe SLEEP por
-     *        autoSleepExposureMinutes (ex: 30m).
-     *   5. Contexto Principal (Padrão):
-     *      - Retorna autoPrimaryContext (padrão EVENTS; se EVENTS e agenda vazia, exibe WEATHER).
+     * Avalia se há uma mudança de contexto de PRIORIDADE MÁXIMA ativa agora
+     * (Agenda iminente, Mudança de Clima/Chuva, Nascer/Pôr do Sol, ou Acordar/Dormir).
+     * Retorna Pair(modoForcado, motivoParaNotificacao) ou null se nenhum gatilho prioritário estiver ativo.
      */
-    fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
-        val configured = getContextWindowMode()
-        if (configured != MODE_DYNAMIC) return configured
-
-        // 0. Se o usuário acabou de tocar no Canvas na Watch Face para alternar de tela
-        val tapOverride = getActiveTapOverrideMode(nowMs)
-        if (tapOverride != null) {
-            return tapOverride
-        }
-
+    fun evaluatePriorityContextOverride(
+        nowMs: Long,
+        upcomingThree: List<CachedWearEvent>
+    ): Pair<String, String>? {
+        val unifiedHoldMin = getUnifiedCanvasHoldMinutes()
+        val unifiedHoldMs = TimeUnit.MINUTES.toMillis(unifiedHoldMin.toLong())
         val primaryContext = getAutoPrimaryContext()
         val nextEvent = upcomingThree.firstOrNull()
 
-        // 1. Prioridade de Evento iminente
+        // 1. Mudança de Clima (Temperatura / Chuva / Alerta de App) — Prioridade Máxima se recente
+        val weatherAlertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
+        if (weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..unifiedHoldMs) {
+            val snap = getHourlyWeatherSnapshot(nowMs)
+            return MODE_WEATHER to "${snap.weatherConditionLabel} • ${snap.alertHeadline}"
+        }
+
+        // 2. Agenda (Compromisso entrando na janela de exposição ou nos 15m finais)
         if (nextEvent != null) {
             val remMs = nextEvent.startEpochMs - nowMs
             val agendaExposureMs = if (primaryContext == MODE_EVENTS) {
                 TimeUnit.MINUTES.toMillis(15L)
             } else {
-                TimeUnit.MINUTES.toMillis(getAutoAgendaExposureMinutes().toLong())
+                unifiedHoldMs
             }
             if (remMs in 1..agendaExposureMs) {
-                return MODE_EVENTS
+                return MODE_EVENTS to "${nextEvent.formatStartHHMM()} ${nextEvent.title} (em ${nextEvent.formatRemaining(nowMs)})"
             }
         }
 
-        // 2. Exposição temporária de Clima após mudança de temperatura/chuva
-        if (hasActiveWeatherNotificationOverride(nowMs, getAutoWeatherExposureMinutes().toLong())) {
-            return MODE_WEATHER
-        }
-
-        // 3. Exposição temporária de Nascer / Pôr do Sol
+        // 3. Nascer e Pôr do Sol (dentro da janela unificada ao redor do evento solar)
         val solar = getSolarSnapshot(nowMs)
-        val halfSunWindowMins = (getAutoSunExposureMinutes() / 2).coerceAtLeast(5)
+        val halfSunWindowMins = (unifiedHoldMin / 2).coerceAtLeast(5)
         val nearSunrise = abs(solar.currentMinutesOfDay - solar.sunriseMinutesOfDay) <= halfSunWindowMins
         val nearSunset = abs(solar.currentMinutesOfDay - solar.sunsetMinutesOfDay) <= halfSunWindowMins
-        if (nearSunrise || nearSunset) {
-            return MODE_SUN
+        if (nearSunrise) {
+            return MODE_SUN to "Nascer do Sol às ${solar.sunriseHHMM} (Exposição ${unifiedHoldMin}m)"
+        }
+        if (nearSunset) {
+            return MODE_SUN to "Pôr do Sol às ${solar.sunsetHHMM} (Exposição ${unifiedHoldMin}m)"
         }
 
-        // 4. Exposição temporária de Sono após acordar
-        if (hasActiveSleepWakeExposure(nowMs, getAutoSleepExposureMinutes())) {
-            return MODE_SLEEP
+        // 4. Dormir ou Acordar (Resumo de Sono)
+        if (hasActiveSleepWakeExposure(nowMs, unifiedHoldMin)) {
+            val sleep = getSleepSnapshot()
+            val h = sleep.durationMinutes / 60
+            val m = sleep.durationMinutes % 60
+            return MODE_SLEEP to "Sono ${h}h ${m}m (${sleep.sleepScore} pts) • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
         }
 
-        // 5. Contexto Principal configurado pelo usuário
+        return null
+    }
+
+    /**
+     * Resolve qual contexto deve ser desenhado no Canvas agora:
+     * 1. Mudanças Reais de Contexto (Clima, Agenda, Pôr/Nascer do Sol, Acordar/Dormir) têm
+     *    PRIORIDADE MÁXIMA quando ocorrem: se não houver toque manual mais recente que o gatilho,
+     *    assumem o Canvas pelo Tempo Unificado (getUnifiedCanvasHoldMinutes()) e depois retornam
+     *    ao Canvas Padrão Principal.
+     * 2. Toque Manual no Canvas (Tap-to-Cycle):
+     *    Se o usuário tocou no Canvas na Watch Face para inspecionar o próximo Canvas disponível,
+     *    ele permanece fixo pelo Tempo Unificado (getUnifiedCanvasHoldMinutes()) e depois retorna
+     *    automaticamente à aparência padrão (Canvas Padrão Principal).
+     * 3. Canvas Padrão Principal:
+     *    Retorna getAutoPrimaryContext() selecionado nas configurações.
+     */
+    fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
+        val unifiedHoldMin = getUnifiedCanvasHoldMinutes().toLong()
+        val tapOverride = getActiveTapOverrideMode(nowMs, unifiedHoldMin)
+        val tapTs = prefs.getLong("tap_override_timestamp_ms", 0L)
+
+        // Verifica se há mudança prioritária de contexto (Clima, Agenda, Sol, Sono)
+        val priorityPair = evaluatePriorityContextOverride(nowMs, upcomingThree)
+        if (priorityPair != null) {
+            val (priorityMode, _) = priorityPair
+            val weatherTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
+            val sleepTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
+            val newestTriggerTs = maxOf(weatherTs, sleepTs)
+
+            // Se não há toque manual ativo OU se a mudança de contexto aconteceu após o toque,
+            // a mudança de contexto tem prioridade máxima!
+            if (tapOverride == null || newestTriggerTs >= tapTs) {
+                return priorityMode
+            }
+        }
+
+        // Se o usuário tocou no Canvas na Watch Face dentro do tempo unificado configurado
+        if (tapOverride != null) {
+            return tapOverride
+        }
+
+        // Caso contrário, retorna ao Canvas Padrão Principal configurado pelo usuário
+        val primaryContext = getAutoPrimaryContext()
         return if (primaryContext == MODE_EVENTS && upcomingThree.isEmpty()) {
             MODE_WEATHER
         } else {

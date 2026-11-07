@@ -20,7 +20,7 @@ export type SyncHorizonDays = 2 | 3 | 5 | 7;
 export type ProgressWindowMinutes = 30 | 60 | 120 | 180;
 export type SyncIntervalMinutes = 15 | 30 | 60;
 export type PhoneWeatherCheckIntervalMinutes = 30 | 60 | 120 | 180;
-export type AutoExposureMinutes = 15 | 30 | 45 | 60;
+export type AutoExposureMinutes = 5 | 15 | 30 | 45 | 60;
 export type PrimaryContextMode = 'EVENTS' | 'WEATHER' | 'STEPS' | 'SUN' | 'SLEEP';
 export type ContextWindowMode = 'DYNAMIC' | PrimaryContextMode;
 
@@ -91,6 +91,8 @@ export interface SyncConfiguration {
   autoSyncOnCalendarChange: boolean;
   contextWindowMode: ContextWindowMode;
   autoPrimaryContext?: PrimaryContextMode;
+  unifiedCanvasHoldMinutes?: AutoExposureMinutes;
+  notifyWatchOnCanvasChange?: boolean;
   autoAgendaExposureMinutes?: AutoExposureMinutes;
   autoWeatherExposureMinutes?: AutoExposureMinutes;
   autoSunExposureMinutes?: AutoExposureMinutes;
@@ -120,6 +122,8 @@ export interface WatchCacheState {
   isBluetoothConnected: boolean;
   contextWindowMode?: ContextWindowMode;
   autoPrimaryContext?: PrimaryContextMode;
+  unifiedCanvasHoldMinutes?: AutoExposureMinutes;
+  notifyWatchOnCanvasChange?: boolean;
   autoAgendaExposureMinutes?: AutoExposureMinutes;
   autoWeatherExposureMinutes?: AutoExposureMinutes;
   autoSunExposureMinutes?: AutoExposureMinutes;
@@ -132,6 +136,7 @@ export interface WatchCacheState {
   solarSunriseHHMM?: string;
   solarSunsetHHMM?: string;
   sleepSyncEnabled?: boolean;
+  sleepBedtimeHHMM?: string;
   sleepWakeHHMM?: string;
 }
 
@@ -260,6 +265,7 @@ export function detectHourlyWeatherShift(
 
 export interface AutoModeResolutionOptions {
   autoPrimaryContext?: PrimaryContextMode;
+  unifiedCanvasHoldMinutes?: AutoExposureMinutes;
   autoAgendaExposureMinutes?: AutoExposureMinutes;
   autoWeatherExposureMinutes?: AutoExposureMinutes;
   autoSunExposureMinutes?: AutoExposureMinutes;
@@ -268,6 +274,7 @@ export interface AutoModeResolutionOptions {
   sunriseMinutesOfDay?: number;
   sunsetMinutesOfDay?: number;
   sleepSyncEnabled?: boolean;
+  bedtimeMinutesOfDay?: number;
   wakeMinutesOfDay?: number;
 }
 
@@ -283,27 +290,43 @@ export function resolveEffectiveWatchContextMode(
   }
 
   const primaryContext: PrimaryContextMode = options?.autoPrimaryContext ?? 'EVENTS';
+  const unifiedHoldMins: AutoExposureMinutes =
+    options?.unifiedCanvasHoldMinutes ??
+    options?.autoAgendaExposureMinutes ??
+    options?.autoWeatherExposureMinutes ??
+    options?.autoSunExposureMinutes ??
+    options?.autoSleepExposureMinutes ??
+    30;
+
   const agendaExposureMs =
-    (primaryContext === 'EVENTS' ? 15 : options?.autoAgendaExposureMinutes ?? 30) *
+    (primaryContext === 'EVENTS'
+      ? 15
+      : options?.autoAgendaExposureMinutes ?? unifiedHoldMins) *
     60 *
     1000;
 
-  // 1. Prioridade de Evento iminente
-  if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= agendaExposureMs) {
+  // 1. Urgência Imediata de Compromisso (<= 15 min antes do evento)
+  if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= 15 * 60 * 1000) {
     return 'EVENTS';
   }
 
-  // 2. Exposição de Mudança Climática / Chuva
+  // 2. Prioridade Máxima: Mudança Climática / Chuva ou Alerta de Clima Ativo
   if (hasActiveWatchWeatherAlert) {
     return 'WEATHER';
   }
 
-  // 3. Exposição de Nascer e Pôr do Sol (dentro da janela configurada)
+  // 3. Prioridade Máxima: Evento entrando na janela de exposição configurada
+  if (hasUpcomingEvent && remainingMs > 0 && remainingMs <= agendaExposureMs) {
+    return 'EVENTS';
+  }
+
+  // 3. Prioridade Máxima: Nascer e Pôr do Sol (dentro da janela unificada)
   if (options?.currentMinutesOfDay != null) {
     const curMins = options.currentMinutesOfDay;
     const riseMins = options.sunriseMinutesOfDay ?? 327;
     const setMins = options.sunsetMinutesOfDay ?? 1060;
-    const halfSunWin = Math.max(5, Math.floor((options.autoSunExposureMinutes ?? 30) / 2));
+    const sunExp = options.autoSunExposureMinutes ?? unifiedHoldMins;
+    const halfSunWin = Math.max(5, Math.floor(sunExp / 2));
     if (
       Math.abs(curMins - riseMins) <= halfSunWin ||
       Math.abs(curMins - setMins) <= halfSunWin
@@ -311,16 +334,21 @@ export function resolveEffectiveWatchContextMode(
       return 'SUN';
     }
 
-    // 4. Exposição de Resumo de Sono ao acordar
+    // 4. Prioridade Máxima: Acordar ou Dormir (Resumo de Sono)
     const sleepEnabled = options.sleepSyncEnabled ?? true;
     const wakeMins = options.wakeMinutesOfDay ?? 420; // 07:00
-    const sleepExp = options.autoSleepExposureMinutes ?? 30;
-    if (sleepEnabled && curMins >= wakeMins && curMins <= wakeMins + sleepExp) {
+    const bedMins = options.bedtimeMinutesOfDay ?? 1398; // 23:18
+    const sleepExp = options.autoSleepExposureMinutes ?? unifiedHoldMins;
+    if (
+      sleepEnabled &&
+      ((curMins >= wakeMins && curMins <= wakeMins + sleepExp) ||
+        (curMins >= bedMins && curMins <= bedMins + sleepExp))
+    ) {
       return 'SLEEP';
     }
   }
 
-  // 5. Contexto Principal configurado pelo usuário
+  // 5. Canvas Padrão Principal configurado pelo usuário
   if (primaryContext === 'EVENTS' && !hasUpcomingEvent) {
     return 'WEATHER';
   }
@@ -363,19 +391,22 @@ export function evaluateWatchAutonomousState(
   const configuredMode: ContextWindowMode = cache.contextWindowMode ?? 'DYNAMIC';
   const highFreq15MinRule = cache.highFreq15MinRule ?? true;
   const hasWeatherAlert = cache.hasActiveWatchWeatherAlert ?? false;
+  const unifiedHold = cache.unifiedCanvasHoldMinutes ?? 30;
 
   const d = new Date(currentWatchTimeMs);
   const currentMinutesOfDay = d.getHours() * 60 + d.getMinutes();
   const autoOptions: AutoModeResolutionOptions = {
     autoPrimaryContext: cache.autoPrimaryContext ?? 'EVENTS',
-    autoAgendaExposureMinutes: cache.autoAgendaExposureMinutes ?? 30,
-    autoWeatherExposureMinutes: cache.autoWeatherExposureMinutes ?? 30,
-    autoSunExposureMinutes: cache.autoSunExposureMinutes ?? 30,
-    autoSleepExposureMinutes: cache.autoSleepExposureMinutes ?? 30,
+    unifiedCanvasHoldMinutes: unifiedHold,
+    autoAgendaExposureMinutes: cache.autoAgendaExposureMinutes ?? unifiedHold,
+    autoWeatherExposureMinutes: cache.autoWeatherExposureMinutes ?? unifiedHold,
+    autoSunExposureMinutes: cache.autoSunExposureMinutes ?? unifiedHold,
+    autoSleepExposureMinutes: cache.autoSleepExposureMinutes ?? unifiedHold,
     currentMinutesOfDay,
     sunriseMinutesOfDay: parseHHMMToMinutesOfDay(cache.solarSunriseHHMM, 327),
     sunsetMinutesOfDay: parseHHMMToMinutesOfDay(cache.solarSunsetHHMM, 1060),
     sleepSyncEnabled: cache.sleepSyncEnabled ?? true,
+    bedtimeMinutesOfDay: parseHHMMToMinutesOfDay(cache.sleepBedtimeHHMM, 1398),
     wakeMinutesOfDay: parseHHMMToMinutesOfDay(cache.sleepWakeHHMM, 420),
   };
 
