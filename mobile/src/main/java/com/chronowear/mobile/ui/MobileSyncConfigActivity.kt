@@ -1208,11 +1208,11 @@ class MobileSyncConfigActivity : Activity() {
             ) {
                 prefs.setSleepSyncEnabled(true)
                 prefs.saveSleepSnapshot(
-                    durationMinutes = 462,
+                    totalDurationMinutes = 462,
                     sleepScore = 86,
                     bedtimeHHMM = "23:18",
                     wakeHHMM = "07:00",
-                    stagesCsv = "18,95,244,105",
+                    stagesMinutesCsv = "18,95,244,105",
                     wakeTimestampMs = System.currentTimeMillis()
                 )
                 refreshUiState()

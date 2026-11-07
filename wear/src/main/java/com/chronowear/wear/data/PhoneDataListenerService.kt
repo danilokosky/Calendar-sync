@@ -94,18 +94,22 @@ class PhoneDataListenerService : WearableListenerService() {
                 val sleepSyncEnabled = if (dataMap.containsKey("sleep_sync_enabled")) {
                     dataMap.getBoolean("sleep_sync_enabled", true)
                 } else null
-                val sleepDurationMin = if (dataMap.containsKey("sleep_duration_minutes")) {
-                    dataMap.getInt("sleep_duration_minutes", 462)
-                } else null
+                val sleepDurationMin = when {
+                    dataMap.containsKey("sleep_duration_min") -> dataMap.getInt("sleep_duration_min", 462)
+                    dataMap.containsKey("sleep_duration_minutes") -> dataMap.getInt("sleep_duration_minutes", 462)
+                    else -> null
+                }
                 val sleepScore = if (dataMap.containsKey("sleep_score")) {
                     dataMap.getInt("sleep_score", 86)
                 } else null
                 val sleepBedtimeHHMM = dataMap.getString("sleep_bedtime_hhmm")
                 val sleepWakeHHMM = dataMap.getString("sleep_wake_hhmm")
                 val sleepStagesCsv = dataMap.getString("sleep_stages_csv")
-                val sleepWakeTsMs = if (dataMap.containsKey("sleep_wake_timestamp_ms")) {
-                    dataMap.getLong("sleep_wake_timestamp_ms", 0L)
-                } else null
+                val sleepWakeTsMs = when {
+                    dataMap.containsKey("sleep_wake_ts_ms") -> dataMap.getLong("sleep_wake_ts_ms", 0L)
+                    dataMap.containsKey("sleep_wake_timestamp_ms") -> dataMap.getLong("sleep_wake_timestamp_ms", 0L)
+                    else -> null
+                }
 
                 persistAndNotify(
                     eventsJson = eventsJson,
@@ -223,18 +227,22 @@ class PhoneDataListenerService : WearableListenerService() {
                     val sleepSyncEnabled = if (json.has("sleep_sync_enabled")) {
                         json.optBoolean("sleep_sync_enabled", true)
                     } else null
-                    val sleepDurationMin = if (json.has("sleep_duration_minutes")) {
-                        json.optInt("sleep_duration_minutes", 462)
-                    } else null
+                    val sleepDurationMin = when {
+                        json.has("sleep_duration_min") -> json.optInt("sleep_duration_min", 462)
+                        json.has("sleep_duration_minutes") -> json.optInt("sleep_duration_minutes", 462)
+                        else -> null
+                    }
                     val sleepScore = if (json.has("sleep_score")) {
                         json.optInt("sleep_score", 86)
                     } else null
                     val sleepBedtimeHHMM = json.optString("sleep_bedtime_hhmm", "").takeIf { it.isNotBlank() }
                     val sleepWakeHHMM = json.optString("sleep_wake_hhmm", "").takeIf { it.isNotBlank() }
                     val sleepStagesCsv = json.optString("sleep_stages_csv", "").takeIf { it.isNotBlank() }
-                    val sleepWakeTsMs = if (json.has("sleep_wake_timestamp_ms")) {
-                        json.optLong("sleep_wake_timestamp_ms", 0L)
-                    } else null
+                    val sleepWakeTsMs = when {
+                        json.has("sleep_wake_ts_ms") -> json.optLong("sleep_wake_ts_ms", 0L)
+                        json.has("sleep_wake_timestamp_ms") -> json.optLong("sleep_wake_timestamp_ms", 0L)
+                        else -> null
+                    }
 
                     persistAndNotify(
                         eventsJson = eventsArray,

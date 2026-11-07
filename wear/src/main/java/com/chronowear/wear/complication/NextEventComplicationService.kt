@@ -3,7 +3,6 @@ package com.chronowear.wear.complication
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -16,7 +15,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.text.TextPaint
 import android.text.TextUtils
-import android.util.Base64
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.PhotoImageComplicationData
