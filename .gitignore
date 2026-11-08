@@ -11,3 +11,5 @@ coverage/
 *.webm
 public/assets/aistudio/*.mp4
 public/assets/aistudio/*.jpg
+.aistudio/
+.playwright-cli/

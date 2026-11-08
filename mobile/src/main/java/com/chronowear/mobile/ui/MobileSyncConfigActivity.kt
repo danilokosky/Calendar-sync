@@ -1860,7 +1860,7 @@ class MobileSyncConfigActivity : Activity() {
             }
             setOnLongClickListener {
                 val clip = ClipData.newPlainText("widget_id", widgetId)
-                val shadow = DragShadowBuilder(card)
+                val shadow = View.DragShadowBuilder(card)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     card.startDragAndDrop(clip, shadow, widgetId, 0)
                 } else {
