@@ -2595,7 +2595,7 @@ class MobileSyncConfigActivity : Activity() {
                 // Regra estrita de 3 níveis:
                 // 1) Hoje (com hora HH:mm) -> 2) Amanhã (com hora HH:mm) -> 3) Sem data + Atrasadas em vermelho (ambas sem data/hora)
                 val resolvedTasks = prefs.resolveTasksBucketForCanvas(nowMs)
-                val activeTasks = resolvedTasks.visibleTasks
+                val activeTasks = resolvedTasks.displayTasks
                 val showTime = resolvedTasks.showTime
 
                 paint.style = Paint.Style.FILL
@@ -3392,7 +3392,7 @@ class MobileSyncConfigActivity : Activity() {
                 if (title.isNotBlank()) {
                     val hasTime = selectedCategory == "TODAY" || selectedCategory == "TOMORROW"
                     val timeLabel = if (hasTime) rawTime.ifBlank { "14:00" } else ""
-                    val updated = prefs.getMobileTaskItems().toMutableList()
+                    val updated = prefs.getAllUncompletedTasks(System.currentTimeMillis()).toMutableList()
                     updated.add(
                         0,
                         MobileTaskItem(

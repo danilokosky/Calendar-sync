@@ -37,7 +37,8 @@ data class MobileResolvedTasksSnapshot(
     val rightBadgeText: String,
     val showTime: Boolean,
     val bucket: String,
-    val displayTasks: List<MobileTaskItem>
+    val displayTasks: List<MobileTaskItem>,
+    val visibleTasks: List<MobileTaskItem> = displayTasks
 )
 
 class SyncPreferences(context: Context) {
@@ -475,6 +476,10 @@ class SyncPreferences(context: Context) {
 
     fun getActiveUncompletedTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
         return resolveTasksBucketForCanvas(nowMs).displayTasks
+    }
+
+    fun getMobileTaskItems(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+        return getAllUncompletedTasks(nowMs)
     }
 
     fun getTasksFilteredJsonForWatch(nowMs: Long = System.currentTimeMillis()): String {
