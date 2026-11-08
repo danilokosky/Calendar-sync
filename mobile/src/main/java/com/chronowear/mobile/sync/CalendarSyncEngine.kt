@@ -708,6 +708,110 @@ object CalendarSyncEngine {
         return shiftDetected
     }
 
+    /**
+     * Lê tarefas/lembretes reais do dispositivo (calendários de Tasks/Reminder + tarefas salvas no app)
+     * classificando-as estritamente em:
+     * - TODAY (agendadas para hoje, com hora HH:mm)
+     * - TOMORROW (agendadas para amanhã, com hora HH:mm)
+     * - UNDATED (sem data/hora definida)
+     * - OVERDUE (em atraso, sem data e hora, exibidas em vermelho)
+     */
+    fun buildMergedTasksJsonForWatch(context: Context, prefs: SyncPreferences, nowMs: Long): String {
+        val baseTasks = prefs.getAllUncompletedTasks(nowMs).toMutableList()
+        if (hasCalendarPermission(context)) {
+            try {
+                val startRange = nowMs - TimeUnit.DAYS.toMillis(2)
+                val endRange = nowMs + TimeUnit.DAYS.toMillis(2)
+                val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
+                ContentUris.appendId(builder, startRange)
+                ContentUris.appendId(builder, endRange)
+                val projection = arrayOf(
+                    CalendarContract.Instances.EVENT_ID,
+                    CalendarContract.Instances.TITLE,
+                    CalendarContract.Instances.BEGIN,
+                    CalendarContract.Instances.END,
+                    CalendarContract.Instances.ALL_DAY,
+                    CalendarContract.Instances.CALENDAR_DISPLAY_NAME
+                )
+                val sdfHHMM = SimpleDateFormat("HH:mm", Locale.getDefault())
+                context.contentResolver.query(
+                    builder.build(),
+                    projection,
+                    null,
+                    null,
+                    "${CalendarContract.Instances.BEGIN} ASC"
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val calName = (cursor.getString(3 + 2) ?: "").lowercase(Locale.ROOT)
+                        val isTaskCal = calName.contains("task") ||
+                            calName.contains("tarefa") ||
+                            calName.contains("reminder") ||
+                            calName.contains("lembrete")
+                        if (!isTaskCal) continue
+
+                        val evId = cursor.getLong(0).toString()
+                        val title = (cursor.getString(1) ?: "").trim()
+                        if (title.isBlank()) continue
+                        if (baseTasks.any { it.title.equals(title, ignoreCase = true) }) continue
+
+                        val beginMs = cursor.getLong(2)
+                        val endMs = cursor.getLong(3)
+                        val allDay = cursor.getInt(4) == 1
+                        val dayDiff = calendarDaysDiff(nowMs, beginMs)
+
+                        val category = when {
+                            endMs < nowMs || dayDiff < 0 -> "OVERDUE"
+                            allDay -> "UNDATED"
+                            dayDiff == 0 -> "TODAY"
+                            dayDiff == 1 -> "TOMORROW"
+                            else -> continue
+                        }
+                        val dueTime = if (category == "TODAY" || category == "TOMORROW") {
+                            sdfHHMM.format(Date(beginMs))
+                        } else {
+                            ""
+                        }
+                        val source = if (calName.contains("reminder") || calName.contains("lembrete")) {
+                            "Reminder"
+                        } else {
+                            "Tasks"
+                        }
+                        baseTasks.add(
+                            MobileTaskItem(
+                                id = "cal_task_$evId",
+                                title = title,
+                                dueHHMM = dueTime,
+                                sourceLabel = source,
+                                completed = false,
+                                isTodayOrTimeless = true,
+                                scheduleCategory = category,
+                                isOverdue = category == "OVERDUE"
+                            )
+                        )
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        val arr = JSONArray()
+        baseTasks.forEach { t ->
+            arr.put(
+                JSONObject().apply {
+                    put("id", t.id)
+                    put("title", t.title)
+                    put("dueHHMM", if (t.scheduleCategory == "TODAY" || t.scheduleCategory == "TOMORROW") t.dueHHMM else "")
+                    put("sourceLabel", t.sourceLabel)
+                    put("completed", false)
+                    put("isTodayOrTimeless", true)
+                    put("scheduleCategory", t.scheduleCategory)
+                    put("isOverdue", t.isOverdue || t.scheduleCategory == "OVERDUE")
+                }
+            )
+        }
+        return arr.toString()
+    }
+
     suspend fun performFullSyncToWatch(
         context: Context,
         triggerSource: String = "Sincronização Manual"
@@ -715,9 +819,10 @@ object CalendarSyncEngine {
         val prefs = SyncPreferences(context)
         val nowMs = System.currentTimeMillis()
 
-        // Atualiza previsões horárias de clima e horários solares pelo telefone
-        fetchPhoneHourlyWeatherIfNeeded(context, forceRefresh = false)
-        val (weatherLat, weatherLon) = resolveDeviceCoordinates(context)
+        // Usa imediatamente as coordenadas salvas em cache para não atrasar o envio ao relógio
+        val cachedCoords = prefs.getLastKnownCoordinates()
+        val weatherLat = cachedCoords?.first ?: -23.5505
+        val weatherLon = cachedCoords?.second ?: -46.6333
 
         val hasCalPerm = hasCalendarPermission(context)
         val selectedCalendarsCount = prefs.getSelectedCalendarIds().size
@@ -770,8 +875,8 @@ object CalendarSyncEngine {
         val sleepStagesCsv = prefs.getSleepStagesCsv()
         val sleepWakeTsMs = prefs.getSleepWakeTimestampMs()
         val tasksSyncEnabled = prefs.isTasksSyncEnabled()
-        // Sincroniza automaticamente apenas tarefas não concluídas para Hoje ou Sem horário junto com a Agenda
-        val tasksJson = prefs.getTasksFilteredJsonForWatch(nowMs)
+        // Sincroniza imediatamente as tarefas classificadas (Hoje c/ hora -> Amanhã c/ hora -> Sem data e Atrasadas em vermelho)
+        val tasksJson = buildMergedTasksJsonForWatch(context, prefs, nowMs)
         val tasksAlertTsMs = prefs.getTasksAlertTimestampMs()
         val highFreq15Min = prefs.isHighFreq15MinRuleEnabled()
         val updateOnWake = prefs.isUpdateOnScreenWakeEnabled()
@@ -843,8 +948,19 @@ object CalendarSyncEngine {
         }.toString()
 
         try {
-            val connReport = checkWearConnectionAndAppStatus(context)
+            // 1. ENVIO IMEDIATO AO RELÓGIO (MessageClient em tempo real + DataClient Urgente, sem bloquear na rede!)
             val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+            val payloadBytes = payloadJson.toByteArray(Charsets.UTF_8)
+            for (node in nodes) {
+                try {
+                    Wearable.getMessageClient(context).sendMessage(
+                        node.id,
+                        MESSAGE_FORCE_SYNC_PATH,
+                        payloadBytes
+                    ).await()
+                } catch (_: Exception) {
+                }
+            }
 
             val putDataMapReq = PutDataMapRequest.create(DATA_LAYER_PATH).apply {
                 dataMap.putString("events_json", jsonArray.toString())
@@ -899,14 +1015,7 @@ object CalendarSyncEngine {
                 .putDataItem(putDataMapReq.asPutDataRequest().setUrgent())
                 .await()
 
-            for (node in nodes) {
-                Wearable.getMessageClient(context).sendMessage(
-                    node.id,
-                    MESSAGE_FORCE_SYNC_PATH,
-                    payloadJson.toByteArray(Charsets.UTF_8)
-                ).await()
-            }
-
+            val connReport = checkWearConnectionAndAppStatus(context)
             val nodeStatus = when (connReport.state) {
                 WearConnectionState.CONNECTED_WITH_APP_INSTALLED ->
                     "Sincronizado com ${connReport.installedAppNodeNames.joinToString()}"
@@ -926,9 +1035,17 @@ object CalendarSyncEngine {
             )
         }
 
+        // Notifica a interface do smartphone imediatamente
         context.sendBroadcast(
             Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(context.packageName)
         )
+
+        // 2. Somente APÓS o relógio já ter sido atualizado instantaneamente, verifica em segundo plano se o clima precisa ser renovado
+        try {
+            fetchPhoneHourlyWeatherIfNeeded(context, forceRefresh = false)
+        } catch (_: Exception) {
+        }
+
         return events.size
     }
 

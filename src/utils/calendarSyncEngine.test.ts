@@ -417,50 +417,105 @@ test('evaluateWatchAutonomousState shows Amanhã header when next events are tom
   assert.equal(stateNoActiveTasks.agendaDayHeader, 'Amanhã');
 });
 
-test('filterActiveTasksForWatch excludes completed tasks and tasks from other days, and Today agenda never mixes Tomorrow events', async () => {
-  const { filterActiveTasksForWatch } = await import('./calendarSyncEngine');
-  const filtered = filterActiveTasksForWatch([
+test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today (with time) -> Tomorrow (with time) -> Undated & Overdue in red (without date or time)', async () => {
+  const { resolveTasksCanvasState } = await import('./calendarSyncEngine');
+
+  const mixedTasks = [
     {
-      id: 't-today',
+      id: 't-today-1',
       title: 'Revisar PR de hoje',
       dueHHMM: '15:00',
-      sourceLabel: 'Tasks',
+      sourceLabel: 'Tasks' as const,
       completed: false,
+      scheduleCategory: 'TODAY' as const,
       isTodayOrTimeless: true,
     },
     {
-      id: 't-timeless',
-      title: 'Ligar para contabilidade',
-      dueHHMM: 'Hoje',
-      sourceLabel: 'Reminder',
+      id: 't-tomorrow-1',
+      title: 'Apresentação de amanhã',
+      dueHHMM: '10:30',
+      sourceLabel: 'Reminder' as const,
       completed: false,
+      scheduleCategory: 'TOMORROW' as const,
+      isTodayOrTimeless: true,
+    },
+    {
+      id: 't-undated-1',
+      title: 'Ligar para contabilidade',
+      dueHHMM: '',
+      sourceLabel: 'Reminder' as const,
+      completed: false,
+      scheduleCategory: 'UNDATED' as const,
+      isTodayOrTimeless: true,
+    },
+    {
+      id: 't-overdue-1',
+      title: 'Pagar fatura atrasada',
+      dueHHMM: 'Ontem 18:00',
+      sourceLabel: 'Tasks' as const,
+      completed: false,
+      scheduleCategory: 'OVERDUE' as const,
+      isOverdue: true,
       isTodayOrTimeless: true,
     },
     {
       id: 't-done',
       title: 'Tarefa já concluída',
       dueHHMM: '11:00',
-      sourceLabel: 'Tasks',
+      sourceLabel: 'Tasks' as const,
       completed: true,
+      scheduleCategory: 'TODAY' as const,
       isTodayOrTimeless: true,
     },
-    {
-      id: 't-other-day',
-      title: 'Tarefa da próxima semana',
-      dueHHMM: '10:00',
-      sourceLabel: 'Tasks',
-      completed: false,
-      isTodayOrTimeless: false,
-    },
-  ]);
+  ];
 
-  assert.equal(filtered.length, 2);
+  // TIER 1: When Today tasks exist -> ONLY Today tasks are shown, WITH time (showTime = true)
+  const tier1 = resolveTasksCanvasState(mixedTasks);
+  assert.equal(tier1.bucket, 'TODAY');
+  assert.equal(tier1.headerTitle, 'Tarefas • Hoje');
+  assert.equal(tier1.showTime, true);
   assert.deepEqual(
-    filtered.map((t) => t.id),
-    ['t-today', 't-timeless']
+    tier1.displayTasks.map((t) => t.id),
+    ['t-today-1']
   );
+  assert.equal(tier1.displayTasks[0].displayTimeHHMM, '15:00');
+  assert.equal(tier1.displayTasks[0].isRedOverdue, false);
 
-  // When 1 event is Today and 1 event is Tomorrow, dayEvents under 'Hoje' must ONLY contain Today's event
+  // TIER 2: When Today tasks are completed/absent -> ONLY Tomorrow tasks are shown, WITH time (showTime = true)
+  const withoutToday = mixedTasks.map((t) =>
+    t.id === 't-today-1' ? { ...t, completed: true } : t
+  );
+  const tier2 = resolveTasksCanvasState(withoutToday);
+  assert.equal(tier2.bucket, 'TOMORROW');
+  assert.equal(tier2.headerTitle, 'Tarefas • Amanhã');
+  assert.equal(tier2.showTime, true);
+  assert.deepEqual(
+    tier2.displayTasks.map((t) => t.id),
+    ['t-tomorrow-1']
+  );
+  assert.equal(tier2.displayTasks[0].displayTimeHHMM, '10:30');
+  assert.equal(tier2.displayTasks[0].isRedOverdue, false);
+
+  // TIER 3: When Today and Tomorrow tasks are absent -> Undated & Overdue tasks are shown WITHOUT date/time (showTime = false), and Overdue is flagged red
+  const withoutTodayAndTomorrow = withoutToday.map((t) =>
+    t.id === 't-tomorrow-1' ? { ...t, completed: true } : t
+  );
+  const tier3 = resolveTasksCanvasState(withoutTodayAndTomorrow);
+  assert.equal(tier3.bucket, 'UNDATED_OVERDUE');
+  assert.equal(tier3.headerTitle, 'Tarefas • Sem data');
+  assert.equal(tier3.showTime, false);
+  assert.deepEqual(
+    tier3.displayTasks.map((t) => t.id),
+    ['t-overdue-1', 't-undated-1']
+  );
+  // Overdue task has NO date/time displayed and is marked red
+  assert.equal(tier3.displayTasks[0].displayTimeHHMM, '');
+  assert.equal(tier3.displayTasks[0].isRedOverdue, true);
+  // Undated task has NO date/time displayed and is not red
+  assert.equal(tier3.displayTasks[1].displayTimeHHMM, '');
+  assert.equal(tier3.displayTasks[1].isRedOverdue, false);
+
+  // Also verify Agenda day separation (Today vs Tomorrow)
   const todayEv: CalendarEventItem = {
     id: 'ev-today-only',
     calendarId: 'cal-work',
@@ -489,7 +544,6 @@ test('filterActiveTasksForWatch excludes completed tasks and tasks from other da
   assert.equal(stateToday.dayEvents.length, 1);
   assert.equal(stateToday.dayEvents[0].id, 'ev-today-only');
 
-  // Once Today's event has passed (+2 hours later), watch autonomously advances to 'Amanhã' without needing Bluetooth
   const stateAfterTodayPassed = evaluateWatchAutonomousState(
     mixedCache,
     baseTime + 2 * 60 * 60 * 1000
@@ -498,6 +552,7 @@ test('filterActiveTasksForWatch excludes completed tasks and tasks from other da
   assert.equal(stateAfterTodayPassed.dayEvents.length, 1);
   assert.equal(stateAfterTodayPassed.dayEvents[0].id, 'ev-tomorrow-only');
 });
+
 
 
 

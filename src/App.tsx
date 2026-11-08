@@ -271,6 +271,18 @@ export default function App() {
         next.autoSunExposureMinutes = u;
         next.autoSleepExposureMinutes = u;
       }
+      if (isBluetoothConnected) {
+        const freshPayload = buildSyncPayload(
+          phoneEvents,
+          calendars,
+          currentWatchTimeMs,
+          next.horizonDays
+        );
+        setOfflineFrozenCache(freshPayload);
+        setOfflineFrozenHorizonDays(next.horizonDays);
+        setOfflineFrozenProgressWindow(next.progressWindowMinutes);
+        setLastSyncTimeMs(currentWatchTimeMs);
+      }
       return next;
     });
   };

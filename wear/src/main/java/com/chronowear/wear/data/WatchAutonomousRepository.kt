@@ -81,14 +81,20 @@ data class CachedWearTask(
     val dueHHMM: String,
     val sourceLabel: String,
     val completed: Boolean = false,
-    val isTodayOrTimeless: Boolean = true
+    val isTodayOrTimeless: Boolean = true,
+    val scheduleCategory: String = "TODAY",
+    val isOverdue: Boolean = false
 )
 
 data class TasksSnapshot(
     val pendingCount: Int,
     val completedCount: Int,
     val tasks: List<CachedWearTask>,
-    val triggeredByTaskAlert: Boolean
+    val triggeredByTaskAlert: Boolean,
+    val headerTitle: String = "Tarefas • Hoje",
+    val rightBadgeText: String = "0 hoje • Hoje",
+    val showTime: Boolean = true,
+    val bucket: String = "TODAY"
 )
 
 class WatchAutonomousRepository private constructor(context: Context) :
@@ -166,6 +172,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
         weatherLat: Double? = null,
         weatherLon: Double? = null
     ) {
+        val prevContextMode = prefs.getString("context_window_mode", MODE_DYNAMIC) ?: MODE_DYNAMIC
+        val prevAutoPrimary = prefs.getString("auto_primary_context", MODE_EVENTS) ?: MODE_EVENTS
+        var focusChangedFromPhone = false
+
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
             .putInt("horizon_days", horizonDays)
@@ -175,10 +185,21 @@ class WatchAutonomousRepository private constructor(context: Context) :
             editor.putLong("phone_rendered_card_ms", syncTimestampMs)
         }
         if (!contextMode.isNullOrBlank()) {
+            if (contextMode != prevContextMode) focusChangedFromPhone = true
             editor.putString("context_window_mode", contextMode)
         }
         if (!autoPrimaryContext.isNullOrBlank()) {
+            if (autoPrimaryContext != prevAutoPrimary) focusChangedFromPhone = true
             editor.putString("auto_primary_context", autoPrimaryContext)
+        }
+        // Sempre que o smartphone sincroniza, limpa qualquer override antigo de toque manual no relógio
+        editor.remove("tap_override_context_mode")
+        editor.putLong("tap_override_timestamp_ms", 0L)
+        if (focusChangedFromPhone) {
+            editor.putLong("phone_focus_change_timestamp_ms", syncTimestampMs)
+            editor.putLong("weather_alert_timestamp_ms", 0L)
+            editor.putLong("tasks_alert_timestamp_ms", 0L)
+            editor.putLong("sleep_wake_timestamp_ms", 0L)
         }
         val effectiveUnifiedMin = unifiedCanvasHoldMin
             ?: autoWeatherExposureMin
@@ -840,35 +861,65 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Retorna apenas as tarefas NÃO CONCLUÍDAS (completed == false) que sejam para HOJE
-     * ou SEM HORÁRIO/DATA ("Hoje" / "Sem horário" / ""). Tarefas concluídas saem imediatamente
-     * do Canvas para não ocupar espaço, e tarefas agendadas para outros dias são ignoradas.
+     * Resolve estritamente as tarefas NÃO CONCLUÍDAS (completed == false) segundo a hierarquia de 3 níveis:
+     * 1. Somente atividades agendadas para HOJE ("TODAY") — apresenta check de não feito + horário (HH:mm) + título.
+     * 2. Se NÃO há atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ ("TOMORROW") — check de não feito + horário (HH:mm) + título.
+     * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA ("UNDATED")
+     *    e as atividades EM ATRASO ("OVERDUE"):
+     *    - Sem data definida: NÃO apresenta data nem hora, apenas o check de não feito + título.
+     *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
      */
     fun getTasksSnapshot(nowMs: Long = System.currentTimeMillis()): TasksSnapshot {
         val defaultTasks = listOf(
             CachedWearTask(
                 id = "t-1",
-                title = "Enviar relatório Sprint",
+                title = "Enviar relatório trimestral",
                 dueHHMM = "14:00",
-                sourceLabel = "Tasks",
+                sourceLabel = "Reminder",
                 completed = false,
-                isTodayOrTimeless = true
+                isTodayOrTimeless = true,
+                scheduleCategory = "TODAY",
+                isOverdue = false
             ),
             CachedWearTask(
                 id = "t-2",
-                title = "Retornar cliente One UI",
+                title = "Reunião de revisão da sprint",
                 dueHHMM = "16:30",
-                sourceLabel = "Reminder",
+                sourceLabel = "Tasks",
                 completed = false,
-                isTodayOrTimeless = true
+                isTodayOrTimeless = true,
+                scheduleCategory = "TODAY",
+                isOverdue = false
             ),
             CachedWearTask(
                 id = "t-3",
-                title = "Revisar PR Watch Face",
-                dueHHMM = "Hoje",
+                title = "Apresentar protótipo Wear OS",
+                dueHHMM = "10:00",
+                sourceLabel = "Reminder",
+                completed = false,
+                isTodayOrTimeless = true,
+                scheduleCategory = "TOMORROW",
+                isOverdue = false
+            ),
+            CachedWearTask(
+                id = "t-4",
+                title = "Pagar fatura do cartão corporativo",
+                dueHHMM = "",
+                sourceLabel = "Reminder",
+                completed = false,
+                isTodayOrTimeless = true,
+                scheduleCategory = "OVERDUE",
+                isOverdue = true
+            ),
+            CachedWearTask(
+                id = "t-5",
+                title = "Organizar documentos da contabilidade",
+                dueHHMM = "",
                 sourceLabel = "Tasks",
                 completed = false,
-                isTodayOrTimeless = true
+                isTodayOrTimeless = true,
+                scheduleCategory = "UNDATED",
+                isOverdue = false
             )
         )
         val rawJson = prefs.getString("cached_tasks_json", "") ?: ""
@@ -879,7 +930,11 @@ class WatchAutonomousRepository private constructor(context: Context) :
             try {
                 val arr = JSONArray(rawJson)
                 hadExplicitJson = true
-                val todayDateIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(nowMs))
+                val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+                val todayDateIso = sdfIso.format(Date(nowMs))
+                val tomorrowDateIso = sdfIso.format(Date(nowMs + TimeUnit.DAYS.toMillis(1L)))
+                val timeRegex = Regex("(\\d{1,2}:\\d{2})")
+
                 for (i in 0 until arr.length()) {
                     val obj = arr.optJSONObject(i) ?: continue
                     val title = obj.optString("title", "").trim()
@@ -887,40 +942,113 @@ class WatchAutonomousRepository private constructor(context: Context) :
                     val isDone = obj.optBoolean("completed", false)
                     if (isDone) {
                         totalCompletedCount++
-                        continue // Tarefas concluídas saem do Canvas para não ocupar espaço
+                        continue
                     }
+                    val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(Locale.ROOT)
                     val dueDateIso = obj.optString("dueDateIso", "").trim()
-                    val isTodayOrTimelessFlag = obj.optBoolean("isTodayOrTimeless", true)
-                    val isEligibleDate = isTodayOrTimelessFlag &&
-                        (dueDateIso.isBlank() || dueDateIso == todayDateIso)
-                    if (!isEligibleDate) continue
-
                     val rawDue = obj.optString("dueHHMM", "").trim()
-                    val normalizedDue = if (rawDue.isBlank() || rawDue.equals("Sem horário", ignoreCase = true)) {
-                        "Hoje"
-                    } else {
-                        rawDue
+                    val rawLower = rawDue.lowercase(Locale.ROOT)
+                    val explicitOverdue = obj.optBoolean("isOverdue", false)
+
+                    val resolvedCategory = when {
+                        explicitCat in setOf("TODAY", "TOMORROW", "UNDATED", "OVERDUE") -> explicitCat
+                        explicitOverdue ||
+                            (dueDateIso.isNotBlank() && dueDateIso < todayDateIso) ||
+                            rawLower.contains("atras") ||
+                            rawLower.contains("ontem") ||
+                            rawLower.contains("vencid") -> "OVERDUE"
+                        dueDateIso == tomorrowDateIso || rawLower.contains("amanh") -> "TOMORROW"
+                        dueDateIso.isBlank() && (
+                            rawDue.isBlank() ||
+                                rawLower == "sem data" ||
+                                rawLower == "sem horário" ||
+                                rawLower == "sem horario" ||
+                                rawLower == "hoje"
+                            ) -> "UNDATED"
+                        dueDateIso.isBlank() || dueDateIso == todayDateIso -> {
+                            if (timeRegex.containsMatchIn(rawDue)) "TODAY" else "UNDATED"
+                        }
+                        else -> continue
                     }
+
+                    val matchedTime = timeRegex.find(rawDue)?.groupValues?.getOrNull(1) ?: ""
+                    val formattedTime = when (resolvedCategory) {
+                        "TODAY", "TOMORROW" -> matchedTime.padStart(5, '0').ifBlank { "09:00" }
+                        else -> "" // Sem data e atrasadas NÃO apresentam data nem hora
+                    }
+
                     parsed.add(
                         CachedWearTask(
                             id = obj.optString("id", "t-$i"),
                             title = title,
-                            dueHHMM = normalizedDue,
+                            dueHHMM = formattedTime,
                             sourceLabel = obj.optString("sourceLabel", "Tasks"),
                             completed = false,
-                            isTodayOrTimeless = true
+                            isTodayOrTimeless = true,
+                            scheduleCategory = resolvedCategory,
+                            isOverdue = resolvedCategory == "OVERDUE" || explicitOverdue
                         )
                     )
                 }
             } catch (_: Exception) {
             }
         }
-        val activeList = if (hadExplicitJson) parsed else defaultTasks
+        val candidateList = if (hadExplicitJson) parsed else defaultTasks
+
+        val todayTasks = candidateList.filter { it.scheduleCategory == "TODAY" }
+        if (todayTasks.isNotEmpty()) {
+            return TasksSnapshot(
+                pendingCount = todayTasks.size,
+                completedCount = totalCompletedCount,
+                tasks = todayTasks,
+                triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs),
+                headerTitle = "Tarefas • Hoje",
+                rightBadgeText = "${todayTasks.size} hoje",
+                showTime = true,
+                bucket = "TODAY"
+            )
+        }
+
+        val tomorrowTasks = candidateList.filter { it.scheduleCategory == "TOMORROW" }
+        if (tomorrowTasks.isNotEmpty()) {
+            return TasksSnapshot(
+                pendingCount = tomorrowTasks.size,
+                completedCount = totalCompletedCount,
+                tasks = tomorrowTasks,
+                triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs),
+                headerTitle = "Tarefas • Amanhã",
+                rightBadgeText = "${tomorrowTasks.size} amanhã",
+                showTime = true,
+                bucket = "TOMORROW"
+            )
+        }
+
+        val undatedOrOverdue = candidateList
+            .filter { it.scheduleCategory == "OVERDUE" || it.scheduleCategory == "UNDATED" }
+            .sortedByDescending { it.isOverdue || it.scheduleCategory == "OVERDUE" }
+
+        if (undatedOrOverdue.isNotEmpty()) {
+            return TasksSnapshot(
+                pendingCount = undatedOrOverdue.size,
+                completedCount = totalCompletedCount,
+                tasks = undatedOrOverdue,
+                triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs),
+                headerTitle = "Tarefas • Sem data",
+                rightBadgeText = "${undatedOrOverdue.size} pendentes",
+                showTime = false,
+                bucket = "UNDATED_OVERDUE"
+            )
+        }
+
         return TasksSnapshot(
-            pendingCount = activeList.size,
+            pendingCount = 0,
             completedCount = totalCompletedCount,
-            tasks = activeList,
-            triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs)
+            tasks = emptyList(),
+            triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs),
+            headerTitle = "Tarefas • Hoje",
+            rightBadgeText = "0 ativas",
+            showTime = false,
+            bucket = "EMPTY"
         )
     }
 
@@ -943,7 +1071,11 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val currentVisual = resolveEffectiveContextMode(nowMs, upcomingThree)
         val currentIdx = visualOrder.indexOf(currentVisual).takeIf { it >= 0 } ?: 0
         val nextVisual = visualOrder[(currentIdx + 1) % visualOrder.size]
-        val defaultPrimary = getAutoPrimaryContext()
+        val defaultPrimary = if (getContextWindowMode() != MODE_DYNAMIC) {
+            getContextWindowMode()
+        } else {
+            getAutoPrimaryContext()
+        }
 
         if (nextVisual == defaultPrimary) {
             clearTapOverride()
@@ -1030,7 +1162,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
             if (tasksSnap.pendingCount > 0) {
                 val firstPending = tasksSnap.tasks.firstOrNull()
                 val detail = if (firstPending != null) {
-                    "${firstPending.sourceLabel}: ${firstPending.title} (${firstPending.dueHHMM})"
+                    val suffix = if (tasksSnap.showTime && firstPending.dueHHMM.isNotBlank()) " (${firstPending.dueHHMM})" else ""
+                    "${firstPending.sourceLabel}: ${firstPending.title}$suffix"
                 } else {
                     "${tasksSnap.pendingCount} tarefa(s) pendente(s)"
                 }
@@ -1072,8 +1205,23 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val unifiedHoldMin = getUnifiedCanvasHoldMinutes().toLong()
         val tapOverride = getActiveTapOverrideMode(nowMs, unifiedHoldMin)
         val tapTs = prefs.getLong("tap_override_timestamp_ms", 0L)
+        val lastSyncMs = getLastSyncEpochMs()
 
-        // Verifica se há mudança prioritária de contexto (Clima, Agenda, Tarefas, Sol, Sono)
+        // 1. Se o usuário escolheu um MODO FIXO no smartphone (ex: TASKS, WEATHER, SUN, STEPS, SLEEP, EVENTS),
+        //    reflete IMEDIATAMENTE no relógio (exceto se o usuário tocou na tela do relógio após a última sincronização).
+        val configuredMode = getContextWindowMode()
+        if (configuredMode != MODE_DYNAMIC) {
+            if (tapOverride != null && tapTs > lastSyncMs) {
+                return tapOverride
+            }
+            return configuredMode
+        }
+
+        val phoneFocusChangeTs = prefs.getLong("phone_focus_change_timestamp_ms", 0L)
+        val recentPhoneFocusChange = phoneFocusChangeTs > 0L &&
+            (nowMs - phoneFocusChangeTs) in 0..TimeUnit.MINUTES.toMillis(unifiedHoldMin)
+
+        // 2. Verifica se há mudança prioritária de contexto (Clima, Agenda <=15m, Tarefas, Sol, Sono)
         val priorityPair = evaluatePriorityContextOverride(nowMs, upcomingThree)
         if (priorityPair != null) {
             val (priorityMode, _) = priorityPair
@@ -1081,14 +1229,19 @@ class WatchAutonomousRepository private constructor(context: Context) :
             val sleepTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
             val tasksTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
             val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs)
+            val isUrgent15MinEvent = priorityMode == MODE_EVENTS && upcomingThree.firstOrNull()?.let {
+                (it.startEpochMs - nowMs) in 1..TimeUnit.MINUTES.toMillis(15L)
+            } == true
 
-            if (tapOverride == null || newestTriggerTs >= tapTs) {
-                return priorityMode
+            if (!recentPhoneFocusChange || isUrgent15MinEvent || newestTriggerTs > phoneFocusChangeTs) {
+                if (tapOverride == null || newestTriggerTs >= tapTs) {
+                    return priorityMode
+                }
             }
         }
 
-        // Se o usuário tocou no Canvas na Watch Face dentro do tempo unificado configurado
-        if (tapOverride != null) {
+        // 3. Se o usuário tocou no Canvas na Watch Face dentro do tempo unificado configurado
+        if (tapOverride != null && tapTs > lastSyncMs) {
             return tapOverride
         }
 

@@ -858,7 +858,11 @@ object AgendaCardBitmapRenderer {
     }
 
     /**
-     * CONTEXTO 6: Tarefas (Samsung Reminder e Google Tasks — Somente Tarefas do Dia ou Sem Horário e Não Concluídas)
+     * CONTEXTO 6: Tarefas (Samsung Reminder e Google Tasks — Hierarquia Estrita):
+     * 1. Somente atividades agendadas para Hoje (com horário HH:mm e check de não feito).
+     * 2. Se não houver para Hoje, atividades agendadas para Amanhã (com horário HH:mm e check de não feito).
+     * 3. Se não houver para Amanhã, atividades Sem Data Definida e Atrasadas (SEM data e SEM hora, apenas check de não feito,
+     *    sendo as atrasadas exibidas em VERMELHO).
      */
     private fun renderTasksChecklistCanvas(tasksSnap: TasksSnapshot): Bitmap {
         val (bmp, canvas) = createBaseCardBitmap()
@@ -886,20 +890,20 @@ object AgendaCardBitmapRenderer {
 
         val headerTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#34D399")
-            textSize = 42f
+            textSize = 40f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText("Tarefas", 76f, 51f, headerTitlePaint)
+        canvas.drawText(tasksSnap.headerTitle, 76f, 51f, headerTitlePaint)
 
         val rightCounterPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#67E8F9")
-            textSize = 31f
+            textSize = 30f
             textAlign = Paint.Align.RIGHT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        val activeTasks = tasksSnap.tasks.filter { !it.completed && it.isTodayOrTimeless }
+        val activeTasks = tasksSnap.tasks.filter { !it.completed }
         canvas.drawText(
-            "${activeTasks.size} ativas • Hoje",
+            tasksSnap.rightBadgeText,
             CARD_WIDTH - 24f,
             49f,
             rightCounterPaint
@@ -909,6 +913,11 @@ object AgendaCardBitmapRenderer {
             style = Paint.Style.STROKE
             strokeWidth = 4.2f
             color = Color.parseColor("#F5C438")
+        }
+        val overdueCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 4.5f
+            color = Color.parseColor("#EF4444")
         }
         val emptyCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -922,6 +931,11 @@ object AgendaCardBitmapRenderer {
         }
         val taskTitlePendingPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#F8FAFC")
+            textSize = 38f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val taskTitleOverduePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#F87171")
             textSize = 38f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
@@ -944,37 +958,46 @@ object AgendaCardBitmapRenderer {
             val task = displayTasks.getOrNull(idx)
             val centerY = baseY - 13f
             if (task != null) {
-                canvas.drawCircle(38f, centerY, 12.5f, pendingCirclePaint)
+                val isOverdueRed = task.isOverdue || task.scheduleCategory.equals("OVERDUE", ignoreCase = true)
+                canvas.drawCircle(
+                    38f,
+                    centerY,
+                    12.5f,
+                    if (isOverdueRed) overdueCirclePaint else pendingCirclePaint
+                )
 
-                val dueLabel = if (task.dueHHMM.isBlank() ||
-                    task.dueHHMM.equals("Sem horário", ignoreCase = true) ||
-                    task.dueHHMM.equals("Hoje", ignoreCase = true)
-                ) {
-                    "Hoje"
+                val titlePaint = if (isOverdueRed) taskTitleOverduePaint else taskTitlePendingPaint
+
+                if (tasksSnap.showTime && task.dueHHMM.isNotBlank()) {
+                    canvas.drawText(task.dueHHMM.take(5), 64f, baseY, timeColPaint)
+                    val ellipsizedTask = TextUtils.ellipsize(
+                        task.title,
+                        titlePaint,
+                        295f,
+                        TextUtils.TruncateAt.END
+                    ).toString()
+                    canvas.drawText(ellipsizedTask, 174f, baseY, titlePaint)
                 } else {
-                    task.dueHHMM.take(5)
+                    // Sem data definida ou Atrasada: NÃO apresenta data nem hora, apenas o check de não feito + título
+                    val ellipsizedTask = TextUtils.ellipsize(
+                        task.title,
+                        titlePaint,
+                        395f,
+                        TextUtils.TruncateAt.END
+                    ).toString()
+                    canvas.drawText(ellipsizedTask, 68f, baseY, titlePaint)
                 }
-                canvas.drawText(dueLabel, 64f, baseY, timeColPaint)
 
-                val ellipsizedTask = TextUtils.ellipsize(
-                    task.title,
-                    taskTitlePendingPaint,
-                    295f,
-                    TextUtils.TruncateAt.END
-                ).toString()
-                canvas.drawText(ellipsizedTask, 174f, baseY, taskTitlePendingPaint)
-
-                sourceBadgePaint.color = if (task.sourceLabel.contains("Reminder", ignoreCase = true)) {
-                    Color.parseColor("#67E8F9")
-                } else {
-                    Color.parseColor("#F5C438")
+                sourceBadgePaint.color = when {
+                    isOverdueRed -> Color.parseColor("#EF4444")
+                    task.sourceLabel.contains("Reminder", ignoreCase = true) -> Color.parseColor("#67E8F9")
+                    else -> Color.parseColor("#F5C438")
                 }
                 canvas.drawText(task.sourceLabel.take(8), CARD_WIDTH - 24f, baseY - 2f, sourceBadgePaint)
             } else {
                 canvas.drawCircle(38f, centerY, 10f, emptyCirclePaint)
-                canvas.drawText("--:--", 64f, baseY, taskEmptyPaint)
-                val emptyMsg = if (idx == 0 && displayTasks.isEmpty()) "Não há tarefas para hoje" else "Livre"
-                canvas.drawText(emptyMsg, 174f, baseY, taskEmptyPaint)
+                val emptyMsg = if (idx == 0 && displayTasks.isEmpty()) "Não há tarefas pendentes" else "Livre"
+                canvas.drawText(emptyMsg, 68f, baseY, taskEmptyPaint)
             }
         }
 

@@ -30,13 +30,32 @@ export type PrimaryContextMode =
   | 'SLEEP';
 export type ContextWindowMode = 'DYNAMIC' | PrimaryContextMode;
 
+export type TaskScheduleCategory = 'TODAY' | 'TOMORROW' | 'UNDATED' | 'OVERDUE';
+
 export interface TaskItem {
   id: string;
   title: string;
   dueHHMM: string;
   sourceLabel: 'Reminder' | 'Tasks';
   completed: boolean;
+  scheduleCategory?: TaskScheduleCategory;
+  isOverdue?: boolean;
   isTodayOrTimeless?: boolean;
+}
+
+export interface ResolvedTasksCanvasState {
+  headerTitle: string;
+  rightBadgeText: string;
+  bucket: 'TODAY' | 'TOMORROW' | 'UNDATED_OVERDUE' | 'EMPTY';
+  showTime: boolean;
+  displayTasks: Array<
+    TaskItem & {
+      effectiveCategory: TaskScheduleCategory;
+      displayTimeHHMM: string;
+      isRedOverdue: boolean;
+    }
+  >;
+  totalActiveCount: number;
 }
 
 export const DEFAULT_TASKS_LIST: TaskItem[] = [
@@ -46,34 +65,193 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     dueHHMM: '14:00',
     sourceLabel: 'Reminder',
     completed: false,
+    scheduleCategory: 'TODAY',
     isTodayOrTimeless: true,
   },
   {
     id: 't2',
-    title: 'Pagar fatura do cartão',
-    dueHHMM: 'Hoje',
+    title: 'Reunião de revisão da sprint',
+    dueHHMM: '16:30',
     sourceLabel: 'Tasks',
     completed: false,
+    scheduleCategory: 'TODAY',
     isTodayOrTimeless: true,
   },
   {
     id: 't3',
+    title: 'Apresentar protótipo Wear OS',
+    dueHHMM: '10:00',
+    sourceLabel: 'Reminder',
+    completed: false,
+    scheduleCategory: 'TOMORROW',
+    isTodayOrTimeless: true,
+  },
+  {
+    id: 't4',
+    title: 'Alinhar entrega com cliente',
+    dueHHMM: '15:30',
+    sourceLabel: 'Tasks',
+    completed: false,
+    scheduleCategory: 'TOMORROW',
+    isTodayOrTimeless: true,
+  },
+  {
+    id: 't5',
+    title: 'Pagar fatura do cartão corporativo',
+    dueHHMM: '',
+    sourceLabel: 'Reminder',
+    completed: false,
+    scheduleCategory: 'OVERDUE',
+    isOverdue: true,
+    isTodayOrTimeless: true,
+  },
+  {
+    id: 't6',
+    title: 'Organizar documentos da contabilidade',
+    dueHHMM: '',
+    sourceLabel: 'Tasks',
+    completed: false,
+    scheduleCategory: 'UNDATED',
+    isTodayOrTimeless: true,
+  },
+  {
+    id: 't7',
     title: 'Comprar café em grãos',
     dueHHMM: '18:00',
     sourceLabel: 'Reminder',
     completed: true,
+    scheduleCategory: 'TODAY',
     isTodayOrTimeless: true,
   },
 ];
 
+export function inferTaskScheduleCategory(task: TaskItem): TaskScheduleCategory {
+  if (task.scheduleCategory) {
+    return task.scheduleCategory;
+  }
+  if (task.isOverdue) {
+    return 'OVERDUE';
+  }
+  const raw = (task.dueHHMM ?? '').trim();
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes('atras') ||
+    lower.includes('ontem') ||
+    lower.includes('vencid')
+  ) {
+    return 'OVERDUE';
+  }
+  if (lower.includes('amanh')) {
+    return 'TOMORROW';
+  }
+  if (
+    !raw ||
+    lower === 'sem data' ||
+    lower === 'sem horário' ||
+    lower === 'sem horario' ||
+    lower === 'hoje'
+  ) {
+    return 'UNDATED';
+  }
+  return 'TODAY';
+}
+
 /**
- * Filtra estritamente as tarefas que devem aparecer no Canvas do relógio e no widget:
- * apenas tarefas NÃO concluídas (!completed) e que sejam para Hoje ou Sem horário definido.
+ * Resolve estritamente qual grupo de tarefas NÃO concluídas deve aparecer no Canvas do relógio e do smartphone:
+ * 1. Somente atividades agendadas para HOJE (com hora HH:mm e check de não feito).
+ * 2. Se NÃO houver atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ (com hora HH:mm e check de não feito).
+ * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA e as ATRASADAS:
+ *    - Sem data definida: NÃO apresenta data nem hora, apenas o check de não feito + título.
+ *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
  */
-export function filterActiveTasksForWatch(tasks: TaskItem[]): TaskItem[] {
-  return tasks.filter(
+export function resolveTasksCanvasState(
+  tasks: TaskItem[]
+): ResolvedTasksCanvasState {
+  const uncompleted = tasks.filter(
     (t) => !t.completed && (t.isTodayOrTimeless ?? true)
   );
+
+  const normalized = uncompleted.map((t) => {
+    const effectiveCategory = inferTaskScheduleCategory(t);
+    const rawTime = (t.dueHHMM ?? '').trim();
+    const matchHHMM = rawTime.match(/(\d{1,2}:\d{2})/);
+    const cleanHHMM = matchHHMM ? matchHHMM[1].padStart(5, '0') : rawTime;
+    return {
+      ...t,
+      effectiveCategory,
+      displayTimeHHMM:
+        effectiveCategory === 'TODAY' || effectiveCategory === 'TOMORROW'
+          ? cleanHHMM || '09:00'
+          : '',
+      isRedOverdue: effectiveCategory === 'OVERDUE' || Boolean(t.isOverdue),
+    };
+  });
+
+  const todayTasks = normalized.filter((t) => t.effectiveCategory === 'TODAY');
+  if (todayTasks.length > 0) {
+    return {
+      headerTitle: 'Tarefas • Hoje',
+      rightBadgeText: `${todayTasks.length} hoje`,
+      bucket: 'TODAY',
+      showTime: true,
+      displayTasks: todayTasks,
+      totalActiveCount: todayTasks.length,
+    };
+  }
+
+  const tomorrowTasks = normalized.filter(
+    (t) => t.effectiveCategory === 'TOMORROW'
+  );
+  if (tomorrowTasks.length > 0) {
+    return {
+      headerTitle: 'Tarefas • Amanhã',
+      rightBadgeText: `${tomorrowTasks.length} amanhã`,
+      bucket: 'TOMORROW',
+      showTime: true,
+      displayTasks: tomorrowTasks,
+      totalActiveCount: tomorrowTasks.length,
+    };
+  }
+
+  const undatedOrOverdue = normalized.filter(
+    (t) =>
+      t.effectiveCategory === 'OVERDUE' || t.effectiveCategory === 'UNDATED'
+  );
+  // Ordena para destacar atrasadas em vermelho e sem data
+  undatedOrOverdue.sort((a, b) => {
+    if (a.isRedOverdue !== b.isRedOverdue) {
+      return a.isRedOverdue ? -1 : 1;
+    }
+    return 0;
+  });
+
+  if (undatedOrOverdue.length > 0) {
+    return {
+      headerTitle: 'Tarefas • Sem data',
+      rightBadgeText: `${undatedOrOverdue.length} pendentes`,
+      bucket: 'UNDATED_OVERDUE',
+      showTime: false,
+      displayTasks: undatedOrOverdue,
+      totalActiveCount: undatedOrOverdue.length,
+    };
+  }
+
+  return {
+    headerTitle: 'Tarefas • Hoje',
+    rightBadgeText: '0 ativas',
+    bucket: 'EMPTY',
+    showTime: false,
+    displayTasks: [],
+    totalActiveCount: 0,
+  };
+}
+
+/**
+ * Retorna a lista ativa atual respeitando a hierarquia estrita:
+ * Hoje (com hora) -> senão Amanhã (com hora) -> senão Sem data e Atrasadas (sem data/hora, atrasadas em vermelho).
+ */
+export function filterActiveTasksForWatch(tasks: TaskItem[]): TaskItem[] {
+  return resolveTasksCanvasState(tasks).displayTasks;
 }
 
 export interface WeatherTriggerAppItem {

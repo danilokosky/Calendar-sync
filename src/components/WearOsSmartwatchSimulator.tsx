@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ComplicationProgressState,
   WatchCacheState,
@@ -11,7 +11,7 @@ import {
   formatDayRelative,
   computeSolarCurvePoint,
   formatCompactWeatherLocation,
-  filterActiveTasksForWatch,
+  resolveTasksCanvasState,
 } from '../utils/calendarSyncEngine';
 import {
   Bluetooth,
@@ -75,9 +75,14 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     'ChronoWear Auto (1h)' | 'App Clima (Escolhido)' | 'Relógio Stand-Alone (1h)'
   >('ChronoWear Auto (1h)');
 
+  // Sempre que o foco ou modo for customizado no smartphone, limpa imediatamente qualquer override manual de toque no relógio
+  useEffect(() => {
+    setTapOverrideState(null);
+  }, [config.contextWindowMode, config.autoPrimaryContext]);
+
   const tasksList: TaskItem[] = config.tasks ?? DEFAULT_TASKS_LIST;
-  const activeTasksForWatch = filterActiveTasksForWatch(tasksList);
-  const pendingTasksCount = activeTasksForWatch.length;
+  const resolvedTasksState = resolveTasksCanvasState(tasksList);
+  const activeTasksForWatch = resolvedTasksState.displayTasks;
 
   const handleToggleTaskItem = (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1123,52 +1128,75 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </div>
                 )}
 
-                {/* MODO 6: QUADRO DE TAREFAS (TASKS — Apenas Tarefas Não Concluídas para Hoje ou Sem Horário) */}
+                {/* MODO 6: QUADRO DE TAREFAS (TASKS — Hierarquia Estrita: Hoje c/ hora -> Amanhã c/ hora -> Sem data e Atrasadas em vermelho sem data/hora) */}
                 {effectiveMode === 'TASKS' && (
                   <div
                     data-testid="tasks-context-canvas"
+                    data-tasks-bucket={resolvedTasksState.bucket}
                     className="flex flex-col justify-between h-full py-0.5"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <CheckSquare className="w-4 h-4 text-[#22C55E] shrink-0" />
-                        <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
-                          Tarefas • Hoje
+                        <span
+                          data-testid="watch-tasks-header-title"
+                          className="text-[14.5px] font-bold text-[#F5C438] leading-none"
+                        >
+                          {resolvedTasksState.headerTitle}
                         </span>
                       </div>
                       <span className="text-[10.5px] font-mono font-bold text-[#67E8F9]">
-                        {pendingTasksCount} ativas
+                        {resolvedTasksState.rightBadgeText}
                       </span>
                     </div>
 
                     {activeTasksForWatch.length === 0 ? (
                       <div className="flex flex-col justify-center flex-1 space-y-1">
                         <div className="text-[13px] font-bold text-slate-200">
-                          Não há tarefas para hoje
+                          Não há tarefas pendentes
                         </div>
                         <div className="text-[10.5px] text-slate-400">
-                          Todas as tarefas do dia foram concluídas
+                          Todas as tarefas foram concluídas
                         </div>
                       </div>
                     ) : (
-                      <div className="flex flex-col justify-between flex-1 pt-1 space-y-1">
+                      <div className="flex flex-col justify-start gap-2.5 flex-1 pt-1.5">
                         {activeTasksForWatch.slice(0, 3).map((task, idx) => (
                           <div
                             key={task.id}
+                            data-testid={`watch-task-row-${task.id}`}
+                            data-overdue={task.isRedOverdue ? 'true' : 'false'}
                             onClick={(e) => handleToggleTaskItem(task.id, e)}
-                            title="Clique na tarefa para concluí-la e removê-la do Canvas"
+                            title="Clique no check de não feito para concluir e avançar a fila de tarefas"
                             className="flex items-center justify-between gap-1.5 text-[12px] leading-tight hover:bg-white/5 rounded px-0.5 cursor-pointer"
                           >
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="w-3.5 h-3.5 rounded-[4px] border border-[#67E8F9] flex items-center justify-center text-[9px] font-bold shrink-0 text-transparent hover:text-[#22C55E]">
+                              <span
+                                className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center text-[9px] font-bold shrink-0 text-transparent hover:text-[#22C55E] ${
+                                  task.isRedOverdue
+                                    ? 'border-[#EF4444]'
+                                    : 'border-[#67E8F9]'
+                                }`}
+                              >
                                 ✓
                               </span>
-                              <span className="text-[11px] font-mono font-bold text-white shrink-0">
-                                {task.dueHHMM || 'Hoje'}
-                              </span>
+                              {resolvedTasksState.showTime &&
+                                task.displayTimeHHMM && (
+                                  <span
+                                    data-testid={`watch-task-time-${task.id}`}
+                                    className="text-[11px] font-mono font-bold text-white shrink-0"
+                                  >
+                                    {task.displayTimeHHMM}
+                                  </span>
+                                )}
                               <span
+                                data-testid={`watch-task-title-${task.id}`}
                                 className={`truncate font-bold ${
-                                  idx === 0 ? 'text-[#F5C438]' : 'text-slate-100'
+                                  task.isRedOverdue
+                                    ? 'text-[#F87171]'
+                                    : idx === 0
+                                    ? 'text-[#F5C438]'
+                                    : 'text-slate-100'
                                 }`}
                               >
                                 {task.title}
@@ -1176,7 +1204,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                             </div>
                             <span
                               className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded shrink-0 ${
-                                task.sourceLabel === 'Reminder'
+                                task.isRedOverdue
+                                  ? 'bg-red-500/25 text-red-300'
+                                  : task.sourceLabel === 'Reminder'
                                   ? 'bg-sky-500/20 text-sky-300'
                                   : 'bg-amber-500/20 text-amber-300'
                               }`}

@@ -27,7 +27,17 @@ data class MobileTaskItem(
     val dueHHMM: String,
     val sourceLabel: String,
     val completed: Boolean = false,
-    val isTodayOrTimeless: Boolean = true
+    val isTodayOrTimeless: Boolean = true,
+    val scheduleCategory: String = "TODAY", // "TODAY", "TOMORROW", "UNDATED", "OVERDUE"
+    val isOverdue: Boolean = false
+)
+
+data class MobileResolvedTasksSnapshot(
+    val headerTitle: String,
+    val rightBadgeText: String,
+    val showTime: Boolean,
+    val bucket: String,
+    val displayTasks: List<MobileTaskItem>
 )
 
 class SyncPreferences(context: Context) {
@@ -211,26 +221,35 @@ class SyncPreferences(context: Context) {
     }
 
     fun getExpandedWidgetIds(): Set<String> {
-        val raw = prefs.getString(KEY_HOME_WIDGETS_EXPANDED_CSV, "EVENTS") ?: "EVENTS"
-        return raw.split(",").map { it.trim().uppercase() }.filter { it.isNotBlank() }.toSet()
+        val raw = prefs.getString(KEY_HOME_WIDGETS_EXPANDED_CSV, "") ?: ""
+        if (raw.isBlank() || raw == "__NONE__") return emptySet()
+        return raw.split(",")
+            .map { it.trim().uppercase(java.util.Locale.ROOT) }
+            .filter { it.isNotBlank() && it != "__NONE__" }
+            .toSet()
     }
 
     fun isWidgetExpandedFullRow(widgetId: String): Boolean {
-        return getExpandedWidgetIds().contains(widgetId.uppercase())
+        return getExpandedWidgetIds().contains(widgetId.trim().uppercase(java.util.Locale.ROOT))
+    }
+
+    fun setWidgetExpandedFullRow(widgetId: String, expanded: Boolean) {
+        val id = widgetId.trim().uppercase(java.util.Locale.ROOT)
+        val current = getExpandedWidgetIds().toMutableSet()
+        if (expanded) {
+            current.add(id)
+        } else {
+            current.remove(id)
+        }
+        val serialized = if (current.isEmpty()) "__NONE__" else current.joinToString(",")
+        prefs.edit().putString(KEY_HOME_WIDGETS_EXPANDED_CSV, serialized).commit()
     }
 
     fun toggleWidgetExpandedFullRow(widgetId: String): Boolean {
-        val id = widgetId.uppercase()
-        val current = getExpandedWidgetIds().toMutableSet()
-        val nowExpanded = if (current.contains(id)) {
-            current.remove(id)
-            false
-        } else {
-            current.add(id)
-            true
-        }
-        prefs.edit().putString(KEY_HOME_WIDGETS_EXPANDED_CSV, current.joinToString(",")).commit()
-        return nowExpanded
+        val currentlyExpanded = isWidgetExpandedFullRow(widgetId)
+        val nextExpanded = !currentlyExpanded
+        setWidgetExpandedFullRow(widgetId, nextExpanded)
+        return nextExpanded
     }
 
     /**
@@ -319,9 +338,13 @@ class SyncPreferences(context: Context) {
     }
 
     /**
-     * QUADRO DE TAREFAS (Samsung Reminder + Google Tasks)
-     * - Sincroniza junto com a agenda.
-     * - Exibe somente tarefas NÃO CONCLUÍDAS (completed == false) que sejam para HOJE ou SEM HORÁRIO.
+     * QUADRO DE TAREFAS (Samsung Reminder + Google Tasks) — Hierarquia Estrita:
+     * 1. Somente atividades agendadas para HOJE ("TODAY") — apresenta check de não feito + horário (HH:mm) + título.
+     * 2. Se NÃO há atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ ("TOMORROW") — check de não feito + horário (HH:mm) + título.
+     * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA ("UNDATED")
+     *    e as atividades EM ATRASO ("OVERDUE"):
+     *    - Sem data definida: NÃO apresenta data nem hora, apenas o check de não feito + título.
+     *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
      */
     fun isTasksSyncEnabled(): Boolean {
         return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true)
@@ -336,9 +359,12 @@ class SyncPreferences(context: Context) {
         return raw.ifBlank { DEFAULT_TASKS_JSON }
     }
 
-    fun getActiveUncompletedTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+    fun getAllUncompletedTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
         val list = mutableListOf<MobileTaskItem>()
-        val todayIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date(nowMs))
+        val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
+        val todayIso = sdfIso.format(java.util.Date(nowMs))
+        val tomorrowIso = sdfIso.format(java.util.Date(nowMs + 24L * 60L * 60L * 1000L))
+        val timeRegex = Regex("(\\d{1,2}:\\d{2})")
         try {
             val arr = org.json.JSONArray(getTasksJson())
             for (i in 0 until arr.length()) {
@@ -346,27 +372,51 @@ class SyncPreferences(context: Context) {
                 val title = obj.optString("title", "").trim()
                 if (title.isBlank()) continue
                 val done = obj.optBoolean("completed", false)
-                if (done) continue // Tarefas concluídas saem imediatamente do Canvas para não ocupar espaço
+                if (done) continue
 
+                val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(java.util.Locale.ROOT)
                 val dueDateIso = obj.optString("dueDateIso", "").trim()
-                val isTodayOrTimeless = obj.optBoolean("isTodayOrTimeless", true) &&
-                    (dueDateIso.isBlank() || dueDateIso == todayIso)
-                if (!isTodayOrTimeless) continue
-
                 val rawDue = obj.optString("dueHHMM", "").trim()
-                val normalizedDue = if (rawDue.isBlank() || rawDue.equals("Sem horário", ignoreCase = true)) {
-                    "Hoje"
-                } else {
-                    rawDue
+                val rawLower = rawDue.lowercase(java.util.Locale.ROOT)
+                val explicitOverdue = obj.optBoolean("isOverdue", false)
+
+                val resolvedCategory = when {
+                    explicitCat in setOf("TODAY", "TOMORROW", "UNDATED", "OVERDUE") -> explicitCat
+                    explicitOverdue ||
+                        (dueDateIso.isNotBlank() && dueDateIso < todayIso) ||
+                        rawLower.contains("atras") ||
+                        rawLower.contains("ontem") ||
+                        rawLower.contains("vencid") -> "OVERDUE"
+                    dueDateIso == tomorrowIso || rawLower.contains("amanh") -> "TOMORROW"
+                    dueDateIso.isBlank() && (
+                        rawDue.isBlank() ||
+                            rawLower == "sem data" ||
+                            rawLower == "sem horário" ||
+                            rawLower == "sem horario" ||
+                            rawLower == "hoje"
+                        ) -> "UNDATED"
+                    dueDateIso.isBlank() || dueDateIso == todayIso -> {
+                        if (timeRegex.containsMatchIn(rawDue)) "TODAY" else "UNDATED"
+                    }
+                    else -> continue
                 }
+
+                val matchedTime = timeRegex.find(rawDue)?.groupValues?.getOrNull(1) ?: ""
+                val formattedTime = when (resolvedCategory) {
+                    "TODAY", "TOMORROW" -> matchedTime.padStart(5, '0').ifBlank { "09:00" }
+                    else -> ""
+                }
+
                 list.add(
                     MobileTaskItem(
                         id = obj.optString("id", "t_$i"),
                         title = title,
-                        dueHHMM = normalizedDue,
+                        dueHHMM = formattedTime,
                         sourceLabel = obj.optString("sourceLabel", "Tasks"),
                         completed = false,
-                        isTodayOrTimeless = true
+                        isTodayOrTimeless = true,
+                        scheduleCategory = resolvedCategory,
+                        isOverdue = resolvedCategory == "OVERDUE" || explicitOverdue
                     )
                 )
             }
@@ -375,10 +425,62 @@ class SyncPreferences(context: Context) {
         return list
     }
 
+    fun resolveTasksBucketForCanvas(nowMs: Long = System.currentTimeMillis()): MobileResolvedTasksSnapshot {
+        val allUncompleted = getAllUncompletedTasks(nowMs)
+
+        val todayTasks = allUncompleted.filter { it.scheduleCategory == "TODAY" }
+        if (todayTasks.isNotEmpty()) {
+            return MobileResolvedTasksSnapshot(
+                headerTitle = "Tarefas • Hoje",
+                rightBadgeText = "${todayTasks.size} hoje",
+                showTime = true,
+                bucket = "TODAY",
+                displayTasks = todayTasks
+            )
+        }
+
+        val tomorrowTasks = allUncompleted.filter { it.scheduleCategory == "TOMORROW" }
+        if (tomorrowTasks.isNotEmpty()) {
+            return MobileResolvedTasksSnapshot(
+                headerTitle = "Tarefas • Amanhã",
+                rightBadgeText = "${tomorrowTasks.size} amanhã",
+                showTime = true,
+                bucket = "TOMORROW",
+                displayTasks = tomorrowTasks
+            )
+        }
+
+        val undatedOrOverdue = allUncompleted
+            .filter { it.scheduleCategory == "OVERDUE" || it.scheduleCategory == "UNDATED" }
+            .sortedByDescending { it.isOverdue || it.scheduleCategory == "OVERDUE" }
+
+        if (undatedOrOverdue.isNotEmpty()) {
+            return MobileResolvedTasksSnapshot(
+                headerTitle = "Tarefas • Sem data",
+                rightBadgeText = "${undatedOrOverdue.size} pendentes",
+                showTime = false,
+                bucket = "UNDATED_OVERDUE",
+                displayTasks = undatedOrOverdue
+            )
+        }
+
+        return MobileResolvedTasksSnapshot(
+            headerTitle = "Tarefas • Hoje",
+            rightBadgeText = "0 ativas",
+            showTime = false,
+            bucket = "EMPTY",
+            displayTasks = emptyList()
+        )
+    }
+
+    fun getActiveUncompletedTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+        return resolveTasksBucketForCanvas(nowMs).displayTasks
+    }
+
     fun getTasksFilteredJsonForWatch(nowMs: Long = System.currentTimeMillis()): String {
-        val active = getActiveUncompletedTasks(nowMs)
+        val allUncompleted = getAllUncompletedTasks(nowMs)
         val arr = org.json.JSONArray()
-        active.forEach { t ->
+        allUncompleted.forEach { t ->
             arr.put(
                 org.json.JSONObject().apply {
                     put("id", t.id)
@@ -387,6 +489,8 @@ class SyncPreferences(context: Context) {
                     put("sourceLabel", t.sourceLabel)
                     put("completed", false)
                     put("isTodayOrTimeless", true)
+                    put("scheduleCategory", t.scheduleCategory)
+                    put("isOverdue", t.isOverdue)
                 }
             )
         }
@@ -423,15 +527,17 @@ class SyncPreferences(context: Context) {
     fun saveMobileTaskItems(items: List<MobileTaskItem>, alertTimestampMs: Long = System.currentTimeMillis()) {
         val arr = org.json.JSONArray()
         for (t in items) {
-            if (t.completed || !t.isTodayOrTimeless) continue
+            if (t.completed) continue
             arr.put(
                 org.json.JSONObject().apply {
                     put("id", t.id)
                     put("title", t.title)
-                    put("dueHHMM", t.dueHHMM.ifBlank { "Hoje" })
+                    put("dueHHMM", t.dueHHMM)
                     put("sourceLabel", t.sourceLabel.ifBlank { "Tasks" })
                     put("completed", false)
                     put("isTodayOrTimeless", true)
+                    put("scheduleCategory", t.scheduleCategory.ifBlank { "TODAY" })
+                    put("isOverdue", t.isOverdue || t.scheduleCategory == "OVERDUE")
                 }
             )
         }
@@ -449,22 +555,25 @@ class SyncPreferences(context: Context) {
         timestampMs: Long = System.currentTimeMillis()
     ) {
         val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
-        val resolvedDue = dueHHMM.trim().ifBlank { "Hoje" }
+        val resolvedDue = dueHHMM.trim()
+        val resolvedCat = if (resolvedDue.contains(":")) "TODAY" else "UNDATED"
         try {
-            val existingActive = getActiveUncompletedTasks(timestampMs)
+            val existingActive = getAllUncompletedTasks(timestampMs)
             val nextArr = org.json.JSONArray()
             nextArr.put(
                 org.json.JSONObject().apply {
                     put("id", "task_$timestampMs")
                     put("title", cleanTitle)
-                    put("dueHHMM", resolvedDue)
+                    put("dueHHMM", if (resolvedCat == "TODAY") resolvedDue else "")
                     put("sourceLabel", sourceLabel)
                     put("completed", false)
                     put("isTodayOrTimeless", true)
+                    put("scheduleCategory", resolvedCat)
+                    put("isOverdue", false)
                 }
             )
             for (t in existingActive) {
-                if (!t.title.equals(cleanTitle, ignoreCase = true) && nextArr.length() < 6) {
+                if (!t.title.equals(cleanTitle, ignoreCase = true) && nextArr.length() < 8) {
                     nextArr.put(
                         org.json.JSONObject().apply {
                             put("id", t.id)
@@ -473,6 +582,8 @@ class SyncPreferences(context: Context) {
                             put("sourceLabel", t.sourceLabel)
                             put("completed", false)
                             put("isTodayOrTimeless", true)
+                            put("scheduleCategory", t.scheduleCategory)
+                            put("isOverdue", t.isOverdue)
                         }
                     )
                 }
@@ -486,11 +597,11 @@ class SyncPreferences(context: Context) {
     }
 
     fun getTasksSummaryLabel(): String {
-        val active = getActiveUncompletedTasks()
-        return if (active.isNotEmpty()) {
-            "${active.size} ativa(s) hoje • Próxima: ${active.first().title}"
+        val resolved = resolveTasksBucketForCanvas()
+        return if (resolved.displayTasks.isNotEmpty()) {
+            "${resolved.headerTitle} (${resolved.rightBadgeText}) • ${resolved.displayTasks.first().title}"
         } else {
-            "Não há tarefas ativas para hoje"
+            "Não há tarefas pendentes"
         }
     }
 
@@ -827,9 +938,11 @@ class SyncPreferences(context: Context) {
         private const val KEY_TASKS_ALERT_TS_MS = "tasks_alert_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"
         const val DEFAULT_TASKS_JSON = """[
-            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true},
-            {"id":"t2","title":"Pagar fatura do cartão","dueHHMM":"16:30","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true},
-            {"id":"t3","title":"Revisar notas da reunião","dueHHMM":"Hoje","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true}
+            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
+            {"id":"t2","title":"Reunião de revisão da sprint","dueHHMM":"16:30","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
+            {"id":"t3","title":"Apresentar protótipo Wear OS","dueHHMM":"10:00","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TOMORROW","isOverdue":false},
+            {"id":"t4","title":"Pagar fatura do cartão corporativo","dueHHMM":"","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"OVERDUE","isOverdue":true},
+            {"id":"t5","title":"Organizar documentos da contabilidade","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"UNDATED","isOverdue":false}
         ]"""
         private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"
         private const val KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED = "phone_weather_auto_check_enabled"
