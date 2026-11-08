@@ -417,4 +417,87 @@ test('evaluateWatchAutonomousState shows Amanhã header when next events are tom
   assert.equal(stateNoActiveTasks.agendaDayHeader, 'Amanhã');
 });
 
+test('filterActiveTasksForWatch excludes completed tasks and tasks from other days, and Today agenda never mixes Tomorrow events', async () => {
+  const { filterActiveTasksForWatch } = await import('./calendarSyncEngine');
+  const filtered = filterActiveTasksForWatch([
+    {
+      id: 't-today',
+      title: 'Revisar PR de hoje',
+      dueHHMM: '15:00',
+      sourceLabel: 'Tasks',
+      completed: false,
+      isTodayOrTimeless: true,
+    },
+    {
+      id: 't-timeless',
+      title: 'Ligar para contabilidade',
+      dueHHMM: 'Hoje',
+      sourceLabel: 'Reminder',
+      completed: false,
+      isTodayOrTimeless: true,
+    },
+    {
+      id: 't-done',
+      title: 'Tarefa já concluída',
+      dueHHMM: '11:00',
+      sourceLabel: 'Tasks',
+      completed: true,
+      isTodayOrTimeless: true,
+    },
+    {
+      id: 't-other-day',
+      title: 'Tarefa da próxima semana',
+      dueHHMM: '10:00',
+      sourceLabel: 'Tasks',
+      completed: false,
+      isTodayOrTimeless: false,
+    },
+  ]);
+
+  assert.equal(filtered.length, 2);
+  assert.deepEqual(
+    filtered.map((t) => t.id),
+    ['t-today', 't-timeless']
+  );
+
+  // When 1 event is Today and 1 event is Tomorrow, dayEvents under 'Hoje' must ONLY contain Today's event
+  const todayEv: CalendarEventItem = {
+    id: 'ev-today-only',
+    calendarId: 'cal-work',
+    title: 'Compromisso de Hoje',
+    location: 'Meet',
+    startEpochMs: baseTime + 30 * 60 * 1000,
+    endEpochMs: baseTime + 60 * 60 * 1000,
+  };
+  const tomorrowEv: CalendarEventItem = {
+    id: 'ev-tomorrow-only',
+    calendarId: 'cal-work',
+    title: 'Compromisso de Amanhã',
+    location: 'Meet',
+    startEpochMs: baseTime + 26 * 60 * 60 * 1000,
+    endEpochMs: baseTime + 27 * 60 * 60 * 1000,
+  };
+  const mixedCache: WatchCacheState = {
+    cachedEvents: [todayEv, tomorrowEv],
+    lastSyncEpochMs: baseTime,
+    syncedHorizonDays: 5,
+    progressWindowMinutes: 60,
+    isBluetoothConnected: false,
+  };
+  const stateToday = evaluateWatchAutonomousState(mixedCache, baseTime);
+  assert.equal(stateToday.agendaDayHeader, 'Hoje');
+  assert.equal(stateToday.dayEvents.length, 1);
+  assert.equal(stateToday.dayEvents[0].id, 'ev-today-only');
+
+  // Once Today's event has passed (+2 hours later), watch autonomously advances to 'Amanhã' without needing Bluetooth
+  const stateAfterTodayPassed = evaluateWatchAutonomousState(
+    mixedCache,
+    baseTime + 2 * 60 * 60 * 1000
+  );
+  assert.equal(stateAfterTodayPassed.agendaDayHeader, 'Amanhã');
+  assert.equal(stateAfterTodayPassed.dayEvents.length, 1);
+  assert.equal(stateAfterTodayPassed.dayEvents[0].id, 'ev-tomorrow-only');
+});
+
+
 

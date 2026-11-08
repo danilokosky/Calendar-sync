@@ -168,15 +168,26 @@ object AutonomousCountdownScheduler {
 
     private val screenOnReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != Intent.ACTION_SCREEN_ON) return
+            val action = intent.action ?: return
             val repo = WatchAutonomousRepository.getInstance(context)
+            val nowMs = System.currentTimeMillis()
+
+            if (action == Intent.ACTION_TIME_TICK) {
+                runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+                notifyWatchOnForcedCanvasChangeIfNeeded(context)
+                ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
+                scheduleNextTransition(context)
+                return
+            }
+
+            if (action != Intent.ACTION_SCREEN_ON) return
             if (!repo.isUpdateOnScreenWakeEnabled()) return
 
-            val nowMs = System.currentTimeMillis()
-            if (nowMs - lastScreenWakeUpdateMs >= 25_000L) {
+            if (nowMs - lastScreenWakeUpdateMs >= 15_000L) {
                 lastScreenWakeUpdateMs = nowMs
                 runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
                 ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
+                scheduleNextTransition(context)
             }
         }
     }
@@ -185,7 +196,10 @@ object AutonomousCountdownScheduler {
         if (screenWakeReceiverRegistered) return
         try {
             val appCtx = context.applicationContext
-            val filter = IntentFilter(Intent.ACTION_SCREEN_ON)
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_TIME_TICK)
+            }
             appCtx.registerReceiver(screenOnReceiver, filter)
             screenWakeReceiverRegistered = true
         } catch (_: Exception) {
@@ -193,23 +207,33 @@ object AutonomousCountdownScheduler {
     }
 
     private fun resolveWatchCoordinates(context: Context): Pair<Double, Double> {
-        var lat = -23.5505
-        var lon = -46.6333
+        val repo = WatchAutonomousRepository.getInstance(context)
         try {
             if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
             ) {
                 val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                val loc = lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                    ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
-                if (loc != null) {
-                    lat = loc.latitude
-                    lon = loc.longitude
+                val providers = listOf(
+                    LocationManager.GPS_PROVIDER,
+                    LocationManager.NETWORK_PROVIDER,
+                    LocationManager.PASSIVE_PROVIDER
+                )
+                val bestLoc = providers.mapNotNull { provider ->
+                    try {
+                        lm?.getLastKnownLocation(provider)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }.maxByOrNull { it.time }
+
+                if (bestLoc != null && (bestLoc.latitude != 0.0 || bestLoc.longitude != 0.0)) {
+                    repo.saveWeatherCoordinates(bestLoc.latitude, bestLoc.longitude)
+                    return bestLoc.latitude to bestLoc.longitude
                 }
             }
         } catch (_: Exception) {
         }
-        return lat to lon
+        return repo.getSavedWeatherCoordinates() ?: (-23.5505 to -46.6333)
     }
 
     private fun resolveWatchLocationName(context: Context, lat: Double, lon: Double): String {
@@ -222,7 +246,9 @@ object AutonomousCountdownScheduler {
                 val city = addr.locality ?: addr.subAdminArea ?: addr.featureName ?: ""
                 val state = addr.adminArea ?: ""
                 if (city.isNotBlank()) {
-                    return WatchAutonomousRepository.formatCompactWeatherLocation(city, state)
+                    val formatted = WatchAutonomousRepository.formatCompactWeatherLocation(city, state)
+                    repo.setWeatherLocationName(formatted)
+                    return formatted
                 }
             }
         } catch (_: Exception) {
@@ -427,37 +453,22 @@ object AutonomousCountdownScheduler {
             Long.MAX_VALUE
         }
 
-        // Quando o usuário toca (Tap) no Canvas e vai para um Canvas que não é o Padrão Principal,
-        // agenda o retorno exato para o Canvas Padrão Principal após o Tempo Unificado configurado
         val tapOverrideReturnMs = repo.getTapOverrideExpiryEpochMs(nowMs)
 
+        // Sempre que houver compromissos futuros sincronizados no cache do relógio,
+        // desperta a cada 1 minuto (e exatamente na transição de início do compromisso)
+        // para avançar a contagem regressiva e substituir compromissos encerrados sem depender de nova sincronização!
         val eventWakeUpMs = if (nextEvent == null) {
             Long.MAX_VALUE
         } else {
-            val progressWindowMs = TimeUnit.MINUTES.toMillis(repo.getProgressWindowMinutes().toLong())
-            val progressStartEpochMs = nextEvent.startEpochMs - progressWindowMs
             val fifteenMinBeforeMs = nextEvent.startEpochMs - TimeUnit.MINUTES.toMillis(15L)
+            val nextMinuteTickMs = nowMs + 60_000L
+            val exactEventBoundaryMs = (nextEvent.startEpochMs + 500L).coerceAtLeast(nowMs + 1000L)
 
-            when {
-                // Faltando 15 minutos ou menos: o Canvas troca para Agenda (e notifica se ativado)
-                // e desperta a cada 1 minuto até a hora do compromisso
-                nowMs in fifteenMinBeforeMs until nextEvent.startEpochMs -> {
-                    minOf(nowMs + 60_000L, nextEvent.startEpochMs + 1000L)
-                }
-                // Dentro da janela da barra de progresso antes dos 15m finais:
-                // desperta a cada 1 minuto e garante despertar exatamente na marca de 15m antes do compromisso
-                nowMs in progressStartEpochMs until fifteenMinBeforeMs -> {
-                    minOf(nowMs + 60_000L, fifteenMinBeforeMs)
-                }
-                nowMs < minOf(progressStartEpochMs, fifteenMinBeforeMs) -> {
-                    minOf(progressStartEpochMs, fifteenMinBeforeMs)
-                }
-                nowMs < fifteenMinBeforeMs -> {
-                    fifteenMinBeforeMs
-                }
-                else -> {
-                    nextEvent.startEpochMs + 1000L
-                }
+            if (nowMs < fifteenMinBeforeMs && fifteenMinBeforeMs < nextMinuteTickMs) {
+                fifteenMinBeforeMs
+            } else {
+                minOf(nextMinuteTickMs, exactEventBoundaryMs)
             }
         }
 

@@ -21,6 +21,15 @@ data class WeatherTriggerAppOption(
     val isInstalledOnDevice: Boolean = false
 )
 
+data class MobileTaskItem(
+    val id: String,
+    val title: String,
+    val dueHHMM: String,
+    val sourceLabel: String,
+    val completed: Boolean = false,
+    val isTodayOrTimeless: Boolean = true
+)
+
 class SyncPreferences(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("chronowear_mobile_prefs", Context.MODE_PRIVATE)
@@ -113,15 +122,6 @@ class SyncPreferences(context: Context) {
         prefs.edit().putString(KEY_CONTEXT_WINDOW_MODE, mode).commit()
     }
 
-    /**
-     * REGRAS UNIFICADAS DE PRIORIDADE E RETORNO AO CANVAS PADRÃO:
-     * - Canvas Padrão Principal (EVENTS, WEATHER, SUN, STEPS, SLEEP)
-     * - Tempo Unificado de Permanência de Canvas Não-Padrão (5, 15, 30, 45, 60 min):
-     *   Define por quanto tempo qualquer Canvas que não seja o padrão principal (seja aberto por
-     *   Toque/Tap na Watch Face ou forçado por mudança de Clima, Agenda, Sol ou Sono) fica fixo
-     *   no relógio antes de retornar automaticamente à aparência padrão (Canvas Padrão Principal).
-     * - Notificação no Relógio quando uma mudança de contexto forçar a troca do Canvas.
-     */
     fun getAutoPrimaryContext(): String {
         return prefs.getString(KEY_AUTO_PRIMARY_CONTEXT, "EVENTS") ?: "EVENTS"
     }
@@ -161,11 +161,6 @@ class SyncPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_NOTIFY_AGENDA_15MIN, enabled).commit()
     }
 
-    /**
-     * Se o modo Automático estiver focado em Agenda (EVENTS) e não houver compromissos para HOJE
-     * (mesmo que haja para amanhã), exibe automaticamente o quadro de Tarefas (Google Tasks / Reminder)
-     * caso existam tarefas pendentes ativas. Se não houver tarefas ativas, mantém o foco na Agenda.
-     */
     fun isAutoFallbackAgendaToTasksEnabled(): Boolean {
         return prefs.getBoolean(KEY_AUTO_FALLBACK_AGENDA_TO_TASKS, true)
     }
@@ -199,7 +194,47 @@ class SyncPreferences(context: Context) {
     fun setAutoSleepExposureMinutes(minutes: Int) = setUnifiedCanvasHoldMinutes(minutes)
 
     /**
-     * DADOS DE SONO (Health Connect / Samsung Health / Monitoramento Noturno)
+     * WIDGETS DA TELA INICIAL (ORDEM ARRASTÁVEL E EXPANSÃO DE LINHA INTEIRA)
+     */
+    fun getHomeWidgetsOrder(): List<String> {
+        val defaultOrder = listOf("EVENTS", "TASKS", "WEATHER", "SUN", "SLEEP", "STEPS")
+        val raw = prefs.getString(KEY_HOME_WIDGETS_ORDER_CSV, "") ?: ""
+        if (raw.isBlank()) return defaultOrder
+        val parsed = raw.split(",").map { it.trim().uppercase() }.filter { it in defaultOrder }.distinct()
+        val missing = defaultOrder.filter { it !in parsed }
+        return parsed + missing
+    }
+
+    fun setHomeWidgetsOrder(order: List<String>) {
+        val clean = order.map { it.trim().uppercase() }.distinct().joinToString(",")
+        prefs.edit().putString(KEY_HOME_WIDGETS_ORDER_CSV, clean).commit()
+    }
+
+    fun getExpandedWidgetIds(): Set<String> {
+        val raw = prefs.getString(KEY_HOME_WIDGETS_EXPANDED_CSV, "EVENTS") ?: "EVENTS"
+        return raw.split(",").map { it.trim().uppercase() }.filter { it.isNotBlank() }.toSet()
+    }
+
+    fun isWidgetExpandedFullRow(widgetId: String): Boolean {
+        return getExpandedWidgetIds().contains(widgetId.uppercase())
+    }
+
+    fun toggleWidgetExpandedFullRow(widgetId: String): Boolean {
+        val id = widgetId.uppercase()
+        val current = getExpandedWidgetIds().toMutableSet()
+        val nowExpanded = if (current.contains(id)) {
+            current.remove(id)
+            false
+        } else {
+            current.add(id)
+            true
+        }
+        prefs.edit().putString(KEY_HOME_WIDGETS_EXPANDED_CSV, current.joinToString(",")).commit()
+        return nowExpanded
+    }
+
+    /**
+     * DADOS DE SONO DO DIA (Health Connect / Samsung Health / Monitoramento Noturno)
      */
     fun isSleepSyncEnabled(): Boolean {
         return prefs.getBoolean(KEY_SLEEP_SYNC_ENABLED, true)
@@ -209,29 +244,61 @@ class SyncPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_SLEEP_SYNC_ENABLED, enabled).commit()
     }
 
+    private fun isSameDayEpoch(epochA: Long, epochB: Long): Boolean {
+        val calA = java.util.Calendar.getInstance().apply { timeInMillis = epochA }
+        val calB = java.util.Calendar.getInstance().apply { timeInMillis = epochB }
+        return calA.get(java.util.Calendar.YEAR) == calB.get(java.util.Calendar.YEAR) &&
+            calA.get(java.util.Calendar.DAY_OF_YEAR) == calB.get(java.util.Calendar.DAY_OF_YEAR)
+    }
+
+    fun hasVerifiedSleepDataForToday(nowMs: Long = System.currentTimeMillis()): Boolean {
+        val explicitToday = prefs.getBoolean(KEY_SLEEP_HAS_DATA_TODAY, true)
+        if (!explicitToday) return false
+        val wakeTs = prefs.getLong(KEY_SLEEP_WAKE_TS_MS, 0L)
+        val dur = prefs.getInt(KEY_SLEEP_DURATION_MIN, 462)
+        if (dur <= 0) return false
+        return wakeTs <= 0L || isSameDayEpoch(nowMs, wakeTs)
+    }
+
+    fun setSleepHasDataForToday(hasData: Boolean, nowMs: Long = System.currentTimeMillis()) {
+        val editor = prefs.edit().putBoolean(KEY_SLEEP_HAS_DATA_TODAY, hasData)
+        if (hasData) {
+            if (prefs.getInt(KEY_SLEEP_DURATION_MIN, 0) <= 0) {
+                editor.putInt(KEY_SLEEP_DURATION_MIN, 462)
+                editor.putInt(KEY_SLEEP_SCORE, 86)
+            }
+            editor.putLong(KEY_SLEEP_WAKE_TS_MS, nowMs)
+        }
+        editor.commit()
+    }
+
     fun saveSleepSnapshot(
         totalDurationMinutes: Int,
         sleepScore: Int,
         bedtimeHHMM: String,
         wakeHHMM: String,
         stagesMinutesCsv: String,
-        wakeTimestampMs: Long = System.currentTimeMillis()
+        wakeTimestampMs: Long = System.currentTimeMillis(),
+        hasDataToday: Boolean = true
     ) {
         prefs.edit()
-            .putInt(KEY_SLEEP_DURATION_MIN, totalDurationMinutes.coerceIn(60, 960))
-            .putInt(KEY_SLEEP_SCORE, sleepScore.coerceIn(1, 100))
+            .putBoolean(KEY_SLEEP_HAS_DATA_TODAY, hasDataToday && totalDurationMinutes > 0)
+            .putInt(KEY_SLEEP_DURATION_MIN, totalDurationMinutes.coerceIn(0, 960))
+            .putInt(KEY_SLEEP_SCORE, sleepScore.coerceIn(0, 100))
             .putString(KEY_SLEEP_BEDTIME_HHMM, bedtimeHHMM)
             .putString(KEY_SLEEP_WAKE_HHMM, wakeHHMM)
             .putString(KEY_SLEEP_STAGES_CSV, stagesMinutesCsv)
             .putLong(KEY_SLEEP_WAKE_TS_MS, wakeTimestampMs)
-            .apply()
+            .commit()
     }
 
-    fun getSleepDurationMinutes(): Int {
+    fun getSleepDurationMinutes(nowMs: Long = System.currentTimeMillis()): Int {
+        if (!hasVerifiedSleepDataForToday(nowMs)) return 0
         return prefs.getInt(KEY_SLEEP_DURATION_MIN, 462) // 7h 42m
     }
 
-    fun getSleepScore(): Int {
+    fun getSleepScore(nowMs: Long = System.currentTimeMillis()): Int {
+        if (!hasVerifiedSleepDataForToday(nowMs)) return 0
         return prefs.getInt(KEY_SLEEP_SCORE, 86)
     }
 
@@ -244,7 +311,6 @@ class SyncPreferences(context: Context) {
     }
 
     fun getSleepStagesCsv(): String {
-        // Acordado, REM, Leve, Profundo (em minutos)
         return prefs.getString(KEY_SLEEP_STAGES_CSV, "18,110,229,105") ?: "18,110,229,105"
     }
 
@@ -254,6 +320,8 @@ class SyncPreferences(context: Context) {
 
     /**
      * QUADRO DE TAREFAS (Samsung Reminder + Google Tasks)
+     * - Sincroniza junto com a agenda.
+     * - Exibe somente tarefas NÃO CONCLUÍDAS (completed == false) que sejam para HOJE ou SEM HORÁRIO.
      */
     fun isTasksSyncEnabled(): Boolean {
         return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true)
@@ -268,13 +336,106 @@ class SyncPreferences(context: Context) {
         return raw.ifBlank { DEFAULT_TASKS_JSON }
     }
 
+    fun getActiveUncompletedTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+        val list = mutableListOf<MobileTaskItem>()
+        val todayIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date(nowMs))
+        try {
+            val arr = org.json.JSONArray(getTasksJson())
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val title = obj.optString("title", "").trim()
+                if (title.isBlank()) continue
+                val done = obj.optBoolean("completed", false)
+                if (done) continue // Tarefas concluídas saem imediatamente do Canvas para não ocupar espaço
+
+                val dueDateIso = obj.optString("dueDateIso", "").trim()
+                val isTodayOrTimeless = obj.optBoolean("isTodayOrTimeless", true) &&
+                    (dueDateIso.isBlank() || dueDateIso == todayIso)
+                if (!isTodayOrTimeless) continue
+
+                val rawDue = obj.optString("dueHHMM", "").trim()
+                val normalizedDue = if (rawDue.isBlank() || rawDue.equals("Sem horário", ignoreCase = true)) {
+                    "Hoje"
+                } else {
+                    rawDue
+                }
+                list.add(
+                    MobileTaskItem(
+                        id = obj.optString("id", "t_$i"),
+                        title = title,
+                        dueHHMM = normalizedDue,
+                        sourceLabel = obj.optString("sourceLabel", "Tasks"),
+                        completed = false,
+                        isTodayOrTimeless = true
+                    )
+                )
+            }
+        } catch (_: Exception) {
+        }
+        return list
+    }
+
+    fun getTasksFilteredJsonForWatch(nowMs: Long = System.currentTimeMillis()): String {
+        val active = getActiveUncompletedTasks(nowMs)
+        val arr = org.json.JSONArray()
+        active.forEach { t ->
+            arr.put(
+                org.json.JSONObject().apply {
+                    put("id", t.id)
+                    put("title", t.title)
+                    put("dueHHMM", t.dueHHMM)
+                    put("sourceLabel", t.sourceLabel)
+                    put("completed", false)
+                    put("isTodayOrTimeless", true)
+                }
+            )
+        }
+        return arr.toString()
+    }
+
+    fun markTaskCompletedAndRemoveFromCanvas(taskId: String) {
+        try {
+            val arr = org.json.JSONArray(getTasksJson())
+            val nextArr = org.json.JSONArray()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                if (obj.optString("id", "") == taskId) {
+                    obj.put("completed", true)
+                }
+                if (!obj.optBoolean("completed", false)) {
+                    nextArr.put(obj)
+                }
+            }
+            prefs.edit().putString(KEY_TASKS_JSON, nextArr.toString()).commit()
+        } catch (_: Exception) {
+        }
+    }
+
     fun saveTasksJson(tasksJson: String, alertTimestampMs: Long = System.currentTimeMillis()) {
         if (tasksJson.isNotBlank()) {
             prefs.edit()
                 .putString(KEY_TASKS_JSON, tasksJson)
                 .putLong(KEY_TASKS_ALERT_TS_MS, alertTimestampMs)
-                .apply()
+                .commit()
         }
+    }
+
+    fun saveMobileTaskItems(items: List<MobileTaskItem>, alertTimestampMs: Long = System.currentTimeMillis()) {
+        val arr = org.json.JSONArray()
+        for (t in items) {
+            if (t.completed || !t.isTodayOrTimeless) continue
+            arr.put(
+                org.json.JSONObject().apply {
+                    put("id", t.id)
+                    put("title", t.title)
+                    put("dueHHMM", t.dueHHMM.ifBlank { "Hoje" })
+                    put("sourceLabel", t.sourceLabel.ifBlank { "Tasks" })
+                    put("completed", false)
+                    put("isTodayOrTimeless", true)
+                }
+            )
+        }
+        saveTasksJson(arr.toString(), alertTimestampMs)
     }
 
     fun getTasksAlertTimestampMs(): Long {
@@ -288,12 +449,9 @@ class SyncPreferences(context: Context) {
         timestampMs: Long = System.currentTimeMillis()
     ) {
         val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
-        val resolvedDue = dueHHMM.ifBlank {
-            java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                .format(java.util.Date(timestampMs))
-        }
+        val resolvedDue = dueHHMM.trim().ifBlank { "Hoje" }
         try {
-            val existingArr = org.json.JSONArray(getTasksJson())
+            val existingActive = getActiveUncompletedTasks(timestampMs)
             val nextArr = org.json.JSONArray()
             nextArr.put(
                 org.json.JSONObject().apply {
@@ -302,12 +460,21 @@ class SyncPreferences(context: Context) {
                     put("dueHHMM", resolvedDue)
                     put("sourceLabel", sourceLabel)
                     put("completed", false)
+                    put("isTodayOrTimeless", true)
                 }
             )
-            for (i in 0 until existingArr.length()) {
-                val obj = existingArr.optJSONObject(i) ?: continue
-                if (!obj.optString("title", "").equals(cleanTitle, ignoreCase = true) && nextArr.length() < 6) {
-                    nextArr.put(obj)
+            for (t in existingActive) {
+                if (!t.title.equals(cleanTitle, ignoreCase = true) && nextArr.length() < 6) {
+                    nextArr.put(
+                        org.json.JSONObject().apply {
+                            put("id", t.id)
+                            put("title", t.title)
+                            put("dueHHMM", t.dueHHMM)
+                            put("sourceLabel", t.sourceLabel)
+                            put("completed", false)
+                            put("isTodayOrTimeless", true)
+                        }
+                    )
                 }
             }
             prefs.edit()
@@ -319,27 +486,11 @@ class SyncPreferences(context: Context) {
     }
 
     fun getTasksSummaryLabel(): String {
-        return try {
-            val arr = org.json.JSONArray(getTasksJson())
-            var pending = 0
-            var firstTitle = ""
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val done = obj.optBoolean("completed", false)
-                if (!done) {
-                    pending++
-                    if (firstTitle.isBlank()) {
-                        firstTitle = obj.optString("title", "")
-                    }
-                }
-            }
-            if (firstTitle.isNotBlank()) {
-                "$pending pendente(s) • Próxima: $firstTitle"
-            } else {
-                "$pending tarefa(s) pendente(s) (Samsung Reminder / Google Tasks)"
-            }
-        } catch (_: Exception) {
-            "2 pendente(s) (Samsung Reminder / Google Tasks)"
+        val active = getActiveUncompletedTasks()
+        return if (active.isNotEmpty()) {
+            "${active.size} ativa(s) hoje • Próxima: ${active.first().title}"
+        } else {
+            "Não há tarefas ativas para hoje"
         }
     }
 
@@ -385,10 +536,6 @@ class SyncPreferences(context: Context) {
         prefs.edit().putInt(KEY_PHONE_WEATHER_CHECK_INTERVAL_MIN, minutes.coerceAtLeast(15)).commit()
     }
 
-    /**
-     * GATILHO 2: Apps de Clima de Terceiros escolhidos pelo usuário nas configurações
-     * que servem como Trigger de Notificação.
-     */
     fun getSelectedWeatherTriggerPackages(): Set<String> {
         return prefs.getStringSet(KEY_SELECTED_WEATHER_TRIGGER_PKGS, DEFAULT_WEATHER_TRIGGER_PACKAGES)
             ?: DEFAULT_WEATHER_TRIGGER_PACKAGES
@@ -398,10 +545,6 @@ class SyncPreferences(context: Context) {
         prefs.edit().putStringSet(KEY_SELECTED_WEATHER_TRIGGER_PKGS, HashSet(packages)).commit()
     }
 
-    /**
-     * GATILHO 3 UNIFICADO (RELÓGIO STAND-ALONE): Serviço Stand-Alone Opcional de Clima + Sol
-     * no Relógio (de hora em hora, usando a mesma localização).
-     */
     fun isWatchStandaloneWeatherEnabled(): Boolean {
         return prefs.getBoolean(
             KEY_WATCH_STANDALONE_WEATHER_ENABLED,
@@ -424,9 +567,6 @@ class SyncPreferences(context: Context) {
         prefs.edit().putInt(KEY_WATCH_STANDALONE_WEATHER_INTERVAL_MIN, minutes.coerceAtLeast(15)).commit()
     }
 
-    /**
-     * NASCER E PÔR DO SOL (SOLAR) — Unificado com a atualização de localização do Clima.
-     */
     fun isPhoneSolarAutoSyncEnabled(): Boolean {
         return isPhoneWeatherAutoCheckEnabled()
     }
@@ -441,6 +581,23 @@ class SyncPreferences(context: Context) {
 
     fun setWatchStandaloneSolarEnabled(enabled: Boolean) {
         setWatchStandaloneWeatherEnabled(enabled)
+    }
+
+    fun saveLastKnownCoordinates(lat: Double, lon: Double) {
+        if (lat != 0.0 || lon != 0.0) {
+            prefs.edit()
+                .putString(KEY_WEATHER_SAVED_LAT, lat.toString())
+                .putString(KEY_WEATHER_SAVED_LON, lon.toString())
+                .apply()
+        }
+    }
+
+    fun getLastKnownCoordinates(): Pair<Double, Double>? {
+        val latStr = prefs.getString(KEY_WEATHER_SAVED_LAT, null) ?: return null
+        val lonStr = prefs.getString(KEY_WEATHER_SAVED_LON, null) ?: return null
+        val lat = latStr.toDoubleOrNull() ?: return null
+        val lon = lonStr.toDoubleOrNull() ?: return null
+        return lat to lon
     }
 
     fun saveSolarTimes(sunriseHHMM: String, sunsetHHMM: String) {
@@ -488,7 +645,10 @@ class SyncPreferences(context: Context) {
         val shiftDetected = isPhoneWeatherAutoCheckEnabled() &&
             (shiftAcrossHours || shiftFromPreviousFetch || rainAlert || weatherConditionChanged)
 
-        val resolvedLoc = formatCompactWeatherLocation(locationName.ifBlank { getPhoneWeatherLocationName() })
+        val validCandidateLoc = locationName.trim().takeIf {
+            it.isNotBlank() && !it.equals("Local, BR", ignoreCase = true)
+        } ?: getPhoneWeatherLocationName()
+        val resolvedLoc = formatCompactWeatherLocation(validCandidateLoc)
         val updatedHHMM = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
             .format(java.util.Date(fetchTimestampMs))
 
@@ -533,7 +693,7 @@ class SyncPreferences(context: Context) {
     }
 
     fun setPhoneWeatherLocationName(locationName: String) {
-        if (locationName.isNotBlank()) {
+        if (locationName.isNotBlank() && !locationName.equals("Local, BR", ignoreCase = true)) {
             prefs.edit().putString(KEY_WEATHER_LOCATION_NAME, formatCompactWeatherLocation(locationName)).apply()
         }
     }
@@ -624,6 +784,13 @@ class SyncPreferences(context: Context) {
 
     companion object {
         const val ACTION_SYNC_COMPLETED = "com.chronowear.mobile.ACTION_SYNC_COMPLETED"
+        const val MODE_AUTO = "DYNAMIC"
+        const val MODE_EVENTS = "EVENTS"
+        const val MODE_TASKS = "TASKS"
+        const val MODE_WEATHER = "WEATHER"
+        const val MODE_SUN = "SUN"
+        const val MODE_SLEEP = "SLEEP"
+        const val MODE_STEPS = "STEPS"
         private const val KEY_CALENDARS = "selected_calendar_ids"
         private const val KEY_HORIZON_DAYS = "horizon_days"
         private const val KEY_PROGRESS_WINDOW_MIN = "progress_window_minutes"
@@ -641,11 +808,14 @@ class SyncPreferences(context: Context) {
         private const val KEY_NOTIFY_AGENDA_15MIN = "notify_agenda_15min"
         private const val KEY_AUTO_FALLBACK_AGENDA_TO_TASKS = "auto_fallback_agenda_to_tasks"
         private const val KEY_INITIAL_PERMISSIONS_REQUESTED = "initial_permissions_requested"
+        private const val KEY_HOME_WIDGETS_ORDER_CSV = "home_widgets_order_csv"
+        private const val KEY_HOME_WIDGETS_EXPANDED_CSV = "home_widgets_expanded_csv"
         private const val KEY_AUTO_AGENDA_EXPOSURE_MIN = "auto_agenda_exposure_min"
         private const val KEY_AUTO_WEATHER_EXPOSURE_MIN = "auto_weather_exposure_min"
         private const val KEY_AUTO_SUN_EXPOSURE_MIN = "auto_sun_exposure_min"
         private const val KEY_AUTO_SLEEP_EXPOSURE_MIN = "auto_sleep_exposure_min"
         private const val KEY_SLEEP_SYNC_ENABLED = "sleep_sync_enabled"
+        private const val KEY_SLEEP_HAS_DATA_TODAY = "sleep_has_data_today"
         private const val KEY_SLEEP_DURATION_MIN = "sleep_duration_min"
         private const val KEY_SLEEP_SCORE = "sleep_score"
         private const val KEY_SLEEP_BEDTIME_HHMM = "sleep_bedtime_hhmm"
@@ -657,9 +827,9 @@ class SyncPreferences(context: Context) {
         private const val KEY_TASKS_ALERT_TS_MS = "tasks_alert_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"
         const val DEFAULT_TASKS_JSON = """[
-            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Reminder","completed":false},
-            {"id":"t2","title":"Pagar fatura do cartão","dueHHMM":"16:30","sourceLabel":"Tasks","completed":false},
-            {"id":"t3","title":"Comprar café em grãos","dueHHMM":"18:00","sourceLabel":"Reminder","completed":true}
+            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true},
+            {"id":"t2","title":"Pagar fatura do cartão","dueHHMM":"16:30","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true},
+            {"id":"t3","title":"Revisar notas da reunião","dueHHMM":"Hoje","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true}
         ]"""
         private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"
         private const val KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED = "phone_weather_auto_check_enabled"
@@ -669,6 +839,8 @@ class SyncPreferences(context: Context) {
         private const val KEY_WATCH_STANDALONE_WEATHER_INTERVAL_MIN = "watch_standalone_weather_interval_min"
         private const val KEY_PHONE_SOLAR_AUTO_SYNC_ENABLED = "phone_solar_auto_sync_enabled"
         private const val KEY_WATCH_STANDALONE_SOLAR_ENABLED = "watch_standalone_solar_enabled"
+        private const val KEY_WEATHER_SAVED_LAT = "weather_saved_lat"
+        private const val KEY_WEATHER_SAVED_LON = "weather_saved_lon"
         private const val KEY_SOLAR_SUNRISE_HHMM = "solar_sunrise_hhmm"
         private const val KEY_SOLAR_SUNSET_HHMM = "solar_sunset_hhmm"
         private const val KEY_WEATHER_TEMPS_CSV = "weather_temps_csv"

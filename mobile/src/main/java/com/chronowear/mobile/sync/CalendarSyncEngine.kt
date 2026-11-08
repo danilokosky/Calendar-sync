@@ -1,6 +1,7 @@
 package com.chronowear.mobile.sync
 
 import android.Manifest
+import android.bluetooth.BluetoothManager
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
@@ -12,10 +13,12 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.CalendarContract
+import android.provider.Settings
 import android.text.TextPaint
 import android.text.TextUtils
 import android.util.Base64
@@ -49,7 +52,8 @@ enum class WearConnectionState {
 data class WearConnectionReport(
     val state: WearConnectionState,
     val wearableDisplayNames: List<String>,
-    val installedAppNodeNames: List<String>
+    val installedAppNodeNames: List<String>,
+    val bluetoothEnabled: Boolean = true
 )
 
 data class LocalCalendarItem(
@@ -80,8 +84,25 @@ object CalendarSyncEngine {
     const val MESSAGE_PING_WATCH_APP_PATH = "/chronowear/ping_watch_app"
     const val CAPABILITY_WATCH_APP_INSTALLED = "chronowear_wear_app_installed"
 
+    fun isBluetoothEnabled(context: Context): Boolean {
+        return try {
+            val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bm?.adapter ?: return true
+            adapter.isEnabled
+        } catch (_: Exception) {
+            true
+        }
+    }
+
     fun hasCalendarPermission(context: Context): Boolean {
         return context.checkSelfPermission(Manifest.permission.READ_CALENDAR) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    fun hasLocationPermission(context: Context): Boolean {
+        return context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
     }
 
@@ -94,33 +115,52 @@ object CalendarSyncEngine {
         }
     }
 
+    fun isNotificationListenerEnabled(context: Context): Boolean {
+        return try {
+            val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: ""
+            flat.contains(context.packageName)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
     fun resolveDeviceCoordinates(context: Context): Pair<Double, Double> {
-        var lat = -23.5505
-        var lon = -46.6333
+        val prefs = SyncPreferences(context)
         try {
-            if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED
-            ) {
+            if (hasLocationPermission(context)) {
                 val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                val loc = lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                    ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
-                if (loc != null) {
-                    lat = loc.latitude
-                    lon = loc.longitude
+                if (lm != null) {
+                    val providers = listOf("fused", LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+                    var bestLoc: Location? = null
+                    for (provider in providers) {
+                        val candidate = try {
+                            lm.getLastKnownLocation(provider)
+                        } catch (_: Exception) {
+                            null
+                        }
+                        if (candidate != null && (bestLoc == null || candidate.time > bestLoc.time)) {
+                            bestLoc = candidate
+                        }
+                    }
+                    if (bestLoc != null) {
+                        prefs.saveLastKnownCoordinates(bestLoc.latitude, bestLoc.longitude)
+                        return bestLoc.latitude to bestLoc.longitude
+                    }
                 }
             }
         } catch (_: Exception) {
         }
-        return lat to lon
+        return prefs.getLastKnownCoordinates() ?: (-23.5505 to -46.6333)
     }
 
     @Suppress("DEPRECATION")
     fun resolveDeviceLocationName(context: Context, lat: Double, lon: Double): String {
+        val prefs = SyncPreferences(context)
         try {
             val geocoder = android.location.Geocoder(context, Locale.getDefault())
             val addresses = geocoder.getFromLocation(lat, lon, 1)
@@ -129,12 +169,14 @@ object CalendarSyncEngine {
                 val city = addr.subAdminArea ?: addr.locality ?: addr.subLocality ?: ""
                 val state = addr.adminArea ?: ""
                 if (city.isNotBlank()) {
-                    return SyncPreferences.formatCompactWeatherLocation(city, state)
+                    val formatted = SyncPreferences.formatCompactWeatherLocation(city, state)
+                    prefs.setPhoneWeatherLocationName(formatted)
+                    return formatted
                 }
             }
         } catch (_: Exception) {
         }
-        return SyncPreferences(context).getPhoneWeatherLocationName()
+        return prefs.getPhoneWeatherLocationName()
     }
 
     /**
@@ -311,6 +353,16 @@ object CalendarSyncEngine {
 
     suspend fun checkWearConnectionAndAppStatus(context: Context): WearConnectionReport {
         val prefs = SyncPreferences(context)
+        val btEnabled = isBluetoothEnabled(context)
+        if (!btEnabled) {
+            return WearConnectionReport(
+                state = WearConnectionState.DISCONNECTED,
+                wearableDisplayNames = emptyList(),
+                installedAppNodeNames = emptyList(),
+                bluetoothEnabled = false
+            )
+        }
+
         val connectedNodes = try {
             Wearable.getNodeClient(context).connectedNodes.await()
         } catch (_: Exception) {
@@ -321,7 +373,8 @@ object CalendarSyncEngine {
             return WearConnectionReport(
                 state = WearConnectionState.DISCONNECTED,
                 wearableDisplayNames = emptyList(),
-                installedAppNodeNames = emptyList()
+                installedAppNodeNames = emptyList(),
+                bluetoothEnabled = true
             )
         }
 
@@ -353,13 +406,15 @@ object CalendarSyncEngine {
             WearConnectionReport(
                 state = WearConnectionState.CONNECTED_WITH_APP_INSTALLED,
                 wearableDisplayNames = connectedNodes.map { it.displayName },
-                installedAppNodeNames = installedNodes.map { it.displayName }
+                installedAppNodeNames = installedNodes.map { it.displayName },
+                bluetoothEnabled = true
             )
         } else {
             WearConnectionReport(
                 state = WearConnectionState.WEARABLE_CONNECTED_APP_MISSING,
                 wearableDisplayNames = connectedNodes.map { it.displayName },
-                installedAppNodeNames = emptyList()
+                installedAppNodeNames = emptyList(),
+                bluetoothEnabled = true
             )
         }
     }
@@ -474,11 +529,39 @@ object CalendarSyncEngine {
                 val calId = cursor.getLong(1).toString()
                 if (!selectedIds.contains(calId)) continue
 
-                val beginMs = cursor.getLong(4)
-                val endEventMs = cursor.getLong(5)
-                if (endEventMs <= nowMs) continue
-
+                val rawBeginMs = cursor.getLong(4)
+                val rawEndMs = cursor.getLong(5)
                 val allDay = cursor.getInt(6) == 1
+
+                // Eventos de dia inteiro no Android CalendarContract vêm em 00:00 UTC.
+                // Em UTC-3, 00:00 UTC de amanhã é 21:00 de hoje! Normalizamos para o dia local correto.
+                val beginMs: Long
+                val endEventMs: Long
+                if (allDay) {
+                    val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                        timeInMillis = rawBeginMs
+                    }
+                    val localCal = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, utcCal.get(Calendar.YEAR))
+                        set(Calendar.MONTH, utcCal.get(Calendar.MONTH))
+                        set(Calendar.DAY_OF_MONTH, utcCal.get(Calendar.DAY_OF_MONTH))
+                        set(Calendar.HOUR_OF_DAY, 9)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    beginMs = localCal.timeInMillis
+                    localCal.set(Calendar.HOUR_OF_DAY, 23)
+                    localCal.set(Calendar.MINUTE, 59)
+                    endEventMs = localCal.timeInMillis
+                } else {
+                    beginMs = rawBeginMs
+                    endEventMs = rawEndMs
+                }
+
+                if (endEventMs <= nowMs) continue
+                if (!allDay && beginMs <= nowMs - 15 * 60_000L) continue
+
                 val calMeta = calMap[calId]
                 events.add(
                     LocalCalendarEvent(
@@ -634,6 +717,7 @@ object CalendarSyncEngine {
 
         // Atualiza previsões horárias de clima e horários solares pelo telefone
         fetchPhoneHourlyWeatherIfNeeded(context, forceRefresh = false)
+        val (weatherLat, weatherLon) = resolveDeviceCoordinates(context)
 
         val hasCalPerm = hasCalendarPermission(context)
         val selectedCalendarsCount = prefs.getSelectedCalendarIds().size
@@ -678,6 +762,7 @@ object CalendarSyncEngine {
         val autoSunExposureMin = prefs.getAutoSunExposureMinutes()
         val autoSleepExposureMin = prefs.getAutoSleepExposureMinutes()
         val sleepSyncEnabled = prefs.isSleepSyncEnabled()
+        val sleepHasDataToday = prefs.hasVerifiedSleepDataForToday(nowMs)
         val sleepDurationMin = prefs.getSleepDurationMinutes()
         val sleepScore = prefs.getSleepScore()
         val sleepBedtimeHHMM = prefs.getSleepBedtimeHHMM()
@@ -685,7 +770,8 @@ object CalendarSyncEngine {
         val sleepStagesCsv = prefs.getSleepStagesCsv()
         val sleepWakeTsMs = prefs.getSleepWakeTimestampMs()
         val tasksSyncEnabled = prefs.isTasksSyncEnabled()
-        val tasksJson = prefs.getTasksJson()
+        // Sincroniza automaticamente apenas tarefas não concluídas para Hoje ou Sem horário junto com a Agenda
+        val tasksJson = prefs.getTasksFilteredJsonForWatch(nowMs)
         val tasksAlertTsMs = prefs.getTasksAlertTimestampMs()
         val highFreq15Min = prefs.isHighFreq15MinRuleEnabled()
         val updateOnWake = prefs.isUpdateOnScreenWakeEnabled()
@@ -722,6 +808,7 @@ object CalendarSyncEngine {
             put("auto_sun_exposure_min", autoSunExposureMin)
             put("auto_sleep_exposure_min", autoSleepExposureMin)
             put("sleep_sync_enabled", sleepSyncEnabled)
+            put("sleep_has_data_today", sleepHasDataToday)
             put("sleep_duration_min", sleepDurationMin)
             put("sleep_score", sleepScore)
             put("sleep_bedtime_hhmm", sleepBedtimeHHMM)
@@ -739,6 +826,8 @@ object CalendarSyncEngine {
             put("weather_condition_label", weatherConditionLabel)
             put("weather_location_name", weatherLocationName)
             put("weather_updated_hhmm", weatherUpdatedHHMM)
+            put("weather_lat", weatherLat)
+            put("weather_lon", weatherLon)
             put("weather_alert_source", weatherAlertSource)
             put("weather_alert_headline", weatherAlertHeadline)
             put("weather_alert_timestamp_ms", weatherAlertTsMs)
@@ -773,6 +862,7 @@ object CalendarSyncEngine {
                 dataMap.putInt("auto_sun_exposure_min", autoSunExposureMin)
                 dataMap.putInt("auto_sleep_exposure_min", autoSleepExposureMin)
                 dataMap.putBoolean("sleep_sync_enabled", sleepSyncEnabled)
+                dataMap.putBoolean("sleep_has_data_today", sleepHasDataToday)
                 dataMap.putInt("sleep_duration_min", sleepDurationMin)
                 dataMap.putInt("sleep_score", sleepScore)
                 dataMap.putString("sleep_bedtime_hhmm", sleepBedtimeHHMM)
@@ -790,6 +880,8 @@ object CalendarSyncEngine {
                 dataMap.putString("weather_condition_label", weatherConditionLabel)
                 dataMap.putString("weather_location_name", weatherLocationName)
                 dataMap.putString("weather_updated_hhmm", weatherUpdatedHHMM)
+                dataMap.putDouble("weather_lat", weatherLat)
+                dataMap.putDouble("weather_lon", weatherLon)
                 dataMap.putString("weather_alert_source", weatherAlertSource)
                 dataMap.putString("weather_alert_headline", weatherAlertHeadline)
                 dataMap.putLong("weather_alert_timestamp_ms", weatherAlertTsMs)
@@ -821,7 +913,7 @@ object CalendarSyncEngine {
                 WearConnectionState.WEARABLE_CONNECTED_APP_MISSING ->
                     "Wearable conectado (${connReport.wearableDisplayNames.joinToString()}), mas o app não está instalado no relógio"
                 WearConnectionState.DISCONNECTED ->
-                    "Nenhum relógio conectado"
+                    if (!connReport.bluetoothEnabled) "Bluetooth desativado no smartphone" else "Nenhum relógio conectado"
             }
             prefs.recordLastSync(nowMs, events.size, selectedCalendarsCount, triggerSource, nodeStatus)
         } catch (_: Exception) {
@@ -840,14 +932,14 @@ object CalendarSyncEngine {
         return events.size
     }
 
-    private fun isSameCalendarDay(epochA: Long, epochB: Long): Boolean {
+    fun isSameCalendarDay(epochA: Long, epochB: Long): Boolean {
         val calA = Calendar.getInstance().apply { timeInMillis = epochA }
         val calB = Calendar.getInstance().apply { timeInMillis = epochB }
         return calA.get(Calendar.YEAR) == calB.get(Calendar.YEAR) &&
             calA.get(Calendar.DAY_OF_YEAR) == calB.get(Calendar.DAY_OF_YEAR)
     }
 
-    private fun calendarDaysDiff(nowMs: Long, targetMs: Long): Int {
+    fun calendarDaysDiff(nowMs: Long, targetMs: Long): Int {
         val startOfNow = Calendar.getInstance().apply {
             timeInMillis = nowMs
             set(Calendar.HOUR_OF_DAY, 0)
@@ -863,6 +955,33 @@ object CalendarSyncEngine {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         return TimeUnit.MILLISECONDS.toDays(startOfTarget - startOfNow).toInt()
+    }
+
+    /**
+     * Resolve de forma estrita os compromissos de "Hoje" ou de "Amanhã" (sem misturar dias).
+     */
+    fun resolveDayHeaderAndEvents(
+        events: List<LocalCalendarEvent>,
+        nowMs: Long
+    ): Pair<String, List<LocalCalendarEvent>> {
+        val allFuture = events.filter { it.startEpochMs > nowMs - 15 * 60_000L && it.endEpochMs > nowMs }
+        val todayEvents = allFuture.filter { isSameCalendarDay(nowMs, it.startEpochMs) }
+        if (todayEvents.isNotEmpty()) {
+            return "Hoje" to todayEvents.take(3)
+        }
+        val tomorrowEvents = allFuture.filter { calendarDaysDiff(nowMs, it.startEpochMs) == 1 }
+        if (tomorrowEvents.isNotEmpty()) {
+            return "Amanhã" to tomorrowEvents.take(3)
+        }
+        if (allFuture.isNotEmpty()) {
+            val firstNext = allFuture.first()
+            val header = SimpleDateFormat("EEE, dd", Locale("pt", "BR"))
+                .format(Date(firstNext.startEpochMs))
+                .replace(".", "")
+                .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+            return header to allFuture.filter { isSameCalendarDay(firstNext.startEpochMs, it.startEpochMs) }.take(3)
+        }
+        return "Hoje" to emptyList()
     }
 
     /**

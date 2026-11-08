@@ -71,7 +71,8 @@ data class SleepSnapshot(
     val sleepScore: Int,
     val bedtimeHHMM: String,
     val wakeHHMM: String,
-    val stagesMinutes: List<Int>
+    val stagesMinutes: List<Int>,
+    val hasDataForToday: Boolean = true
 )
 
 data class CachedWearTask(
@@ -79,7 +80,8 @@ data class CachedWearTask(
     val title: String,
     val dueHHMM: String,
     val sourceLabel: String,
-    val completed: Boolean = false
+    val completed: Boolean = false,
+    val isTodayOrTimeless: Boolean = true
 )
 
 data class TasksSnapshot(
@@ -156,10 +158,13 @@ class WatchAutonomousRepository private constructor(context: Context) :
         sleepWakeHHMM: String? = null,
         sleepStagesCsv: String? = null,
         sleepWakeTimestampMs: Long? = null,
+        sleepHasDataToday: Boolean? = null,
         tasksSyncEnabled: Boolean? = null,
         tasksJson: String? = null,
         tasksAlertTimestampMs: Long? = null,
-        autoFallbackAgendaToTasks: Boolean? = null
+        autoFallbackAgendaToTasks: Boolean? = null,
+        weatherLat: Double? = null,
+        weatherLon: Double? = null
     ) {
         val editor = prefs.edit()
             .putLong("last_sync_ms", syncTimestampMs)
@@ -223,7 +228,13 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!weatherConditionLabel.isNullOrBlank()) {
             editor.putString("weather_condition_label", weatherConditionLabel)
         }
-        if (!weatherLocationName.isNullOrBlank()) {
+        if (weatherLat != null && weatherLon != null && (weatherLat != 0.0 || weatherLon != 0.0)) {
+            editor.putString("weather_saved_lat", weatherLat.toString())
+            editor.putString("weather_saved_lon", weatherLon.toString())
+        }
+        if (!weatherLocationName.isNullOrBlank() &&
+            !weatherLocationName.equals("Local, BR", ignoreCase = true)
+        ) {
             editor.putString("weather_location_name", formatCompactWeatherLocation(weatherLocationName))
         }
         if (!weatherUpdatedHHMM.isNullOrBlank()) {
@@ -253,11 +264,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (sleepSyncEnabled != null) {
             editor.putBoolean("sleep_sync_enabled", sleepSyncEnabled)
         }
-        if (sleepDurationMinutes != null && sleepDurationMinutes > 0) {
-            editor.putInt("sleep_duration_minutes", sleepDurationMinutes.coerceIn(60, 960))
+        if (sleepHasDataToday != null) {
+            editor.putBoolean("sleep_has_data_today", sleepHasDataToday)
         }
-        if (sleepScore != null && sleepScore > 0) {
-            editor.putInt("sleep_score", sleepScore.coerceIn(1, 100))
+        if (sleepDurationMinutes != null) {
+            editor.putInt("sleep_duration_minutes", sleepDurationMinutes.coerceIn(0, 960))
+        }
+        if (sleepScore != null) {
+            editor.putInt("sleep_score", sleepScore.coerceIn(0, 100))
         }
         if (!sleepBedtimeHHMM.isNullOrBlank()) {
             editor.putString("sleep_bedtime_hhmm", sleepBedtimeHHMM)
@@ -268,10 +282,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!sleepStagesCsv.isNullOrBlank()) {
             editor.putString("sleep_stages_csv", sleepStagesCsv)
         }
-        if (sleepWakeTimestampMs != null && sleepWakeTimestampMs > 0L) {
+        if (sleepWakeTimestampMs != null) {
             val currentWakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
-            if (sleepWakeTimestampMs > currentWakeTs) {
-                editor.putLong("sleep_wake_timestamp_ms", sleepWakeTimestampMs)
+            editor.putLong("sleep_wake_timestamp_ms", sleepWakeTimestampMs)
+            if (sleepWakeTimestampMs > currentWakeTs && sleepWakeTimestampMs > 0L) {
                 // Novo registro de despertar/sono tem prioridade máxima: cancela toque manual
                 editor.remove("tap_override_context_mode")
                 editor.putLong("tap_override_timestamp_ms", 0L)
@@ -321,9 +335,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun getPhoneRenderedCardBase64IfFresh(nowMs: Long, maxAgeMs: Long = 90_000L): String? {
-        val renderedMs = prefs.getLong("phone_rendered_card_ms", 0L)
-        if (renderedMs <= 0L || (nowMs - renderedMs) > maxAgeMs) return null
-        return prefs.getString("phone_rendered_card_png_b64", null)
+        // Desativado: o relógio sempre renderiza o Canvas dinamicamente a partir do cache local
+        // para que o temporizador, a barra de progresso e a lista de compromissos avancem a cada minuto
+        // mesmo sem sincronização recente com o smartphone.
+        return null
     }
 
     fun getContextWindowMode(): String {
@@ -398,7 +413,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return prefs.getBoolean("sleep_sync_enabled", true)
     }
 
-    fun getSleepSnapshot(): SleepSnapshot {
+    /**
+     * Retorna o resumo de sono garantindo que os dados pertencem realmente ao dia de hoje.
+     * Caso não haja sessão de sono verificada para hoje, hasDataForToday = false para que o
+     * Canvas informe claramente "Não há dados de sono para hoje".
+     */
+    fun getSleepSnapshot(nowMs: Long = System.currentTimeMillis()): SleepSnapshot {
         val dur = prefs.getInt("sleep_duration_minutes", 462)
         val score = prefs.getInt("sleep_score", 86)
         val bed = prefs.getString("sleep_bedtime_hhmm", "23:18") ?: "23:18"
@@ -406,12 +426,18 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val stagesStr = prefs.getString("sleep_stages_csv", "18,95,244,105") ?: "18,95,244,105"
         val stages = stagesStr.split(",").mapNotNull { it.trim().toIntOrNull() }
             .ifEmpty { listOf(18, 95, 244, 105) }
+
+        val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
+        val explicitFlag = prefs.getBoolean("sleep_has_data_today", true)
+        val verifiedForToday = explicitFlag && dur > 0 && (wakeTs <= 0L || isSameCalendarDay(nowMs, wakeTs))
+
         return SleepSnapshot(
-            durationMinutes = dur,
-            sleepScore = score,
+            durationMinutes = if (verifiedForToday) dur else 0,
+            sleepScore = if (verifiedForToday) score else 0,
             bedtimeHHMM = bed,
             wakeHHMM = wake,
-            stagesMinutes = stages
+            stagesMinutes = stages,
+            hasDataForToday = verifiedForToday
         )
     }
 
@@ -423,6 +449,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit()
             .putInt("sleep_duration_minutes", durationMinutes.coerceIn(60, 960))
             .putInt("sleep_score", sleepScore.coerceIn(1, 100))
+            .putBoolean("sleep_has_data_today", true)
             .putLong("sleep_wake_timestamp_ms", nowMs)
             // Prioridade máxima: cancela toque manual no Canvas
             .remove("tap_override_context_mode")
@@ -432,12 +459,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getUnifiedCanvasHoldMinutes()): Boolean {
         if (!isSleepSyncEnabled()) return false
+        val sleep = getSleepSnapshot(nowMs)
+        if (!sleep.hasDataForToday) return false
+
         val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
         val windowMs = TimeUnit.MINUTES.toMillis(exposureMinutes.toLong())
         if (wakeTs > 0L && (nowMs - wakeTs) in 0..windowMs) {
             return true
         }
-        val sleep = getSleepSnapshot()
         val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
         val curMinsOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
 
@@ -516,13 +545,30 @@ class WatchAutonomousRepository private constructor(context: Context) :
         setWatchStandaloneWeatherEnabled(enabled)
     }
 
+    fun saveWeatherCoordinates(lat: Double, lon: Double) {
+        if (lat != 0.0 || lon != 0.0) {
+            prefs.edit()
+                .putString("weather_saved_lat", lat.toString())
+                .putString("weather_saved_lon", lon.toString())
+                .apply()
+        }
+    }
+
+    fun getSavedWeatherCoordinates(): Pair<Double, Double>? {
+        val latStr = prefs.getString("weather_saved_lat", null) ?: return null
+        val lonStr = prefs.getString("weather_saved_lon", null) ?: return null
+        val lat = latStr.toDoubleOrNull() ?: return null
+        val lon = lonStr.toDoubleOrNull() ?: return null
+        return lat to lon
+    }
+
     fun getWeatherLocationName(): String {
         val raw = prefs.getString("weather_location_name", "São Paulo, SP") ?: "São Paulo, SP"
         return formatCompactWeatherLocation(raw)
     }
 
     fun setWeatherLocationName(locationName: String) {
-        if (locationName.isNotBlank()) {
+        if (locationName.isNotBlank() && !locationName.equals("Local, BR", ignoreCase = true)) {
             prefs.edit()
                 .putString("weather_location_name", formatCompactWeatherLocation(locationName))
                 .apply()
@@ -609,7 +655,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             .putString("weather_updated_hhmm", updatedHHMM)
             .putLong("watch_standalone_last_fetch_ms", nowMs)
 
-        if (!locationName.isNullOrBlank()) {
+        if (!locationName.isNullOrBlank() && !locationName.equals("Local, BR", ignoreCase = true)) {
             editor.putString("weather_location_name", formatCompactWeatherLocation(locationName))
         }
 
@@ -749,9 +795,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         nowMs: Long = System.currentTimeMillis()
     ) {
         val currentTasks = getTasksSnapshot(nowMs).tasks.toMutableList()
-        val formattedDue = dueHHMM.ifBlank {
-            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nowMs))
-        }
+        val formattedDue = dueHHMM.trim().ifBlank { "Hoje" }
         val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
         currentTasks.removeAll { it.title.equals(cleanTitle, ignoreCase = true) }
         currentTasks.add(
@@ -761,17 +805,19 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 title = cleanTitle,
                 dueHHMM = formattedDue,
                 sourceLabel = sourceLabel,
-                completed = false
+                completed = false,
+                isTodayOrTimeless = true
             )
         )
         val arr = JSONArray()
-        currentTasks.take(6).forEach { t ->
+        currentTasks.filter { !it.completed && it.isTodayOrTimeless }.take(6).forEach { t ->
             val obj = org.json.JSONObject().apply {
                 put("id", t.id)
                 put("title", t.title)
                 put("dueHHMM", t.dueHHMM)
                 put("sourceLabel", t.sourceLabel)
-                put("completed", t.completed)
+                put("completed", false)
+                put("isTodayOrTimeless", true)
             }
             arr.put(obj)
         }
@@ -793,59 +839,87 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return (nowMs - alertTs) in 0..TimeUnit.MINUTES.toMillis(windowMinutes)
     }
 
+    /**
+     * Retorna apenas as tarefas NÃO CONCLUÍDAS (completed == false) que sejam para HOJE
+     * ou SEM HORÁRIO/DATA ("Hoje" / "Sem horário" / ""). Tarefas concluídas saem imediatamente
+     * do Canvas para não ocupar espaço, e tarefas agendadas para outros dias são ignoradas.
+     */
     fun getTasksSnapshot(nowMs: Long = System.currentTimeMillis()): TasksSnapshot {
         val defaultTasks = listOf(
             CachedWearTask(
                 id = "t-1",
                 title = "Enviar relatório Sprint",
-                dueHHMM = "10:30",
+                dueHHMM = "14:00",
                 sourceLabel = "Tasks",
-                completed = false
+                completed = false,
+                isTodayOrTimeless = true
             ),
             CachedWearTask(
                 id = "t-2",
                 title = "Retornar cliente One UI",
-                dueHHMM = "14:00",
+                dueHHMM = "16:30",
                 sourceLabel = "Reminder",
-                completed = false
+                completed = false,
+                isTodayOrTimeless = true
             ),
             CachedWearTask(
                 id = "t-3",
                 title = "Revisar PR Watch Face",
-                dueHHMM = "16:30",
+                dueHHMM = "Hoje",
                 sourceLabel = "Tasks",
-                completed = true
+                completed = false,
+                isTodayOrTimeless = true
             )
         )
         val rawJson = prefs.getString("cached_tasks_json", "") ?: ""
         val parsed = mutableListOf<CachedWearTask>()
+        var totalCompletedCount = 0
+        var hadExplicitJson = false
         if (rawJson.isNotBlank()) {
             try {
                 val arr = JSONArray(rawJson)
+                hadExplicitJson = true
+                val todayDateIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(nowMs))
                 for (i in 0 until arr.length()) {
                     val obj = arr.optJSONObject(i) ?: continue
                     val title = obj.optString("title", "").trim()
                     if (title.isBlank()) continue
+                    val isDone = obj.optBoolean("completed", false)
+                    if (isDone) {
+                        totalCompletedCount++
+                        continue // Tarefas concluídas saem do Canvas para não ocupar espaço
+                    }
+                    val dueDateIso = obj.optString("dueDateIso", "").trim()
+                    val isTodayOrTimelessFlag = obj.optBoolean("isTodayOrTimeless", true)
+                    val isEligibleDate = isTodayOrTimelessFlag &&
+                        (dueDateIso.isBlank() || dueDateIso == todayDateIso)
+                    if (!isEligibleDate) continue
+
+                    val rawDue = obj.optString("dueHHMM", "").trim()
+                    val normalizedDue = if (rawDue.isBlank() || rawDue.equals("Sem horário", ignoreCase = true)) {
+                        "Hoje"
+                    } else {
+                        rawDue
+                    }
                     parsed.add(
                         CachedWearTask(
                             id = obj.optString("id", "t-$i"),
                             title = title,
-                            dueHHMM = obj.optString("dueHHMM", "Hoje"),
+                            dueHHMM = normalizedDue,
                             sourceLabel = obj.optString("sourceLabel", "Tasks"),
-                            completed = obj.optBoolean("completed", false)
+                            completed = false,
+                            isTodayOrTimeless = true
                         )
                     )
                 }
             } catch (_: Exception) {
             }
         }
-        val list = if (parsed.isNotEmpty()) parsed else defaultTasks
-        val pendingCount = list.count { !it.completed }
-        val completedCount = list.count { it.completed }
+        val activeList = if (hadExplicitJson) parsed else defaultTasks
         return TasksSnapshot(
-            pendingCount = pendingCount,
-            completedCount = completedCount,
-            tasks = list,
+            pendingCount = activeList.size,
+            completedCount = totalCompletedCount,
+            tasks = activeList,
             triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs)
         )
     }
@@ -930,8 +1004,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
      * 2. Lembrete / Tarefa ativa do Samsung Reminder ou Google Tasks: assume o Canvas pelo Tempo Fixo Unificado.
      * 3. Mudança de Clima/Chuva: assume o Canvas pelo Tempo Fixo Unificado.
      * 4. Nascer e Pôr do Sol: assume o Canvas na janela solar.
-     * 5. Dormir ou Acordar: assume o Canvas com o Resumo de Sono.
-     * Retorna Pair(modoForcado, motivoParaNotificacao) ou null se nenhum gatilho prioritário estiver ativo.
+     * 5. Dormir ou Acordar: assume o Canvas com o Resumo de Sono (se houver dados de sono para hoje).
      */
     fun evaluatePriorityContextOverride(
         nowMs: Long,
@@ -954,13 +1027,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val taskAlertTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
         if (isTasksSyncEnabled() && taskAlertTs > 0L && (nowMs - taskAlertTs) in 0..unifiedHoldMs) {
             val tasksSnap = getTasksSnapshot(nowMs)
-            val firstPending = tasksSnap.tasks.firstOrNull { !it.completed } ?: tasksSnap.tasks.firstOrNull()
-            val detail = if (firstPending != null) {
-                "${firstPending.sourceLabel}: ${firstPending.title} (${firstPending.dueHHMM})"
-            } else {
-                "${tasksSnap.pendingCount} tarefa(s) pendente(s)"
+            if (tasksSnap.pendingCount > 0) {
+                val firstPending = tasksSnap.tasks.firstOrNull()
+                val detail = if (firstPending != null) {
+                    "${firstPending.sourceLabel}: ${firstPending.title} (${firstPending.dueHHMM})"
+                } else {
+                    "${tasksSnap.pendingCount} tarefa(s) pendente(s)"
+                }
+                return MODE_TASKS to detail
             }
-            return MODE_TASKS to detail
         }
 
         // 3. Mudança de Clima (Temperatura / Chuva / Alerta de App) — Prioridade Máxima se recente
@@ -982,9 +1057,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             return MODE_SUN to "Pôr do Sol às ${solar.sunsetHHMM} (Exposição ${unifiedHoldMin}m)"
         }
 
-        // 5. Dormir ou Acordar (Resumo de Sono)
+        // 5. Dormir ou Acordar (Resumo de Sono — somente se houver dados de sono confirmados para hoje)
         if (hasActiveSleepWakeExposure(nowMs, unifiedHoldMin)) {
-            val sleep = getSleepSnapshot()
+            val sleep = getSleepSnapshot(nowMs)
             val h = sleep.durationMinutes / 60
             val m = sleep.durationMinutes % 60
             return MODE_SLEEP to "Sono ${h}h ${m}m (${sleep.sleepScore} pts) • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
@@ -993,19 +1068,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return null
     }
 
-    /**
-     * Resolve qual contexto deve ser desenhado no Canvas agora:
-     * 1. Mudanças Reais de Contexto (Clima, Agenda, Tarefas, Pôr/Nascer do Sol, Acordar/Dormir) têm
-     *    PRIORIDADE MÁXIMA quando ocorrem: se não houver toque manual mais recente que o gatilho,
-     *    assumem o Canvas pelo Tempo Unificado (getUnifiedCanvasHoldMinutes()) e depois retornam
-     *    ao Canvas Padrão Principal.
-     * 2. Toque Manual no Canvas (Tap-to-Cycle):
-     *    Se o usuário tocou no Canvas na Watch Face para inspecionar o próximo Canvas disponível,
-     *    ele permanece fixo pelo Tempo Unificado (getUnifiedCanvasHoldMinutes()) e depois retorna
-     *    automaticamente à aparência padrão (Canvas Padrão Principal).
-     * 3. Canvas Padrão Principal:
-     *    Retorna getAutoPrimaryContext() selecionado nas configurações.
-     */
     fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
         val unifiedHoldMin = getUnifiedCanvasHoldMinutes().toLong()
         val tapOverride = getActiveTapOverrideMode(nowMs, unifiedHoldMin)
@@ -1020,8 +1082,6 @@ class WatchAutonomousRepository private constructor(context: Context) :
             val tasksTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
             val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs)
 
-            // Se não há toque manual ativo OU se a mudança de contexto aconteceu após o toque,
-            // a mudança de contexto tem prioridade máxima!
             if (tapOverride == null || newestTriggerTs >= tapTs) {
                 return priorityMode
             }
@@ -1032,14 +1092,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
             return tapOverride
         }
 
-        // Caso contrário, retorna ao Canvas Padrão Principal configurado pelo usuário:
-        // Se o foco principal for Agenda (EVENTS) e NÃO houver compromissos para HOJE
-        // (mesmo que existam compromissos para amanhã), exibe Tarefas (Reminder / Google Tasks)
-        // caso existam tarefas ativas/pendentes. Se não houver tarefas ativas, mantém o foco
-        // na Agenda (mostrando os eventos de Amanhã ou "Não há eventos").
         val primaryContext = getAutoPrimaryContext()
         if (primaryContext == MODE_EVENTS) {
-            val hasEventToday = upcomingThree.any { isSameCalendarDay(it.startEpochMs, nowMs) }
+            val allFuture = getAllUpcomingHorizonEvents(nowMs, 15)
+            val hasEventToday = allFuture.any { isSameCalendarDay(nowMs, it.startEpochMs) }
             if (!hasEventToday &&
                 isAutoFallbackAgendaToTasksEnabled() &&
                 isTasksSyncEnabled() &&
@@ -1052,7 +1108,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return primaryContext
     }
 
-    fun getNextThreeUpcomingEvents(nowMs: Long): List<CachedWearEvent> {
+    /**
+     * Busca os próximos compromissos futuros (start_epoch_ms > nowMs) no cache SQLite.
+     * Conforme o horário passa, compromissos cujo horário de início já passou deixam automaticamente
+     * de ser retornados, fazendo a fila avançar dinamicamente no relógio sem depender de nova sincronização.
+     */
+    fun getAllUpcomingHorizonEvents(nowMs: Long, limit: Int = 20): List<CachedWearEvent> {
         val list = mutableListOf<CachedWearEvent>()
         val db = readableDatabase
         db.query(
@@ -1063,7 +1124,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             null,
             null,
             "start_epoch_ms ASC",
-            "3"
+            limit.toString()
         )?.use { cursor ->
             while (cursor.moveToNext()) {
                 list.add(
@@ -1079,6 +1140,32 @@ class WatchAutonomousRepository private constructor(context: Context) :
             }
         }
         return list
+    }
+
+    /**
+     * Regra Estrita de Separação por Dia no Canvas da Agenda:
+     * - Enquanto houver compromissos para HOJE (isSameCalendarDay(nowMs, ev.startEpochMs)),
+     *   o título é "Hoje" e SOMENTE os compromissos de hoje aparecem na lista (nunca mistura eventos de outros dias sob "Hoje").
+     * - Somente quando NÃO houver mais nenhum compromisso para hoje, verifica se há compromissos
+     *   para AMANHÃ (calendarDaysDiff == 1). Se houver, muda o título para "Amanhã" e lista apenas os de amanhã.
+     * - Se não houver compromissos para hoje nem para amanhã, mantém "Hoje" com lista vazia ("Não há compromissos").
+     */
+    fun resolveDayHeaderAndEventsForWatch(nowMs: Long): Pair<String, List<CachedWearEvent>> {
+        val allFuture = getAllUpcomingHorizonEvents(nowMs, 24)
+        val todayEvents = allFuture.filter { isSameCalendarDay(nowMs, it.startEpochMs) }
+        if (todayEvents.isNotEmpty()) {
+            return "Hoje" to todayEvents.take(3)
+        }
+        val tomorrowEvents = allFuture.filter { calendarDaysDiff(nowMs, it.startEpochMs) == 1 }
+        if (tomorrowEvents.isNotEmpty()) {
+            return "Amanhã" to tomorrowEvents.take(3)
+        }
+        return "Hoje" to emptyList()
+    }
+
+    fun getNextThreeUpcomingEvents(nowMs: Long): List<CachedWearEvent> {
+        val (_, dayFiltered) = resolveDayHeaderAndEventsForWatch(nowMs)
+        return dayFiltered
     }
 
     fun getProgressWindowMinutes(): Int {

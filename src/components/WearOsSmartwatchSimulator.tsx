@@ -11,6 +11,7 @@ import {
   formatDayRelative,
   computeSolarCurvePoint,
   formatCompactWeatherLocation,
+  filterActiveTasksForWatch,
 } from '../utils/calendarSyncEngine';
 import {
   Bluetooth,
@@ -75,7 +76,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   >('ChronoWear Auto (1h)');
 
   const tasksList: TaskItem[] = config.tasks ?? DEFAULT_TASKS_LIST;
-  const pendingTasksCount = tasksList.filter((t) => !t.completed).length;
+  const activeTasksForWatch = filterActiveTasksForWatch(tasksList);
+  const pendingTasksCount = activeTasksForWatch.length;
 
   const handleToggleTaskItem = (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1058,7 +1060,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </div>
                 )}
 
-                {/* MODO 5: RESUMO DE SONO (SLEEP — Hipnograma Health Connect / Samsung Health) */}
+                {/* MODO 5: RESUMO DE SONO (SLEEP — Hipnograma Health Connect / Samsung Health ou Aviso Verificado de Sem Dados para Hoje) */}
                 {effectiveMode === 'SLEEP' && (
                   <div
                     data-testid="sleep-context-canvas"
@@ -1068,38 +1070,60 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       <div className="flex items-center gap-1.5">
                         <Moon className="w-4 h-4 text-[#A78BFA] shrink-0" />
                         <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
-                          Sono
+                          Sono • Hoje
                         </span>
                       </div>
-                      <span className="text-[12.5px] font-mono font-bold text-[#67E8F9]">
-                        7h 42m • {config.sleepScore ?? 86} pts
-                      </span>
+                      {(config.sleepHasDataToday ?? true) ? (
+                        <span className="text-[12.5px] font-mono font-bold text-[#67E8F9]">
+                          7h 42m • {config.sleepScore ?? 86} pts
+                        </span>
+                      ) : (
+                        <span className="text-[10.5px] font-mono font-bold text-slate-400">
+                          Sem registro
+                        </span>
+                      )}
                     </div>
 
-                    <div className="text-[11px] font-semibold text-slate-300 leading-none">
-                      {config.sleepBedtimeHHMM ?? '23:18'} → {config.sleepWakeHHMM ?? '07:00'} • Excelente
-                    </div>
+                    {(config.sleepHasDataToday ?? true) ? (
+                      <>
+                        <div className="text-[11px] font-semibold text-slate-300 leading-none">
+                          {config.sleepBedtimeHHMM ?? '23:18'} → {config.sleepWakeHHMM ?? '07:00'} • Excelente
+                        </div>
 
-                    {/* Barra de Estágios do Sono (Hipnograma: Acordado, REM, Leve, Profundo) */}
-                    <div className="w-full h-[20px] rounded-md overflow-hidden flex gap-[2px] bg-[#131B26] p-[2px]">
-                      <div className="h-full w-[5%] bg-[#FB7185] rounded-xs" title="Acordado" />
-                      <div className="h-full w-[22%] bg-[#60A5FA] rounded-xs" title="Sono Leve" />
-                      <div className="h-full w-[19%] bg-[#6366F1] rounded-xs" title="Sono Profundo" />
-                      <div className="h-full w-[18%] bg-[#38BDF8] rounded-xs" title="REM" />
-                      <div className="h-full w-[21%] bg-[#60A5FA] rounded-xs" title="Sono Leve" />
-                      <div className="h-full w-[15%] bg-[#6366F1] rounded-xs" title="Sono Profundo" />
-                    </div>
+                        {/* Barra de Estágios do Sono (Hipnograma: Acordado, REM, Leve, Profundo) */}
+                        <div className="w-full h-[20px] rounded-md overflow-hidden flex gap-[2px] bg-[#131B26] p-[2px]">
+                          <div className="h-full w-[5%] bg-[#FB7185] rounded-xs" title="Acordado" />
+                          <div className="h-full w-[22%] bg-[#60A5FA] rounded-xs" title="Sono Leve" />
+                          <div className="h-full w-[19%] bg-[#6366F1] rounded-xs" title="Sono Profundo" />
+                          <div className="h-full w-[18%] bg-[#38BDF8] rounded-xs" title="REM" />
+                          <div className="h-full w-[21%] bg-[#60A5FA] rounded-xs" title="Sono Leve" />
+                          <div className="h-full w-[15%] bg-[#6366F1] rounded-xs" title="Sono Profundo" />
+                        </div>
 
-                    <div className="flex items-center justify-between text-[10px] font-mono font-bold px-0.5 leading-none">
-                      <span className="text-[#FB7185]">● Acord.</span>
-                      <span className="text-[#38BDF8]">● REM</span>
-                      <span className="text-[#60A5FA]">● Leve</span>
-                      <span className="text-[#818CF8]">● Prof.</span>
-                    </div>
+                        <div className="flex items-center justify-between text-[10px] font-mono font-bold px-0.5 leading-none">
+                          <span className="text-[#FB7185]">● Acord.</span>
+                          <span className="text-[#38BDF8]">● REM</span>
+                          <span className="text-[#60A5FA]">● Leve</span>
+                          <span className="text-[#818CF8]">● Prof.</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col justify-center flex-1 space-y-1">
+                        <div
+                          data-testid="sleep-empty-today-message"
+                          className="text-[13px] font-bold text-slate-200 leading-tight"
+                        >
+                          Não há dados de sono para hoje
+                        </div>
+                        <div className="text-[10.5px] font-medium text-slate-400 leading-tight">
+                          Sincronizado e verificado pelo app (Health Connect / Samsung Health)
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* MODO 6: QUADRO DE TAREFAS (TASKS — Samsung Reminder & Google Tasks) */}
+                {/* MODO 6: QUADRO DE TAREFAS (TASKS — Apenas Tarefas Não Concluídas para Hoje ou Sem Horário) */}
                 {effectiveMode === 'TASKS' && (
                   <div
                     data-testid="tasks-context-canvas"
@@ -1109,59 +1133,60 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       <div className="flex items-center gap-1.5">
                         <CheckSquare className="w-4 h-4 text-[#22C55E] shrink-0" />
                         <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
-                          Tarefas
+                          Tarefas • Hoje
                         </span>
                       </div>
                       <span className="text-[10.5px] font-mono font-bold text-[#67E8F9]">
-                        {pendingTasksCount} pend. • Reminder/Tasks
+                        {pendingTasksCount} ativas
                       </span>
                     </div>
 
-                    <div className="flex flex-col justify-between flex-1 pt-1 space-y-1">
-                      {tasksList.slice(0, 3).map((task, idx) => (
-                        <div
-                          key={task.id}
-                          onClick={(e) => handleToggleTaskItem(task.id, e)}
-                          title="Clique na tarefa para marcar/desmarcar como concluída"
-                          className="flex items-center justify-between gap-1.5 text-[12px] leading-tight hover:bg-white/5 rounded px-0.5 cursor-pointer"
-                        >
-                          <div className="flex items-center gap-1.5 min-w-0">
+                    {activeTasksForWatch.length === 0 ? (
+                      <div className="flex flex-col justify-center flex-1 space-y-1">
+                        <div className="text-[13px] font-bold text-slate-200">
+                          Não há tarefas para hoje
+                        </div>
+                        <div className="text-[10.5px] text-slate-400">
+                          Todas as tarefas do dia foram concluídas
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col justify-between flex-1 pt-1 space-y-1">
+                        {activeTasksForWatch.slice(0, 3).map((task, idx) => (
+                          <div
+                            key={task.id}
+                            onClick={(e) => handleToggleTaskItem(task.id, e)}
+                            title="Clique na tarefa para concluí-la e removê-la do Canvas"
+                            className="flex items-center justify-between gap-1.5 text-[12px] leading-tight hover:bg-white/5 rounded px-0.5 cursor-pointer"
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="w-3.5 h-3.5 rounded-[4px] border border-[#67E8F9] flex items-center justify-center text-[9px] font-bold shrink-0 text-transparent hover:text-[#22C55E]">
+                                ✓
+                              </span>
+                              <span className="text-[11px] font-mono font-bold text-white shrink-0">
+                                {task.dueHHMM || 'Hoje'}
+                              </span>
+                              <span
+                                className={`truncate font-bold ${
+                                  idx === 0 ? 'text-[#F5C438]' : 'text-slate-100'
+                                }`}
+                              >
+                                {task.title}
+                              </span>
+                            </div>
                             <span
-                              className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                                task.completed
-                                  ? 'bg-[#22C55E] border-[#22C55E] text-slate-950'
-                                  : 'border-[#67E8F9] text-transparent'
+                              className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded shrink-0 ${
+                                task.sourceLabel === 'Reminder'
+                                  ? 'bg-sky-500/20 text-sky-300'
+                                  : 'bg-amber-500/20 text-amber-300'
                               }`}
                             >
-                              ✓
-                            </span>
-                            <span className="text-[11px] font-mono font-bold text-white shrink-0">
-                              {task.dueHHMM}
-                            </span>
-                            <span
-                              className={`truncate font-bold ${
-                                task.completed
-                                  ? 'text-slate-500 line-through'
-                                  : idx === 0
-                                  ? 'text-[#F5C438]'
-                                  : 'text-slate-100'
-                              }`}
-                            >
-                              {task.title}
+                              {task.sourceLabel}
                             </span>
                           </div>
-                          <span
-                            className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded shrink-0 ${
-                              task.sourceLabel === 'Reminder'
-                                ? 'bg-sky-500/20 text-sky-300'
-                                : 'bg-amber-500/20 text-amber-300'
-                            }`}
-                          >
-                            {task.sourceLabel}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

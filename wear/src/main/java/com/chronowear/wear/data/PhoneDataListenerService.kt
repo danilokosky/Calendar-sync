@@ -121,6 +121,9 @@ class PhoneDataListenerService : WearableListenerService() {
                     dataMap.containsKey("sleep_wake_timestamp_ms") -> dataMap.getLong("sleep_wake_timestamp_ms", 0L)
                     else -> null
                 }
+                val sleepHasDataToday = if (dataMap.containsKey("sleep_has_data_today")) {
+                    dataMap.getBoolean("sleep_has_data_today", true)
+                } else null
                 val tasksSyncEnabled = if (dataMap.containsKey("tasks_sync_enabled")) {
                     dataMap.getBoolean("tasks_sync_enabled", true)
                 } else null
@@ -130,6 +133,12 @@ class PhoneDataListenerService : WearableListenerService() {
                 } else null
                 val autoFallbackAgendaToTasks = if (dataMap.containsKey("auto_fallback_agenda_to_tasks")) {
                     dataMap.getBoolean("auto_fallback_agenda_to_tasks", true)
+                } else null
+                val weatherLat = if (dataMap.containsKey("weather_lat")) {
+                    dataMap.getDouble("weather_lat", 0.0)
+                } else null
+                val weatherLon = if (dataMap.containsKey("weather_lon")) {
+                    dataMap.getDouble("weather_lon", 0.0)
                 } else null
 
                 persistAndNotify(
@@ -171,10 +180,13 @@ class PhoneDataListenerService : WearableListenerService() {
                     sleepWakeHHMM = sleepWakeHHMM,
                     sleepStagesCsv = sleepStagesCsv,
                     sleepWakeTimestampMs = sleepWakeTsMs,
+                    sleepHasDataToday = sleepHasDataToday,
                     tasksSyncEnabled = tasksSyncEnabled,
                     tasksJson = tasksJson,
                     tasksAlertTimestampMs = tasksAlertTsMs,
-                    autoFallbackAgendaToTasks = autoFallbackAgendaToTasks
+                    autoFallbackAgendaToTasks = autoFallbackAgendaToTasks,
+                    weatherLat = weatherLat,
+                    weatherLon = weatherLon
                 )
             }
         }
@@ -284,6 +296,9 @@ class PhoneDataListenerService : WearableListenerService() {
                         json.has("sleep_wake_timestamp_ms") -> json.optLong("sleep_wake_timestamp_ms", 0L)
                         else -> null
                     }
+                    val sleepHasDataToday = if (json.has("sleep_has_data_today")) {
+                        json.optBoolean("sleep_has_data_today", true)
+                    } else null
                     val tasksSyncEnabled = if (json.has("tasks_sync_enabled")) {
                         json.optBoolean("tasks_sync_enabled", true)
                     } else null
@@ -293,6 +308,12 @@ class PhoneDataListenerService : WearableListenerService() {
                     } else null
                     val autoFallbackAgendaToTasks = if (json.has("auto_fallback_agenda_to_tasks")) {
                         json.optBoolean("auto_fallback_agenda_to_tasks", true)
+                    } else null
+                    val weatherLat = if (json.has("weather_lat")) {
+                        json.optDouble("weather_lat", 0.0)
+                    } else null
+                    val weatherLon = if (json.has("weather_lon")) {
+                        json.optDouble("weather_lon", 0.0)
                     } else null
 
                     persistAndNotify(
@@ -334,10 +355,13 @@ class PhoneDataListenerService : WearableListenerService() {
                         sleepWakeHHMM = sleepWakeHHMM,
                         sleepStagesCsv = sleepStagesCsv,
                         sleepWakeTimestampMs = sleepWakeTsMs,
+                        sleepHasDataToday = sleepHasDataToday,
                         tasksSyncEnabled = tasksSyncEnabled,
                         tasksJson = tasksJson,
                         tasksAlertTimestampMs = tasksAlertTsMs,
-                        autoFallbackAgendaToTasks = autoFallbackAgendaToTasks
+                        autoFallbackAgendaToTasks = autoFallbackAgendaToTasks,
+                        weatherLat = weatherLat,
+                        weatherLon = weatherLon
                     )
                 } catch (_: Exception) {
                 }
@@ -384,10 +408,13 @@ class PhoneDataListenerService : WearableListenerService() {
         sleepWakeHHMM: String? = null,
         sleepStagesCsv: String? = null,
         sleepWakeTimestampMs: Long? = null,
+        sleepHasDataToday: Boolean? = null,
         tasksSyncEnabled: Boolean? = null,
         tasksJson: String? = null,
         tasksAlertTimestampMs: Long? = null,
-        autoFallbackAgendaToTasks: Boolean? = null
+        autoFallbackAgendaToTasks: Boolean? = null,
+        weatherLat: Double? = null,
+        weatherLon: Double? = null
     ) {
         serviceScope.launch {
             val repo = WatchAutonomousRepository.getInstance(applicationContext)
@@ -430,10 +457,13 @@ class PhoneDataListenerService : WearableListenerService() {
                 sleepWakeHHMM = sleepWakeHHMM,
                 sleepStagesCsv = sleepStagesCsv,
                 sleepWakeTimestampMs = sleepWakeTimestampMs,
+                sleepHasDataToday = sleepHasDataToday,
                 tasksSyncEnabled = tasksSyncEnabled,
                 tasksJson = tasksJson,
                 tasksAlertTimestampMs = tasksAlertTimestampMs,
-                autoFallbackAgendaToTasks = autoFallbackAgendaToTasks
+                autoFallbackAgendaToTasks = autoFallbackAgendaToTasks,
+                weatherLat = weatherLat,
+                weatherLon = weatherLon
             )
 
             AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)

@@ -449,11 +449,15 @@ class WearMainActivity : Activity() {
 
     private fun updateCountdownTick() {
         val nowMs = System.currentTimeMillis()
-        val first = upcomingThree.firstOrNull { it.startEpochMs > nowMs }
+        // Atualiza a fila de compromissos diretamente do cache local a cada tick para que
+        // compromissos vencidos saiam imediatamente mesmo sem nova sincronização com o telefone
+        val (dayHeader, dayEvents) = repo.resolveDayHeaderAndEventsForWatch(nowMs)
+        upcomingThree = dayEvents
+        val first = dayEvents.firstOrNull()
         val effectiveContext = repo.resolveEffectiveContextMode(nowMs, upcomingThree)
         val weatherSnap = repo.getHourlyWeatherSnapshot(nowMs)
         if (first == null) {
-            nextEventTitleText.text = "Agenda livre"
+            nextEventTitleText.text = "Não há compromissos"
             nextEventCountdownText.text = "Sem próximo evento"
             complicationStatusText.text = "Canvas: $effectiveContext • 📍 ${weatherSnap.locationName} (${weatherSnap.updatedTimeHHMM})"
             return
@@ -465,7 +469,7 @@ class WearMainActivity : Activity() {
         val mins = (totalSec % 3600L) / 60L
         val secs = totalSec % 60L
 
-        nextEventTitleText.text = "${first.formatStartHHMM()} • ${first.title}"
+        nextEventTitleText.text = "[$dayHeader] ${first.formatStartHHMM()} • ${first.title}"
         nextEventCountdownText.text = if (hours > 0) {
             String.format(Locale.getDefault(), "Em %02dh %02dm", hours, mins)
         } else {
@@ -488,7 +492,7 @@ class WearMainActivity : Activity() {
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,
                         "/chronowear/pong_watch_app",
-                        "installed:1.1.2-wear".toByteArray(Charsets.UTF_8)
+                        "installed:1.2.1-wear".toByteArray(Charsets.UTF_8)
                     ).await()
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,

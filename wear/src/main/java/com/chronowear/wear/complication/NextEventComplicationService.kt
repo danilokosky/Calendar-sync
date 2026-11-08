@@ -89,36 +89,16 @@ object AgendaCardBitmapRenderer {
                 renderSunriseSunsetCanvas(repo.getSolarSnapshot(nowMs))
             }
             WatchAutonomousRepository.MODE_SLEEP -> {
-                renderSleepSummaryCanvas(repo.getSleepSnapshot())
+                renderSleepSummaryCanvas(repo.getSleepSnapshot(nowMs))
             }
             else -> {
-                val firstEv = upcomingThree.firstOrNull()
-                val dayHeader: String
-                val dayFilteredEvents: List<CachedWearEvent>
-                if (firstEv == null) {
-                    dayHeader = "Hoje"
-                    dayFilteredEvents = emptyList()
-                } else {
-                    val diffDays = WatchAutonomousRepository.calendarDaysDiff(nowMs, firstEv.startEpochMs)
-                    dayHeader = when {
-                        diffDays <= 0 -> "Hoje"
-                        diffDays == 1 -> "Amanhã"
-                        else -> java.text.SimpleDateFormat("EEE, dd", java.util.Locale.getDefault())
-                            .format(java.util.Date(firstEv.startEpochMs))
-                            .replace(".", "")
-                            .replaceFirstChar { it.uppercase() }
-                    }
-                    dayFilteredEvents = upcomingThree.filter {
-                        WatchAutonomousRepository.isSameCalendarDay(it.startEpochMs, firstEv.startEpochMs)
-                    }
-                }
-
+                // Regra estrita: se o título for "Hoje", exibe APENAS compromissos de hoje.
+                // Somente quando não houver mais compromissos para hoje muda para "Amanhã" (se houver)
+                // ou informa "Não há compromissos".
+                val (dayHeader, dayFilteredEvents) = repo.resolveDayHeaderAndEventsForWatch(nowMs)
                 val primary = dayFilteredEvents.firstOrNull()
                 val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.toLong()).toFloat()
 
-                // Barra de progresso fiel à configuração do usuário (30m, 1h, 2h, 3h antes do evento):
-                // Antes de entrar na janela configurada -> 0% (vazia).
-                // Dentro da janela configurada -> cresce linearmente de 0% até 100% na hora do evento.
                 val progressFraction = if (primary == null || windowMs <= 0f) {
                     0f
                 } else {
@@ -132,7 +112,7 @@ object AgendaCardBitmapRenderer {
 
                 val rows = if (dayFilteredEvents.isEmpty()) {
                     listOf(
-                        Triple("--:--", "Não há eventos", "--"),
+                        Triple("--:--", "Não há compromissos", "--"),
                         Triple("--:--", "Livre", ""),
                         Triple("--:--", "Livre", "")
                     )
@@ -739,7 +719,9 @@ object AgendaCardBitmapRenderer {
     }
 
     /**
-     * CONTEXTO 5: Resumo de Sono (Health Connect / Samsung Health — Hipnograma e Pontuação)
+     * CONTEXTO 5: Resumo de Sono (Health Connect / Samsung Health — Hipnograma e Pontuação do Dia)
+     * - Caso o app confirme que não há dados de sono registrados para hoje (!sleep.hasDataForToday),
+     *   informa claramente "Não há dados de sono para hoje".
      */
     private fun renderSleepSummaryCanvas(sleep: SleepSnapshot): Bitmap {
         val (bmp, canvas) = createBaseCardBitmap()
@@ -763,6 +745,37 @@ object AgendaCardBitmapRenderer {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         canvas.drawText("Sono", 76f, 50f, headerPaint)
+
+        if (!sleep.hasDataForToday || sleep.durationMinutes <= 0) {
+            val rightEmptyPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#94A3B8")
+                textSize = 32f
+                textAlign = Paint.Align.RIGHT
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            canvas.drawText("Hoje", CARD_WIDTH - 24f, 50f, rightEmptyPaint)
+
+            val mainNoDataPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#F8FAFC")
+                textSize = 34f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            canvas.drawText("Não há dados de sono para hoje", 24f, 108f, mainNoDataPaint)
+
+            val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = Color.parseColor("#1E293B")
+            }
+            canvas.drawRoundRect(RectF(24f, 130f, CARD_WIDTH - 24f, 162f), 10f, 10f, trackPaint)
+
+            val subNoDataPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#94A3B8")
+                textSize = 26f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            canvas.drawText("Verificado no Samsung Health / Health Connect", 24f, 214f, subNoDataPaint)
+            return bmp
+        }
 
         val hours = sleep.durationMinutes / 60
         val mins = sleep.durationMinutes % 60
@@ -845,7 +858,7 @@ object AgendaCardBitmapRenderer {
     }
 
     /**
-     * CONTEXTO 6: Tarefas (Samsung Reminder e Google Tasks — Checklist de Alto DPI)
+     * CONTEXTO 6: Tarefas (Samsung Reminder e Google Tasks — Somente Tarefas do Dia ou Sem Horário e Não Concluídas)
      */
     private fun renderTasksChecklistCanvas(tasksSnap: TasksSnapshot): Bitmap {
         val (bmp, canvas) = createBaseCardBitmap()
@@ -884,8 +897,9 @@ object AgendaCardBitmapRenderer {
             textAlign = Paint.Align.RIGHT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
+        val activeTasks = tasksSnap.tasks.filter { !it.completed && it.isTodayOrTimeless }
         canvas.drawText(
-            "${tasksSnap.pendingCount} pend. • Reminder/Tasks",
+            "${activeTasks.size} ativas • Hoje",
             CARD_WIDTH - 24f,
             49f,
             rightCounterPaint
@@ -896,13 +910,14 @@ object AgendaCardBitmapRenderer {
             strokeWidth = 4.2f
             color = Color.parseColor("#F5C438")
         }
-        val doneCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.parseColor("#34D399")
+        val emptyCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 3.5f
+            color = Color.parseColor("#475569")
         }
         val timeColPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 36f
+            textSize = 35f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val taskTitlePendingPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -910,10 +925,9 @@ object AgendaCardBitmapRenderer {
             textSize = 38f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        val taskTitleDonePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#94A3B8")
-            textSize = 36f
-            flags = Paint.ANTI_ALIAS_FLAG or Paint.STRIKE_THRU_TEXT_FLAG
+        val taskEmptyPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#64748B")
+            textSize = 34f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val sourceBadgePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -924,34 +938,31 @@ object AgendaCardBitmapRenderer {
         }
 
         val rowYPositions = listOf(108f, 174f, 240f)
-        val displayTasks = tasksSnap.tasks.take(3)
+        val displayTasks = activeTasks.take(3)
 
         rowYPositions.forEachIndexed { idx, baseY ->
             val task = displayTasks.getOrNull(idx)
             val centerY = baseY - 13f
             if (task != null) {
-                if (task.completed) {
-                    canvas.drawCircle(38f, centerY, 13f, doneCirclePaint)
-                    val rowCheck = Path().apply {
-                        moveTo(31f, centerY)
-                        lineTo(36f, centerY + 5f)
-                        lineTo(45f, centerY - 6f)
-                    }
-                    canvas.drawPath(rowCheck, checkStrokePaint)
+                canvas.drawCircle(38f, centerY, 12.5f, pendingCirclePaint)
+
+                val dueLabel = if (task.dueHHMM.isBlank() ||
+                    task.dueHHMM.equals("Sem horário", ignoreCase = true) ||
+                    task.dueHHMM.equals("Hoje", ignoreCase = true)
+                ) {
+                    "Hoje"
                 } else {
-                    canvas.drawCircle(38f, centerY, 12.5f, pendingCirclePaint)
+                    task.dueHHMM.take(5)
                 }
+                canvas.drawText(dueLabel, 64f, baseY, timeColPaint)
 
-                canvas.drawText(task.dueHHMM.take(5), 64f, baseY, timeColPaint)
-
-                val activeTitlePaint = if (task.completed) taskTitleDonePaint else taskTitlePendingPaint
                 val ellipsizedTask = TextUtils.ellipsize(
                     task.title,
-                    activeTitlePaint,
+                    taskTitlePendingPaint,
                     295f,
                     TextUtils.TruncateAt.END
                 ).toString()
-                canvas.drawText(ellipsizedTask, 174f, baseY, activeTitlePaint)
+                canvas.drawText(ellipsizedTask, 174f, baseY, taskTitlePendingPaint)
 
                 sourceBadgePaint.color = if (task.sourceLabel.contains("Reminder", ignoreCase = true)) {
                     Color.parseColor("#67E8F9")
@@ -960,9 +971,10 @@ object AgendaCardBitmapRenderer {
                 }
                 canvas.drawText(task.sourceLabel.take(8), CARD_WIDTH - 24f, baseY - 2f, sourceBadgePaint)
             } else {
-                canvas.drawCircle(38f, centerY, 11f, pendingCirclePaint)
-                canvas.drawText("--:--", 64f, baseY, timeColPaint)
-                canvas.drawText("Sem tarefa pendente", 174f, baseY, taskTitleDonePaint)
+                canvas.drawCircle(38f, centerY, 10f, emptyCirclePaint)
+                canvas.drawText("--:--", 64f, baseY, taskEmptyPaint)
+                val emptyMsg = if (idx == 0 && displayTasks.isEmpty()) "Não há tarefas para hoje" else "Livre"
+                canvas.drawText(emptyMsg, 174f, baseY, taskEmptyPaint)
             }
         }
 

@@ -36,6 +36,7 @@ export interface TaskItem {
   dueHHMM: string;
   sourceLabel: 'Reminder' | 'Tasks';
   completed: boolean;
+  isTodayOrTimeless?: boolean;
 }
 
 export const DEFAULT_TASKS_LIST: TaskItem[] = [
@@ -45,13 +46,15 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     dueHHMM: '14:00',
     sourceLabel: 'Reminder',
     completed: false,
+    isTodayOrTimeless: true,
   },
   {
     id: 't2',
     title: 'Pagar fatura do cartão',
-    dueHHMM: '16:30',
+    dueHHMM: 'Hoje',
     sourceLabel: 'Tasks',
     completed: false,
+    isTodayOrTimeless: true,
   },
   {
     id: 't3',
@@ -59,8 +62,19 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     dueHHMM: '18:00',
     sourceLabel: 'Reminder',
     completed: true,
+    isTodayOrTimeless: true,
   },
 ];
+
+/**
+ * Filtra estritamente as tarefas que devem aparecer no Canvas do relógio e no widget:
+ * apenas tarefas NÃO concluídas (!completed) e que sejam para Hoje ou Sem horário definido.
+ */
+export function filterActiveTasksForWatch(tasks: TaskItem[]): TaskItem[] {
+  return tasks.filter(
+    (t) => !t.completed && (t.isTodayOrTimeless ?? true)
+  );
+}
 
 export interface WeatherTriggerAppItem {
   packageName: string;
@@ -149,6 +163,7 @@ export interface SyncConfiguration {
   solarSunriseHHMM?: string;
   solarSunsetHHMM?: string;
   sleepSyncEnabled?: boolean;
+  sleepHasDataToday?: boolean;
   sleepDurationMinutes?: number;
   sleepScore?: number;
   sleepBedtimeHHMM?: string;
@@ -157,6 +172,8 @@ export interface SyncConfiguration {
   tasks?: TaskItem[];
   hasActiveWatchTaskAlert?: boolean;
   autoFallbackAgendaToTasks?: boolean;
+  homeWidgetsOrder?: PrimaryContextMode[];
+  expandedWidgets?: PrimaryContextMode[];
 }
 
 export interface WatchCacheState {
@@ -188,6 +205,7 @@ export interface WatchCacheState {
   solarSunriseHHMM?: string;
   solarSunsetHHMM?: string;
   sleepSyncEnabled?: boolean;
+  sleepHasDataToday?: boolean;
   sleepBedtimeHHMM?: string;
   sleepWakeHHMM?: string;
 }
@@ -644,7 +662,7 @@ export function evaluateWatchAutonomousState(
   const unifiedHold = cache.unifiedCanvasHoldMinutes ?? 30;
 
   const tasksList = cache.tasks ?? DEFAULT_TASKS_LIST;
-  const pendingTasksCount = tasksList.filter((t) => !t.completed).length;
+  const pendingTasksCount = filterActiveTasksForWatch(tasksList).length;
 
   const d = new Date(currentWatchTimeMs);
   const currentMinutesOfDay = d.getHours() * 60 + d.getMinutes();

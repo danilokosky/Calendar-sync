@@ -138,6 +138,7 @@ export default function App() {
     solarSunriseHHMM: '05:27',
     solarSunsetHHMM: '17:40',
     sleepSyncEnabled: true,
+    sleepHasDataToday: true,
     sleepDurationMinutes: 462,
     sleepScore: 86,
     sleepBedtimeHHMM: '23:18',
@@ -193,6 +194,7 @@ export default function App() {
       solarSunriseHHMM: config.solarSunriseHHMM,
       solarSunsetHHMM: config.solarSunsetHHMM,
       sleepSyncEnabled: config.sleepSyncEnabled,
+      sleepHasDataToday: config.sleepHasDataToday ?? true,
       sleepBedtimeHHMM: config.sleepBedtimeHHMM,
       sleepWakeHHMM: config.sleepWakeHHMM,
     };
@@ -238,6 +240,7 @@ export default function App() {
     config.solarSunriseHHMM,
     config.solarSunsetHHMM,
     config.sleepSyncEnabled,
+    config.sleepHasDataToday,
     config.sleepBedtimeHHMM,
     config.sleepWakeHHMM,
     hasActiveWatchWeatherAlert,
