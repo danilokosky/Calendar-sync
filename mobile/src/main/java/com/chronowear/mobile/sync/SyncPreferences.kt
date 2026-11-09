@@ -387,6 +387,12 @@ class SyncPreferences(context: Context) {
         return parseTaskItemsFromJsonString(raw, nowMs)
     }
 
+    fun getObservedScreenTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+        val raw = prefs.getString(KEY_OBSERVED_SCREEN_TASKS_JSON, "") ?: ""
+        if (raw.isBlank()) return emptyList()
+        return parseTaskItemsFromJsonString(raw, nowMs)
+    }
+
     private fun parseTaskItemsFromJsonString(jsonStr: String, nowMs: Long): List<MobileTaskItem> {
         val list = mutableListOf<MobileTaskItem>()
         val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
@@ -421,13 +427,15 @@ class SyncPreferences(context: Context) {
                 val explicitOverdue = obj.optBoolean("isOverdue", false)
 
                 val resolvedCategory = when {
+                    dueDateIso.isNotBlank() && dueDateIso < todayIso -> "OVERDUE"
+                    dueDateIso == todayIso -> "TODAY"
+                    dueDateIso == tomorrowIso -> "TOMORROW"
                     explicitCat in setOf("TODAY", "TOMORROW", "UNDATED", "OVERDUE") -> explicitCat
                     explicitOverdue ||
-                        (dueDateIso.isNotBlank() && dueDateIso < todayIso) ||
                         rawLower.contains("atras") ||
                         rawLower.contains("ontem") ||
                         rawLower.contains("vencid") -> "OVERDUE"
-                    dueDateIso == tomorrowIso || rawLower.contains("amanh") -> "TOMORROW"
+                    rawLower.contains("amanh") -> "TOMORROW"
                     dueDateIso.isBlank() && (
                         rawDue.isBlank() ||
                             rawLower == "sem data" ||
@@ -435,7 +443,7 @@ class SyncPreferences(context: Context) {
                             rawLower == "sem horario" ||
                             rawLower == "hoje"
                         ) -> "UNDATED"
-                    dueDateIso.isBlank() || dueDateIso == todayIso -> {
+                    dueDateIso.isBlank() -> {
                         if (timeRegex.containsMatchIn(rawDue)) "TODAY" else "UNDATED"
                     }
                     else -> continue
@@ -641,6 +649,152 @@ class SyncPreferences(context: Context) {
                 .putLong(KEY_TASKS_ALERT_TS_MS, timestampMs)
                 .commit()
         } catch (_: Exception) {
+        }
+    }
+
+    fun removeObservedTaskNotification(
+        title: String,
+        sourceLabel: String,
+        timestampMs: Long = System.currentTimeMillis()
+    ): Boolean {
+        val cleanTitle = title.trim()
+        if (cleanTitle.isBlank()) return false
+        try {
+            val existingNotif = getObservedNotificationTasks(timestampMs)
+            if (existingNotif.isEmpty()) return false
+            val nextArr = org.json.JSONArray()
+            var removedAny = false
+            for (t in existingNotif) {
+                val matchesTitle = t.title.equals(cleanTitle, ignoreCase = true)
+                val matchesSource = sourceLabel.isBlank() || t.sourceLabel.equals(sourceLabel, ignoreCase = true)
+                if (matchesTitle && matchesSource) {
+                    removedAny = true
+                } else {
+                    nextArr.put(
+                        org.json.JSONObject().apply {
+                            put("id", t.id)
+                            put("title", t.title)
+                            put("dueHHMM", t.dueHHMM)
+                            put("sourceLabel", t.sourceLabel)
+                            put("completed", false)
+                            put("isTodayOrTimeless", true)
+                            put("scheduleCategory", t.scheduleCategory)
+                            put("isOverdue", t.isOverdue)
+                        }
+                    )
+                }
+            }
+            if (removedAny) {
+                prefs.edit()
+                    .putString(KEY_OBSERVED_NOTIF_TASKS_JSON, nextArr.toString())
+                    .commit()
+            }
+            return removedAny
+        } catch (_: Exception) {
+            return false
+        }
+    }
+
+    /**
+     * Atualiza o cache local de tarefas capturadas em tempo real das janelas do Samsung Calendar,
+     * Samsung Reminder e Google Tasks via ChronoWearTasksAccessibilityService.
+     * Retorna true se houve alteração efetiva na lista de tarefas observadas.
+     */
+    fun recordObservedScreenTasksSnapshot(
+        capturedTasks: List<MobileTaskItem>,
+        completedTitles: Set<String> = emptySet(),
+        replaceSourceLabel: String? = null,
+        replaceScheduleCategory: String? = null,
+        clearAllForSourceLabel: String? = null,
+        nowMs: Long = System.currentTimeMillis()
+    ): Boolean {
+        try {
+            val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
+            val todayIso = sdfIso.format(java.util.Date(nowMs))
+            val tomorrowIso = sdfIso.format(java.util.Date(nowMs + 24L * 60L * 60L * 1000L))
+            val yesterdayIso = sdfIso.format(java.util.Date(nowMs - 24L * 60L * 60L * 1000L))
+
+            val prevRaw = prefs.getString(KEY_OBSERVED_SCREEN_TASKS_JSON, "") ?: "[]"
+            val existing = getObservedScreenTasks(nowMs).toMutableList()
+
+            val completedLower = completedTitles.map { it.trim().lowercase(java.util.Locale.ROOT) }.toSet()
+            if (completedLower.isNotEmpty()) {
+                for (doneTitle in completedTitles) {
+                    removeObservedTaskNotification(doneTitle, "")
+                }
+            }
+
+            // 1. Filtra itens existentes que foram concluídos ou que pertencem ao escopo substituído
+            val retained = existing.filter { item ->
+                val titleLower = item.title.trim().lowercase(java.util.Locale.ROOT)
+                if (completedLower.contains(titleLower)) {
+                    false
+                } else if (!clearAllForSourceLabel.isNullOrBlank() &&
+                    item.sourceLabel.equals(clearAllForSourceLabel, ignoreCase = true)
+                ) {
+                    false
+                } else if (!replaceSourceLabel.isNullOrBlank() &&
+                    item.sourceLabel.equals(replaceSourceLabel, ignoreCase = true) &&
+                    (replaceScheduleCategory.isNullOrBlank() || item.scheduleCategory == replaceScheduleCategory)
+                ) {
+                    false
+                } else {
+                    true
+                }
+            }.toMutableList()
+
+            // 2. Insere ou atualiza as tarefas recém-capturadas na tela
+            for (candidate in capturedTasks) {
+                if (candidate.completed) continue
+                val cleanTitle = candidate.title.trim()
+                if (cleanTitle.isBlank()) continue
+                if (completedLower.contains(cleanTitle.lowercase(java.util.Locale.ROOT))) continue
+
+                val existingIdx = retained.indexOfFirst {
+                    it.title.equals(cleanTitle, ignoreCase = true) &&
+                        it.sourceLabel.equals(candidate.sourceLabel, ignoreCase = true)
+                }
+                if (existingIdx >= 0) {
+                    retained[existingIdx] = candidate
+                } else {
+                    retained.add(candidate)
+                }
+            }
+
+            val nextArr = org.json.JSONArray()
+            for (t in retained.take(40)) {
+                val dueDateIso = when (t.scheduleCategory) {
+                    "TODAY" -> todayIso
+                    "TOMORROW" -> tomorrowIso
+                    "OVERDUE" -> yesterdayIso
+                    else -> ""
+                }
+                nextArr.put(
+                    org.json.JSONObject().apply {
+                        put("id", t.id)
+                        put("title", t.title)
+                        put("dueHHMM", if (t.scheduleCategory == "TODAY" || t.scheduleCategory == "TOMORROW") t.dueHHMM else "")
+                        put("dueDateIso", dueDateIso)
+                        put("sourceLabel", t.sourceLabel)
+                        put("completed", false)
+                        put("isTodayOrTimeless", true)
+                        put("scheduleCategory", t.scheduleCategory)
+                        put("isOverdue", t.isOverdue || t.scheduleCategory == "OVERDUE")
+                    }
+                )
+            }
+
+            val nextRaw = nextArr.toString()
+            if (nextRaw != prevRaw) {
+                prefs.edit()
+                    .putString(KEY_OBSERVED_SCREEN_TASKS_JSON, nextRaw)
+                    .putLong(KEY_TASKS_ALERT_TS_MS, nowMs)
+                    .commit()
+                return true
+            }
+            return false
+        } catch (_: Exception) {
+            return false
         }
     }
 
@@ -984,6 +1138,7 @@ class SyncPreferences(context: Context) {
         private const val KEY_SAMSUNG_REMINDER_SYNC_ENABLED = "samsung_reminder_sync_enabled"
         private const val KEY_GOOGLE_TASKS_SYNC_ENABLED = "google_tasks_sync_enabled"
         private const val KEY_OBSERVED_NOTIF_TASKS_JSON = "observed_notif_tasks_json"
+        private const val KEY_OBSERVED_SCREEN_TASKS_JSON = "observed_screen_tasks_json"
         private const val KEY_TASKS_JSON = "tasks_json"
         private const val KEY_TASKS_ALERT_TS_MS = "tasks_alert_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"

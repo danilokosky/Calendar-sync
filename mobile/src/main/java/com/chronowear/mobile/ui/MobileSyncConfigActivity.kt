@@ -1079,6 +1079,7 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.hasLocationPermission(this)) count++
         if (!CalendarSyncEngine.hasNotificationPermission(this)) count++
         if (!CalendarSyncEngine.isNotificationListenerEnabled(this)) count++
+        if (!CalendarSyncEngine.isTaskAccessibilityServiceEnabled(this)) count++
         if (!CalendarSyncEngine.isIgnoringBatteryOptimizations(this)) count++
         return count
     }
@@ -1176,8 +1177,12 @@ class MobileSyncConfigActivity : Activity() {
         } else {
             emptyList()
         }
-        CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, nowMs)
+        val prevTasksJson = prefs.getTasksJson()
+        val latestTasksJson = CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, nowMs)
         cachedTasks = prefs.getActiveUncompletedTasks(nowMs)
+        if (checkRemoteConnection && latestTasksJson != prevTasksJson) {
+            triggerBackgroundSync("Tarefas atualizadas automaticamente")
+        }
 
         // Atualiza Switches sem disparar listeners recursivos
         isUpdatingToggleProgrammatically = true
@@ -1363,6 +1368,22 @@ class MobileSyncConfigActivity : Activity() {
                     onGrantClick = {
                         try {
                             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                        } catch (_: Exception) {
+                        }
+                    }
+                )
+            )
+        }
+
+        if (!CalendarSyncEngine.isTaskAccessibilityServiceEnabled(this)) {
+            missing.add(
+                MissingPermItem(
+                    title = "Sincronizador de Tarefas (Reminder / Tasks)",
+                    reason = "Lê em tempo real tarefas da Agenda, Reminder e Google Tasks.",
+                    actionLabel = "Ativar",
+                    onGrantClick = {
+                        try {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         } catch (_: Exception) {
                         }
                     }

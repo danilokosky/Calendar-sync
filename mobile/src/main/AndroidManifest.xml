@@ -72,15 +72,29 @@
             </intent-filter>
         </service>
 
-        <!-- Observa notificações sobre Clima no telefone (App Google ou App Clima) e envia junto com a previsão ao relógio -->
+        <!-- Observa notificações sobre Clima e Tarefas no telefone -->
         <service
             android:name=".sync.PhoneWeatherNotificationListenerService"
             android:exported="true"
-            android:label="ChronoWear Detector de Clima (Google / Clima)"
+            android:label="ChronoWear Detector de Clima e Tarefas"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+        </service>
+
+        <!-- Sincroniza em tempo real tarefas criadas/editadas/concluídas no Samsung Reminder, Samsung Calendar e Google Tasks -->
+        <service
+            android:name=".sync.ChronoWearTasksAccessibilityService"
+            android:exported="true"
+            android:label="ChronoWear Sincronizador de Tarefas (Reminder / Tasks)"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/chronowear_tasks_accessibility" />
         </service>
 
         <receiver
@@ -89,6 +103,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.PROVIDER_CHANGED" />
                 <data android:scheme="content" android:host="com.android.calendar" />
+                <data android:scheme="content" android:host="com.samsung.android.app.reminder" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.samsung.android.app.reminder.broadcast.REMINDER_DATA_CHANGED" />
+                <action android:name="com.samsung.android.app.reminder.ACTION_REMINDER_DATA_CHANGED" />
+                <action android:name="com.samsung.android.calendar.ACTION_EVENT_CHANGED" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

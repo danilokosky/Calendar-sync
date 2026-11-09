@@ -124,6 +124,18 @@ object CalendarSyncEngine {
         }
     }
 
+    fun isTaskAccessibilityServiceEnabled(context: Context): Boolean {
+        return try {
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            enabledServices.contains(context.packageName, ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
         return pm.isIgnoringBatteryOptimizations(context.packageName)
@@ -825,6 +837,12 @@ object CalendarSyncEngine {
             }
         }
 
+        // 0. Sincroniza notificações ativas na barra de status do Samsung Reminder / Google Tasks
+        try {
+            PhoneWeatherNotificationListenerService.syncActiveTaskNotificationsNow(context)
+        } catch (_: Exception) {
+        }
+
         // 1. Leitura direta do ContentProvider nativo do Samsung Reminder (usado pelo Samsung Calendar no One UI)
         if (syncSamsungReminder) {
             querySamsungReminderProviderTasks(
@@ -841,7 +859,16 @@ object CalendarSyncEngine {
             )
         }
 
-        // 2. Tarefas/lembretes capturados de notificações recentes (dentro do limite de 30 dias)
+        // 2. Tarefas capturadas em tempo real das telas do Samsung Calendar, Samsung Reminder e Google Tasks
+        val screenTasks = prefs.getObservedScreenTasks(nowMs)
+        for (st in screenTasks) {
+            val isRem = st.sourceLabel.equals("Reminder", ignoreCase = true)
+            if (isRem && !syncSamsungReminder) continue
+            if (!isRem && !syncGoogleTasks) continue
+            upsertCollectedTask(st)
+        }
+
+        // 3. Tarefas/lembretes capturados de notificações recentes (dentro do limite de 30 dias)
         val notifTasks = prefs.getObservedNotificationTasks(nowMs)
         for (nt in notifTasks) {
             val isRem = nt.sourceLabel.equals("Reminder", ignoreCase = true)
@@ -1057,8 +1084,19 @@ object CalendarSyncEngine {
             }.thenBy { it.dueHHMM.ifBlank { "99:99" } }
         )
 
+        val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+        val todayIso = sdfIso.format(Date(nowMs))
+        val tomorrowIso = sdfIso.format(Date(nowMs + TimeUnit.DAYS.toMillis(1)))
+        val yesterdayIso = sdfIso.format(Date(nowMs - TimeUnit.DAYS.toMillis(1)))
+
         val arr = JSONArray()
         sortedTasks.forEach { t ->
+            val dueDateIso = when (t.scheduleCategory) {
+                "TODAY" -> todayIso
+                "TOMORROW" -> tomorrowIso
+                "OVERDUE" -> yesterdayIso
+                else -> ""
+            }
             arr.put(
                 JSONObject().apply {
                     put("id", t.id)
@@ -1071,6 +1109,7 @@ object CalendarSyncEngine {
                             ""
                         }
                     )
+                    put("dueDateIso", dueDateIso)
                     put("sourceLabel", t.sourceLabel)
                     put("completed", false)
                     put("isTodayOrTimeless", true)
@@ -1087,7 +1126,7 @@ object CalendarSyncEngine {
     /**
      * Consulta o ContentProvider do Samsung Reminder (com.samsung.android.app.reminder)
      * nos mesmos endpoints utilizados pelo Samsung Calendar (open/reminder_time_view, open/reminder, etc.),
-     * filtrando itens concluídos (item_status == 1), na lixeira/excluídos (item_status == 2, is_deleted_*)
+     * filtrando itens concluídos/arquivados (item_status == 2, complete_time > 0, is_deleted_*)
      * e itens com mais de 30 dias no passado.
      */
     private fun querySamsungReminderProviderTasks(
@@ -1098,6 +1137,39 @@ object CalendarSyncEngine {
         resolveCategoryAndDue: (beginMs: Long, allDay: Boolean, forceUndated: Boolean) -> Pair<String, String>?,
         onTaskFound: (MobileTaskItem) -> Unit
     ) {
+        val reminderIdToTimeMap = mutableMapOf<String, Long>()
+        val timeTableUris = listOf(
+            "content://com.samsung.android.app.reminder/open/alarm_time",
+            "content://com.samsung.android.app.reminder/open/date_time",
+            "content://com.samsung.android.app.reminder/alarm_time",
+            "content://com.samsung.android.app.reminder/date_time"
+        )
+        for (timeUriStr in timeTableUris) {
+            try {
+                context.contentResolver.query(
+                    android.net.Uri.parse(timeUriStr),
+                    null,
+                    null,
+                    null,
+                    null
+                )?.use { tc ->
+                    val colMap = tc.columnNames.associateWith { tc.getColumnIndex(it) }
+                    val remIdIdx = colMap["reminder_id"] ?: colMap["item_id"] ?: -1
+                    val startIdx = colMap["start_time"] ?: colMap["remind_time"] ?: colMap["alert_time"] ?: -1
+                    if (remIdIdx >= 0 && startIdx >= 0) {
+                        while (tc.moveToNext()) {
+                            val rId = tc.getString(remIdIdx)?.trim().orEmpty()
+                            val tMs = if (!tc.isNull(startIdx)) tc.getLong(startIdx) else 0L
+                            if (rId.isNotBlank() && tMs > 0L) {
+                                reminderIdToTimeMap[rId] = tMs
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+
         val candidateUris = mutableListOf(
             "content://com.samsung.android.app.reminder/open/reminder_time_view",
             "content://com.samsung.android.app.reminder/open/reminder",
@@ -1126,8 +1198,8 @@ object CalendarSyncEngine {
                 val uri = android.net.Uri.parse(uriStr)
                 val cursor = try {
                     if (uriStr.contains("reminder_time_view")) {
-                        val sel = "((remind_time >= ? AND remind_time < ?) OR (start_time >= ? AND start_time < ?) OR (remind_time = 0 AND start_time = 0))" +
-                            " AND visible = 1 AND is_deleted_for_cloud = 0 AND is_deleted_for_gear = 0 AND item_status = 0"
+                        val sel = "((remind_time >= ? AND remind_time < ?) OR (start_time >= ? AND start_time < ?))" +
+                            " AND visible = 1 AND is_deleted_for_cloud = 0 AND is_deleted_for_gear = 0 AND item_status != 2"
                         val args = arrayOf(
                             maxPastCutoffMs.toString(),
                             maxFutureHorizonMs.toString(),
@@ -1210,9 +1282,9 @@ object CalendarSyncEngine {
                         )
                         if (deleted != 0) continue
 
-                        // No Samsung Reminder: item_status == 0 (ativo/aberto), 1 (concluído), 2 (lixeira/excluído)
-                        val itemStatus = getIntByColNames("item_status", "status", "state", defaultVal = 0)
-                        if (itemStatus != 0) continue
+                        // No Samsung Reminder: item_status == 0 ou 1 (ativo/aberto), 2 (concluído/arquivado)
+                        val itemStatus = getIntByColNames("item_status", defaultVal = 1)
+                        if (itemStatus >= 2) continue
 
                         val isCompleted = getIntByColNames("is_completed", "complete", "completed", defaultVal = 0)
                         if (isCompleted != 0) continue
@@ -1223,7 +1295,16 @@ object CalendarSyncEngine {
                         val title = getStringByColNames("title", "main_text", "contents", "text", "subject")
                         if (title.isBlank()) continue
 
-                        val rawTimeMs = getLongByColNames("remind_time", "start_time", "alert_time", "due_date", "end_time")
+                        val rawId = getStringByColNames("_id", "item_id", "reminder_id", "uuid")
+                        var rawTimeMs = getLongByColNames("remind_time", "start_time", "alert_time", "due_date", "end_time")
+                        if (rawTimeMs <= 0L && rawId.isNotBlank()) {
+                            rawTimeMs = reminderIdToTimeMap[rawId] ?: 0L
+                        }
+                        // Se o timestamp vier em segundos em vez de milissegundos, converte
+                        if (rawTimeMs in 1_000_000_000L..9_999_999_999L) {
+                            rawTimeMs *= 1000L
+                        }
+
                         val createdTimeMs = getLongByColNames("created_time", "create_time", "last_modified_time")
 
                         // Se não tem data agendada mas foi criado há mais de 30 dias, ignora para não acumular itens antigos
@@ -1234,13 +1315,11 @@ object CalendarSyncEngine {
                         val allDay = getIntByColNames("all_day", "is_all_day", defaultVal = 0) == 1
                         val resolved = resolveCategoryAndDue(rawTimeMs, allDay, rawTimeMs <= 0L) ?: continue
                         val (category, dueLabel) = resolved
-                        val rawId = getStringByColNames("_id", "item_id", "reminder_id", "uuid").ifBlank {
-                            "${title.hashCode()}_$rawTimeMs"
-                        }
+                        val finalId = rawId.ifBlank { "${title.hashCode()}_$rawTimeMs" }
 
                         onTaskFound(
                             MobileTaskItem(
-                                id = "srem_$rawId",
+                                id = "srem_$finalId",
                                 title = title,
                                 dueHHMM = dueLabel,
                                 sourceLabel = "Reminder",
