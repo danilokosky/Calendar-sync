@@ -816,7 +816,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         nowMs: Long = System.currentTimeMillis()
     ) {
         val currentTasks = getTasksSnapshot(nowMs).tasks.toMutableList()
-        val formattedDue = dueHHMM.trim().ifBlank { "Hoje" }
+        val sdfHHMM = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val formattedDue = dueHHMM.trim().ifBlank { sdfHHMM.format(Date(nowMs)) }
         val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
         currentTasks.removeAll { it.title.equals(cleanTitle, ignoreCase = true) }
         currentTasks.add(
@@ -827,11 +828,13 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 dueHHMM = formattedDue,
                 sourceLabel = sourceLabel,
                 completed = false,
-                isTodayOrTimeless = true
+                isTodayOrTimeless = true,
+                scheduleCategory = "TODAY",
+                isOverdue = false
             )
         )
         val arr = JSONArray()
-        currentTasks.filter { !it.completed && it.isTodayOrTimeless }.take(6).forEach { t ->
+        currentTasks.filter { !it.completed && it.isTodayOrTimeless }.take(12).forEach { t ->
             val obj = org.json.JSONObject().apply {
                 put("id", t.id)
                 put("title", t.title)
@@ -839,6 +842,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 put("sourceLabel", t.sourceLabel)
                 put("completed", false)
                 put("isTodayOrTimeless", true)
+                put("scheduleCategory", t.scheduleCategory)
+                put("isOverdue", t.isOverdue)
             }
             arr.put(obj)
         }
@@ -870,66 +875,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
      *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
      */
     fun getTasksSnapshot(nowMs: Long = System.currentTimeMillis()): TasksSnapshot {
-        val defaultTasks = listOf(
-            CachedWearTask(
-                id = "t-1",
-                title = "Enviar relatório trimestral",
-                dueHHMM = "14:00",
-                sourceLabel = "Reminder",
-                completed = false,
-                isTodayOrTimeless = true,
-                scheduleCategory = "TODAY",
-                isOverdue = false
-            ),
-            CachedWearTask(
-                id = "t-2",
-                title = "Reunião de revisão da sprint",
-                dueHHMM = "16:30",
-                sourceLabel = "Tasks",
-                completed = false,
-                isTodayOrTimeless = true,
-                scheduleCategory = "TODAY",
-                isOverdue = false
-            ),
-            CachedWearTask(
-                id = "t-3",
-                title = "Apresentar protótipo Wear OS",
-                dueHHMM = "10:00",
-                sourceLabel = "Reminder",
-                completed = false,
-                isTodayOrTimeless = true,
-                scheduleCategory = "TOMORROW",
-                isOverdue = false
-            ),
-            CachedWearTask(
-                id = "t-4",
-                title = "Pagar fatura do cartão corporativo",
-                dueHHMM = "",
-                sourceLabel = "Reminder",
-                completed = false,
-                isTodayOrTimeless = true,
-                scheduleCategory = "OVERDUE",
-                isOverdue = true
-            ),
-            CachedWearTask(
-                id = "t-5",
-                title = "Organizar documentos da contabilidade",
-                dueHHMM = "",
-                sourceLabel = "Tasks",
-                completed = false,
-                isTodayOrTimeless = true,
-                scheduleCategory = "UNDATED",
-                isOverdue = false
-            )
-        )
         val rawJson = prefs.getString("cached_tasks_json", "") ?: ""
         val parsed = mutableListOf<CachedWearTask>()
         var totalCompletedCount = 0
-        var hadExplicitJson = false
         if (rawJson.isNotBlank()) {
             try {
                 val arr = JSONArray(rawJson)
-                hadExplicitJson = true
                 val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
                 val todayDateIso = sdfIso.format(Date(nowMs))
                 val tomorrowDateIso = sdfIso.format(Date(nowMs + TimeUnit.DAYS.toMillis(1L)))
@@ -993,7 +944,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             } catch (_: Exception) {
             }
         }
-        val candidateList = if (hadExplicitJson) parsed else defaultTasks
+        val candidateList = parsed
 
         val todayTasks = candidateList.filter { it.scheduleCategory == "TODAY" }
         if (todayTasks.isNotEmpty()) {

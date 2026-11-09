@@ -164,12 +164,24 @@ export function inferTaskScheduleCategory(task: TaskItem): TaskScheduleCategory 
  *    - Sem data definida: NÃO apresenta data nem hora, apenas o check de não feito + título.
  *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
  */
+export interface TasksSourceFilterOptions {
+  samsungReminderSyncEnabled?: boolean;
+  googleTasksSyncEnabled?: boolean;
+}
+
 export function resolveTasksCanvasState(
-  tasks: TaskItem[]
+  tasks: TaskItem[],
+  sourceFilter?: TasksSourceFilterOptions
 ): ResolvedTasksCanvasState {
-  const uncompleted = tasks.filter(
-    (t) => !t.completed && (t.isTodayOrTimeless ?? true)
-  );
+  const allowReminder = sourceFilter?.samsungReminderSyncEnabled ?? true;
+  const allowGoogleTasks = sourceFilter?.googleTasksSyncEnabled ?? true;
+
+  const uncompleted = tasks.filter((t) => {
+    if (t.completed || !(t.isTodayOrTimeless ?? true)) return false;
+    if (t.sourceLabel === 'Reminder' && !allowReminder) return false;
+    if (t.sourceLabel === 'Tasks' && !allowGoogleTasks) return false;
+    return true;
+  });
 
   const normalized = uncompleted.map((t) => {
     const effectiveCategory = inferTaskScheduleCategory(t);
@@ -250,8 +262,11 @@ export function resolveTasksCanvasState(
  * Retorna a lista ativa atual respeitando a hierarquia estrita:
  * Hoje (com hora) -> senão Amanhã (com hora) -> senão Sem data e Atrasadas (sem data/hora, atrasadas em vermelho).
  */
-export function filterActiveTasksForWatch(tasks: TaskItem[]): TaskItem[] {
-  return resolveTasksCanvasState(tasks).displayTasks;
+export function filterActiveTasksForWatch(
+  tasks: TaskItem[],
+  sourceFilter?: TasksSourceFilterOptions
+): TaskItem[] {
+  return resolveTasksCanvasState(tasks, sourceFilter).displayTasks;
 }
 
 export interface WeatherTriggerAppItem {
@@ -347,6 +362,8 @@ export interface SyncConfiguration {
   sleepBedtimeHHMM?: string;
   sleepWakeHHMM?: string;
   tasksSyncEnabled?: boolean;
+  samsungReminderSyncEnabled?: boolean;
+  googleTasksSyncEnabled?: boolean;
   tasks?: TaskItem[];
   hasActiveWatchTaskAlert?: boolean;
   autoFallbackAgendaToTasks?: boolean;
@@ -376,6 +393,8 @@ export interface WatchCacheState {
   hasActiveWatchWeatherAlert?: boolean;
   hasActiveWatchTaskAlert?: boolean;
   tasksSyncEnabled?: boolean;
+  samsungReminderSyncEnabled?: boolean;
+  googleTasksSyncEnabled?: boolean;
   tasks?: TaskItem[];
   autoFallbackAgendaToTasks?: boolean;
   watchStandaloneWeatherEnabled?: boolean;
@@ -840,7 +859,10 @@ export function evaluateWatchAutonomousState(
   const unifiedHold = cache.unifiedCanvasHoldMinutes ?? 30;
 
   const tasksList = cache.tasks ?? DEFAULT_TASKS_LIST;
-  const pendingTasksCount = filterActiveTasksForWatch(tasksList).length;
+  const pendingTasksCount = filterActiveTasksForWatch(tasksList, {
+    samsungReminderSyncEnabled: cache.samsungReminderSyncEnabled ?? true,
+    googleTasksSyncEnabled: cache.googleTasksSyncEnabled ?? true,
+  }).length;
 
   const d = new Date(currentWatchTimeMs);
   const currentMinutesOfDay = d.getHours() * 60 + d.getMinutes();

@@ -102,7 +102,7 @@ class CalendarSyncForegroundService : Service() {
 
         try {
             contentResolver.registerContentObserver(
-                CalendarContract.Events.CONTENT_URI,
+                CalendarContract.CONTENT_URI,
                 true,
                 calendarObserver!!
             )

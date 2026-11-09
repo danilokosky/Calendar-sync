@@ -129,6 +129,29 @@ object CalendarSyncEngine {
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
+    fun isGoogleTasksInstalled(context: Context): Boolean {
+        return isPackageInstalledOnPhone(context, "com.google.android.apps.tasks")
+    }
+
+    fun isSamsungReminderInstalled(context: Context): Boolean {
+        return isPackageInstalledOnPhone(context, "com.samsung.android.app.reminder") ||
+            isPackageInstalledOnPhone(context, "com.sec.android.app.reminder")
+    }
+
+    private fun isPackageInstalledOnPhone(context: Context, packageName: String): Boolean {
+        return try {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (_: Exception) {
+            try {
+                val allApps = context.packageManager.getInstalledApplications(0)
+                allApps.any { it.packageName.equals(packageName, ignoreCase = true) }
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
     fun resolveDeviceCoordinates(context: Context): Pair<Double, Double> {
         val prefs = SyncPreferences(context)
         try {
@@ -438,9 +461,9 @@ object CalendarSyncEngine {
         context.contentResolver.query(
             CalendarContract.Calendars.CONTENT_URI,
             projection,
-            "${CalendarContract.Calendars.VISIBLE} = 1",
             null,
-            "${CalendarContract.Calendars.ACCOUNT_NAME} ASC, ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} ASC"
+            null,
+            "${CalendarContract.Calendars.VISIBLE} DESC, ${CalendarContract.Calendars.ACCOUNT_NAME} ASC, ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} ASC"
         )?.use { cursor ->
             while (cursor.moveToNext()) {
                 val calId = cursor.getLong(0).toString()
@@ -709,31 +732,187 @@ object CalendarSyncEngine {
     }
 
     /**
-     * Lê tarefas/lembretes reais do dispositivo (calendários de Tasks/Reminder + tarefas salvas no app)
-     * classificando-as estritamente em:
+     * Lê tarefas/lembretes reais do dispositivo (agenda oficial do telefone via CalendarContract +
+     * Samsung Reminder + Google Tasks + notificações ativas), respeitando os switches individuais
+     * de Samsung Reminder e Google Tasks, e salva em SyncPreferences para atualização imediata
+     * tanto no app do telefone quanto no push único para o relógio:
      * - TODAY (agendadas para hoje, com hora HH:mm)
      * - TOMORROW (agendadas para amanhã, com hora HH:mm)
      * - UNDATED (sem data/hora definida)
      * - OVERDUE (em atraso, sem data e hora, exibidas em vermelho)
      */
     fun buildMergedTasksJsonForWatch(context: Context, prefs: SyncPreferences, nowMs: Long): String {
-        val baseTasks = prefs.getAllUncompletedTasks(nowMs).toMutableList()
+        if (!prefs.isTasksSyncEnabled()) {
+            prefs.saveTasksJson("[]")
+            return "[]"
+        }
+
+        val syncSamsungReminder = prefs.isSamsungReminderSyncEnabled()
+        val syncGoogleTasks = prefs.isGoogleTasksSyncEnabled()
+        if (!syncSamsungReminder && !syncGoogleTasks) {
+            prefs.saveTasksJson("[]")
+            return "[]"
+        }
+
+        val collectedTasks = mutableListOf<MobileTaskItem>()
+        val selectedIds = prefs.getSelectedCalendarIds()
+        val sdfHHMM = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+        // 1. Tarefas/lembretes capturados de notificações recentes no smartphone
+        val notifTasks = prefs.getObservedNotificationTasks(nowMs)
+        for (nt in notifTasks) {
+            val isRem = nt.sourceLabel.equals("Reminder", ignoreCase = true)
+            if (isRem && !syncSamsungReminder) continue
+            if (!isRem && !syncGoogleTasks) continue
+            collectedTasks.add(nt)
+        }
+
+        fun normalizeBeginMs(rawBeginMs: Long, allDay: Boolean): Long {
+            if (rawBeginMs <= 0L) return 0L
+            if (!allDay) return rawBeginMs
+            val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                timeInMillis = rawBeginMs
+            }
+            return Calendar.getInstance().apply {
+                set(Calendar.YEAR, utcCal.get(Calendar.YEAR))
+                set(Calendar.MONTH, utcCal.get(Calendar.MONTH))
+                set(Calendar.DAY_OF_MONTH, utcCal.get(Calendar.DAY_OF_MONTH))
+                set(Calendar.HOUR_OF_DAY, 9)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+        }
+
+        fun classifyAndAddCalendarTask(
+            rawId: String,
+            rawTitle: String,
+            rawBeginMs: Long,
+            rawEndMs: Long,
+            allDay: Boolean,
+            calId: String,
+            calName: String,
+            accName: String,
+            ownerAcc: String,
+            customPkg: String,
+            desc: String
+        ) {
+            val cleanTitle = rawTitle.trim()
+                .removePrefix("[Lembrete]")
+                .removePrefix("[lembrete]")
+                .removePrefix("[Reminder]")
+                .removePrefix("[reminder]")
+                .removePrefix("[Tarefa]")
+                .removePrefix("[tarefa]")
+                .removePrefix("[Task]")
+                .removePrefix("[task]")
+                .trim()
+            if (cleanTitle.isBlank()) return
+
+            val titleLower = rawTitle.lowercase(Locale.ROOT)
+            val combinedMeta = "$calName $accName $ownerAcc $customPkg $desc".lowercase(Locale.ROOT)
+
+            val isReminderMeta = combinedMeta.contains("reminder") ||
+                combinedMeta.contains("lembrete") ||
+                titleLower.contains("[lembrete]") ||
+                titleLower.contains("[reminder]")
+
+            val isGoogleTasksMeta = combinedMeta.contains("task") ||
+                combinedMeta.contains("tarefa") ||
+                combinedMeta.contains("todo") ||
+                combinedMeta.contains("to-do") ||
+                combinedMeta.contains("afazer") ||
+                titleLower.contains("[tarefa]") ||
+                titleLower.contains("[task]")
+
+            // No Samsung Calendar / CalendarContract, lembretes sincronizados da agenda oficial muitas vezes
+            // possuem duração zero (endMs <= beginMs ou endMs == 0) ou pacote Samsung/Local
+            val isPointInTimeReminderInSelectedCal = (selectedIds.isEmpty() || selectedIds.contains(calId)) &&
+                !allDay &&
+                rawBeginMs > 0L &&
+                (rawEndMs <= 0L || rawEndMs <= rawBeginMs + 5 * 60_000L)
+
+            val sourceLabel: String = when {
+                isReminderMeta || isPointInTimeReminderInSelectedCal -> {
+                    if (!syncSamsungReminder) return
+                    "Reminder"
+                }
+                isGoogleTasksMeta -> {
+                    if (!syncGoogleTasks) return
+                    "Tasks"
+                }
+                else -> return
+            }
+
+            val effectiveBeginMs = normalizeBeginMs(rawBeginMs, allDay)
+            val category: String
+            val dueTime: String
+
+            if (effectiveBeginMs <= 0L || combinedMeta.contains("sem data") || combinedMeta.contains("undated")) {
+                category = "UNDATED"
+                dueTime = ""
+            } else {
+                val dayDiff = calendarDaysDiff(nowMs, effectiveBeginMs)
+                when {
+                    dayDiff < 0 -> {
+                        category = "OVERDUE"
+                        dueTime = ""
+                    }
+                    dayDiff == 0 -> {
+                        category = "TODAY"
+                        dueTime = if (!allDay) sdfHHMM.format(Date(effectiveBeginMs)) else "09:00"
+                    }
+                    dayDiff == 1 -> {
+                        category = "TOMORROW"
+                        dueTime = if (!allDay) sdfHHMM.format(Date(effectiveBeginMs)) else "09:00"
+                    }
+                    else -> return
+                }
+            }
+
+            val existingIdx = collectedTasks.indexOfFirst {
+                it.title.equals(cleanTitle, ignoreCase = true)
+            }
+            val item = MobileTaskItem(
+                id = "cal_task_$rawId",
+                title = cleanTitle,
+                dueHHMM = dueTime,
+                sourceLabel = sourceLabel,
+                completed = false,
+                isTodayOrTimeless = true,
+                scheduleCategory = category,
+                isOverdue = category == "OVERDUE"
+            )
+            if (existingIdx >= 0) {
+                // Atualiza com os dados mais recentes da agenda oficial
+                collectedTasks[existingIdx] = item
+            } else {
+                collectedTasks.add(item)
+            }
+        }
+
+        // 2. Consulta CalendarContract.Instances (compromissos/tarefas de -30 dias até +7 dias)
         if (hasCalendarPermission(context)) {
             try {
-                val startRange = nowMs - TimeUnit.DAYS.toMillis(2)
-                val endRange = nowMs + TimeUnit.DAYS.toMillis(2)
+                val startRange = nowMs - TimeUnit.DAYS.toMillis(30)
+                val endRange = nowMs + TimeUnit.DAYS.toMillis(7)
                 val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
                 ContentUris.appendId(builder, startRange)
                 ContentUris.appendId(builder, endRange)
                 val projection = arrayOf(
                     CalendarContract.Instances.EVENT_ID,
+                    CalendarContract.Instances.CALENDAR_ID,
                     CalendarContract.Instances.TITLE,
                     CalendarContract.Instances.BEGIN,
                     CalendarContract.Instances.END,
                     CalendarContract.Instances.ALL_DAY,
-                    CalendarContract.Instances.CALENDAR_DISPLAY_NAME
+                    CalendarContract.Instances.CALENDAR_DISPLAY_NAME,
+                    CalendarContract.Instances.ACCOUNT_NAME,
+                    CalendarContract.Instances.OWNER_ACCOUNT,
+                    CalendarContract.Instances.CUSTOM_APP_PACKAGE,
+                    CalendarContract.Instances.DESCRIPTION,
+                    CalendarContract.Instances.STATUS
                 )
-                val sdfHHMM = SimpleDateFormat("HH:mm", Locale.getDefault())
                 context.contentResolver.query(
                     builder.build(),
                     projection,
@@ -742,51 +921,67 @@ object CalendarSyncEngine {
                     "${CalendarContract.Instances.BEGIN} ASC"
                 )?.use { cursor ->
                     while (cursor.moveToNext()) {
-                        val calName = (cursor.getString(3 + 2) ?: "").lowercase(Locale.ROOT)
-                        val isTaskCal = calName.contains("task") ||
-                            calName.contains("tarefa") ||
-                            calName.contains("reminder") ||
-                            calName.contains("lembrete")
-                        if (!isTaskCal) continue
+                        val status = if (!cursor.isNull(11)) cursor.getInt(11) else 0
+                        if (status == CalendarContract.Instances.STATUS_CANCELED) continue
 
-                        val evId = cursor.getLong(0).toString()
-                        val title = (cursor.getString(1) ?: "").trim()
-                        if (title.isBlank()) continue
-                        if (baseTasks.any { it.title.equals(title, ignoreCase = true) }) continue
+                        classifyAndAddCalendarTask(
+                            rawId = cursor.getLong(0).toString(),
+                            calId = cursor.getLong(1).toString(),
+                            rawTitle = cursor.getString(2) ?: "",
+                            rawBeginMs = cursor.getLong(3),
+                            rawEndMs = cursor.getLong(4),
+                            allDay = cursor.getInt(5) == 1,
+                            calName = cursor.getString(6) ?: "",
+                            accName = cursor.getString(7) ?: "",
+                            ownerAcc = cursor.getString(8) ?: "",
+                            customPkg = cursor.getString(9) ?: "",
+                            desc = cursor.getString(10) ?: ""
+                        )
+                    }
+                }
+            } catch (_: Exception) {
+            }
 
-                        val beginMs = cursor.getLong(2)
-                        val endMs = cursor.getLong(3)
-                        val allDay = cursor.getInt(4) == 1
-                        val dayDiff = calendarDaysDiff(nowMs, beginMs)
+            // 3. Consulta complementar em CalendarContract.Events para lembretes/tarefas sem DTEND ou sem data (DTSTART = 0)
+            try {
+                val evProjection = arrayOf(
+                    CalendarContract.Events._ID,
+                    CalendarContract.Events.CALENDAR_ID,
+                    CalendarContract.Events.TITLE,
+                    CalendarContract.Events.DTSTART,
+                    CalendarContract.Events.DTEND,
+                    CalendarContract.Events.ALL_DAY,
+                    CalendarContract.Events.CALENDAR_DISPLAY_NAME,
+                    CalendarContract.Events.ACCOUNT_NAME,
+                    CalendarContract.Events.OWNER_ACCOUNT,
+                    CalendarContract.Events.CUSTOM_APP_PACKAGE,
+                    CalendarContract.Events.DESCRIPTION,
+                    CalendarContract.Events.STATUS,
+                    CalendarContract.Events.DELETED
+                )
+                context.contentResolver.query(
+                    CalendarContract.Events.CONTENT_URI,
+                    evProjection,
+                    "${CalendarContract.Events.DELETED} = 0",
+                    null,
+                    "${CalendarContract.Events.DTSTART} ASC"
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val status = if (!cursor.isNull(11)) cursor.getInt(11) else 0
+                        if (status == CalendarContract.Events.STATUS_CANCELED) continue
 
-                        val category = when {
-                            endMs < nowMs || dayDiff < 0 -> "OVERDUE"
-                            allDay -> "UNDATED"
-                            dayDiff == 0 -> "TODAY"
-                            dayDiff == 1 -> "TOMORROW"
-                            else -> continue
-                        }
-                        val dueTime = if (category == "TODAY" || category == "TOMORROW") {
-                            sdfHHMM.format(Date(beginMs))
-                        } else {
-                            ""
-                        }
-                        val source = if (calName.contains("reminder") || calName.contains("lembrete")) {
-                            "Reminder"
-                        } else {
-                            "Tasks"
-                        }
-                        baseTasks.add(
-                            MobileTaskItem(
-                                id = "cal_task_$evId",
-                                title = title,
-                                dueHHMM = dueTime,
-                                sourceLabel = source,
-                                completed = false,
-                                isTodayOrTimeless = true,
-                                scheduleCategory = category,
-                                isOverdue = category == "OVERDUE"
-                            )
+                        classifyAndAddCalendarTask(
+                            rawId = cursor.getLong(0).toString(),
+                            calId = cursor.getLong(1).toString(),
+                            rawTitle = cursor.getString(2) ?: "",
+                            rawBeginMs = if (!cursor.isNull(3)) cursor.getLong(3) else 0L,
+                            rawEndMs = if (!cursor.isNull(4)) cursor.getLong(4) else 0L,
+                            allDay = !cursor.isNull(5) && cursor.getInt(5) == 1,
+                            calName = cursor.getString(6) ?: "",
+                            accName = cursor.getString(7) ?: "",
+                            ownerAcc = cursor.getString(8) ?: "",
+                            customPkg = cursor.getString(9) ?: "",
+                            desc = cursor.getString(10) ?: ""
                         )
                     }
                 }
@@ -794,8 +989,19 @@ object CalendarSyncEngine {
             }
         }
 
+        val sortedTasks = collectedTasks.sortedWith(
+            compareBy<MobileTaskItem> {
+                when (it.scheduleCategory) {
+                    "TODAY" -> 0
+                    "TOMORROW" -> 1
+                    "OVERDUE" -> 2
+                    else -> 3
+                }
+            }.thenBy { it.dueHHMM.ifBlank { "99:99" } }
+        )
+
         val arr = JSONArray()
-        baseTasks.forEach { t ->
+        sortedTasks.forEach { t ->
             arr.put(
                 JSONObject().apply {
                     put("id", t.id)
@@ -809,7 +1015,9 @@ object CalendarSyncEngine {
                 }
             )
         }
-        return arr.toString()
+        val jsonResult = arr.toString()
+        prefs.saveTasksJson(jsonResult)
+        return jsonResult
     }
 
     suspend fun performFullSyncToWatch(

@@ -118,7 +118,7 @@ class SyncPreferences(context: Context) {
     }
 
     fun getChangeDebounceSeconds(): Int {
-        return prefs.getInt(KEY_CHANGE_DEBOUNCE_SEC, 5)
+        return prefs.getInt(KEY_CHANGE_DEBOUNCE_SEC, 2)
     }
 
     fun setChangeDebounceSeconds(seconds: Int) {
@@ -348,32 +348,67 @@ class SyncPreferences(context: Context) {
      *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
      */
     fun isTasksSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true)
+        return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true) &&
+            (isSamsungReminderSyncEnabled() || isGoogleTasksSyncEnabled())
     }
 
     fun setTasksSyncEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_TASKS_SYNC_ENABLED, enabled).commit()
     }
 
-    fun getTasksJson(): String {
-        val raw = prefs.getString(KEY_TASKS_JSON, "") ?: ""
-        return raw.ifBlank { DEFAULT_TASKS_JSON }
+    fun isSamsungReminderSyncEnabled(): Boolean {
+        return prefs.getBoolean(KEY_SAMSUNG_REMINDER_SYNC_ENABLED, true)
     }
 
-    fun getAllUncompletedTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+    fun setSamsungReminderSyncEnabled(enabled: Boolean) {
+        val editor = prefs.edit().putBoolean(KEY_SAMSUNG_REMINDER_SYNC_ENABLED, enabled)
+        if (enabled) editor.putBoolean(KEY_TASKS_SYNC_ENABLED, true)
+        editor.commit()
+    }
+
+    fun isGoogleTasksSyncEnabled(): Boolean {
+        return prefs.getBoolean(KEY_GOOGLE_TASKS_SYNC_ENABLED, true)
+    }
+
+    fun setGoogleTasksSyncEnabled(enabled: Boolean) {
+        val editor = prefs.edit().putBoolean(KEY_GOOGLE_TASKS_SYNC_ENABLED, enabled)
+        if (enabled) editor.putBoolean(KEY_TASKS_SYNC_ENABLED, true)
+        editor.commit()
+    }
+
+    fun getTasksJson(): String {
+        val raw = prefs.getString(KEY_TASKS_JSON, "") ?: ""
+        return raw.ifBlank { "[]" }
+    }
+
+    fun getObservedNotificationTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+        val raw = prefs.getString(KEY_OBSERVED_NOTIF_TASKS_JSON, "") ?: ""
+        if (raw.isBlank()) return emptyList()
+        return parseTaskItemsFromJsonString(raw, nowMs)
+    }
+
+    private fun parseTaskItemsFromJsonString(jsonStr: String, nowMs: Long): List<MobileTaskItem> {
         val list = mutableListOf<MobileTaskItem>()
         val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
         val todayIso = sdfIso.format(java.util.Date(nowMs))
         val tomorrowIso = sdfIso.format(java.util.Date(nowMs + 24L * 60L * 60L * 1000L))
         val timeRegex = Regex("(\\d{1,2}:\\d{2})")
+        val allowReminder = isSamsungReminderSyncEnabled()
+        val allowGoogleTasks = isGoogleTasksSyncEnabled()
         try {
-            val arr = org.json.JSONArray(getTasksJson())
+            val arr = org.json.JSONArray(jsonStr)
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
                 val title = obj.optString("title", "").trim()
                 if (title.isBlank()) continue
                 val done = obj.optBoolean("completed", false)
                 if (done) continue
+
+                val sourceLabel = obj.optString("sourceLabel", "Reminder").trim().ifBlank { "Reminder" }
+                val isReminderSource = sourceLabel.contains("reminder", ignoreCase = true) ||
+                    sourceLabel.contains("lembrete", ignoreCase = true)
+                if (isReminderSource && !allowReminder) continue
+                if (!isReminderSource && !allowGoogleTasks) continue
 
                 val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(java.util.Locale.ROOT)
                 val dueDateIso = obj.optString("dueDateIso", "").trim()
@@ -413,7 +448,7 @@ class SyncPreferences(context: Context) {
                         id = obj.optString("id", "t_$i"),
                         title = title,
                         dueHHMM = formattedTime,
-                        sourceLabel = obj.optString("sourceLabel", "Tasks"),
+                        sourceLabel = sourceLabel,
                         completed = false,
                         isTodayOrTimeless = true,
                         scheduleCategory = resolvedCategory,
@@ -424,6 +459,11 @@ class SyncPreferences(context: Context) {
         } catch (_: Exception) {
         }
         return list
+    }
+
+    fun getAllUncompletedTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
+        if (!isTasksSyncEnabled()) return emptyList()
+        return parseTaskItemsFromJsonString(getTasksJson(), nowMs)
     }
 
     fun resolveTasksBucketForCanvas(nowMs: Long = System.currentTimeMillis()): MobileResolvedTasksSnapshot {
@@ -520,16 +560,15 @@ class SyncPreferences(context: Context) {
         }
     }
 
-    fun saveTasksJson(tasksJson: String, alertTimestampMs: Long = System.currentTimeMillis()) {
-        if (tasksJson.isNotBlank()) {
-            prefs.edit()
-                .putString(KEY_TASKS_JSON, tasksJson)
-                .putLong(KEY_TASKS_ALERT_TS_MS, alertTimestampMs)
-                .commit()
+    fun saveTasksJson(tasksJson: String, alertTimestampMs: Long = 0L) {
+        val editor = prefs.edit().putString(KEY_TASKS_JSON, tasksJson.ifBlank { "[]" })
+        if (alertTimestampMs > 0L) {
+            editor.putLong(KEY_TASKS_ALERT_TS_MS, alertTimestampMs)
         }
+        editor.commit()
     }
 
-    fun saveMobileTaskItems(items: List<MobileTaskItem>, alertTimestampMs: Long = System.currentTimeMillis()) {
+    fun saveMobileTaskItems(items: List<MobileTaskItem>, alertTimestampMs: Long = 0L) {
         val arr = org.json.JSONArray()
         for (t in items) {
             if (t.completed) continue
@@ -538,7 +577,7 @@ class SyncPreferences(context: Context) {
                     put("id", t.id)
                     put("title", t.title)
                     put("dueHHMM", t.dueHHMM)
-                    put("sourceLabel", t.sourceLabel.ifBlank { "Tasks" })
+                    put("sourceLabel", t.sourceLabel.ifBlank { "Reminder" })
                     put("completed", false)
                     put("isTodayOrTimeless", true)
                     put("scheduleCategory", t.scheduleCategory.ifBlank { "TODAY" })
@@ -563,11 +602,11 @@ class SyncPreferences(context: Context) {
         val resolvedDue = dueHHMM.trim()
         val resolvedCat = if (resolvedDue.contains(":")) "TODAY" else "UNDATED"
         try {
-            val existingActive = getAllUncompletedTasks(timestampMs)
+            val existingNotif = getObservedNotificationTasks(timestampMs)
             val nextArr = org.json.JSONArray()
             nextArr.put(
                 org.json.JSONObject().apply {
-                    put("id", "task_$timestampMs")
+                    put("id", "notif_task_$timestampMs")
                     put("title", cleanTitle)
                     put("dueHHMM", if (resolvedCat == "TODAY") resolvedDue else "")
                     put("sourceLabel", sourceLabel)
@@ -577,7 +616,7 @@ class SyncPreferences(context: Context) {
                     put("isOverdue", false)
                 }
             )
-            for (t in existingActive) {
+            for (t in existingNotif) {
                 if (!t.title.equals(cleanTitle, ignoreCase = true) && nextArr.length() < 8) {
                     nextArr.put(
                         org.json.JSONObject().apply {
@@ -594,9 +633,9 @@ class SyncPreferences(context: Context) {
                 }
             }
             prefs.edit()
-                .putString(KEY_TASKS_JSON, nextArr.toString())
+                .putString(KEY_OBSERVED_NOTIF_TASKS_JSON, nextArr.toString())
                 .putLong(KEY_TASKS_ALERT_TS_MS, timestampMs)
-                .apply()
+                .commit()
         } catch (_: Exception) {
         }
     }
@@ -938,6 +977,9 @@ class SyncPreferences(context: Context) {
         private const val KEY_SLEEP_STAGES_CSV = "sleep_stages_csv"
         private const val KEY_SLEEP_WAKE_TS_MS = "sleep_wake_ts_ms"
         private const val KEY_TASKS_SYNC_ENABLED = "tasks_sync_enabled"
+        private const val KEY_SAMSUNG_REMINDER_SYNC_ENABLED = "samsung_reminder_sync_enabled"
+        private const val KEY_GOOGLE_TASKS_SYNC_ENABLED = "google_tasks_sync_enabled"
+        private const val KEY_OBSERVED_NOTIF_TASKS_JSON = "observed_notif_tasks_json"
         private const val KEY_TASKS_JSON = "tasks_json"
         private const val KEY_TASKS_ALERT_TS_MS = "tasks_alert_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"

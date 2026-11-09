@@ -81,7 +81,16 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   }, [config.contextWindowMode, config.autoPrimaryContext]);
 
   const tasksList: TaskItem[] = config.tasks ?? DEFAULT_TASKS_LIST;
-  const resolvedTasksState = resolveTasksCanvasState(tasksList);
+  const resolvedTasksState = resolveTasksCanvasState(tasksList, {
+    samsungReminderSyncEnabled:
+      watchCache.samsungReminderSyncEnabled ??
+      config.samsungReminderSyncEnabled ??
+      true,
+    googleTasksSyncEnabled:
+      watchCache.googleTasksSyncEnabled ??
+      config.googleTasksSyncEnabled ??
+      true,
+  });
   const activeTasksForWatch = resolvedTasksState.displayTasks;
 
   const handleToggleTaskItem = (taskId: string, e: React.MouseEvent) => {

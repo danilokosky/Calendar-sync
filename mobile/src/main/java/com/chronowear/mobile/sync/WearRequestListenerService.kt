@@ -74,7 +74,9 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
         val isGoogleTasksPkg = pkg.contains("com.google.android.apps.tasks") ||
             pkg.contains("tasks") ||
             pkg.contains("microsoft.todos")
-        if (prefs.isTasksSyncEnabled() && (isSamsungReminderPkg || isGoogleTasksPkg)) {
+        val allowedBySourceToggle = (isSamsungReminderPkg && prefs.isSamsungReminderSyncEnabled()) ||
+            (isGoogleTasksPkg && prefs.isGoogleTasksSyncEnabled())
+        if (prefs.isTasksSyncEnabled() && allowedBySourceToggle) {
             val sourceLabel = if (isSamsungReminderPkg) "Reminder" else "Tasks"
             val taskHeadline = when {
                 title.isNotBlank() && !title.equals("Reminder", ignoreCase = true) && !title.equals("Tasks", ignoreCase = true) -> title

@@ -115,6 +115,9 @@ class MobileSyncConfigActivity : Activity() {
     // Aba Configurações: Controles e Switches
     private lateinit var switchCalendarEvents: Switch
     private lateinit var switchTasksSync: Switch
+    private lateinit var switchSamsungReminderSync: Switch
+    private lateinit var switchGoogleTasksSync: Switch
+    private lateinit var installGoogleTasksBtn: Button
     private lateinit var switchAutoFallbackTasks: Switch
     private lateinit var switchNotifyOnCanvasChange: Switch
     private lateinit var switchNotifyAgenda15Min: Switch
@@ -752,15 +755,54 @@ class MobileSyncConfigActivity : Activity() {
             subtitle = "Exibe tarefas de Hoje, Amanhã, Sem data e Atrasadas"
         ) { checked ->
             prefs.setTasksSyncEnabled(checked)
+            CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, System.currentTimeMillis())
+            cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
             virtualWatchView.invalidate()
             refreshWidgetsGridInPlace()
             triggerBackgroundSync("Toggle Tarefas")
         }
 
-        val manageTasksBtn = createActionButton("Gerenciar Tarefas") {
-            showManageTasksDialog()
+        switchSamsungReminderSync = createResponsiveSettingToggleRow(
+            parent = agendaTasksCard,
+            title = "Ler Samsung Reminder",
+            subtitle = "Captura lembretes direto da agenda oficial do telefone"
+        ) { checked ->
+            prefs.setSamsungReminderSyncEnabled(checked)
+            CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, System.currentTimeMillis())
+            cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Samsung Reminder")
         }
-        agendaTasksCard.addView(manageTasksBtn)
+
+        switchGoogleTasksSync = createResponsiveSettingToggleRow(
+            parent = agendaTasksCard,
+            title = "Ler Tarefas do Google (Google Tasks)",
+            subtitle = "Captura tarefas do Google integradas à agenda"
+        ) { checked ->
+            prefs.setGoogleTasksSyncEnabled(checked)
+            val installed = CalendarSyncEngine.isGoogleTasksInstalled(this)
+            installGoogleTasksBtn.visibility = if (checked && !installed) View.VISIBLE else View.GONE
+            if (checked && !installed) {
+                showStatusToast("Instale o Google Tasks para sincronizar na agenda.")
+            }
+            CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, System.currentTimeMillis())
+            cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Google Tasks")
+        }
+
+        installGoogleTasksBtn = createActionButton("Instalar Google Tasks ↗") {
+            openGoogleTasksPlayStore()
+        }.apply {
+            visibility = if (prefs.isGoogleTasksSyncEnabled() && !CalendarSyncEngine.isGoogleTasksInstalled(this@MobileSyncConfigActivity)) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+        }
+        agendaTasksCard.addView(installGoogleTasksBtn)
 
         agendaTasksCard.addView(createSubLabel("Horizonte de sincronização:"))
         val horizonOpts = listOf(1 to "24 horas", 2 to "2 dias", 3 to "3 dias", 7 to "7 dias")
@@ -1099,16 +1141,16 @@ class MobileSyncConfigActivity : Activity() {
                 }
                 else -> {
                     withContext(Dispatchers.IO) {
-                        CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
-                            this@MobileSyncConfigActivity,
-                            forceRefresh = true
-                        )
                         CalendarSyncEngine.performFullSyncToWatch(
                             this@MobileSyncConfigActivity,
                             "Puxar para Atualizar"
                         )
+                        CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
+                            this@MobileSyncConfigActivity,
+                            forceRefresh = true
+                        )
                     }
-                    showStatusToast("Sincronizado com o relógio.")
+                    showStatusToast("Agenda e tarefas sincronizadas com o relógio.")
                 }
             }
 
@@ -1134,6 +1176,7 @@ class MobileSyncConfigActivity : Activity() {
         } else {
             emptyList()
         }
+        CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, nowMs)
         cachedTasks = prefs.getActiveUncompletedTasks(nowMs)
 
         // Atualiza Switches sem disparar listeners recursivos
@@ -1141,6 +1184,13 @@ class MobileSyncConfigActivity : Activity() {
         try {
             switchCalendarEvents.isChecked = prefs.isCalendarEventsSyncEnabled()
             switchTasksSync.isChecked = prefs.isTasksSyncEnabled()
+            switchSamsungReminderSync.isChecked = prefs.isSamsungReminderSyncEnabled()
+            switchGoogleTasksSync.isChecked = prefs.isGoogleTasksSyncEnabled()
+            installGoogleTasksBtn.visibility = if (prefs.isGoogleTasksSyncEnabled() && !CalendarSyncEngine.isGoogleTasksInstalled(this)) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
             switchAutoFallbackTasks.isChecked = prefs.isAutoFallbackAgendaToTasksEnabled()
             switchNotifyOnCanvasChange.isChecked = prefs.isNotifyWatchOnCanvasChangeEnabled()
             switchNotifyAgenda15Min.isChecked = prefs.isNotifyAgenda15MinEnabled()
@@ -1612,18 +1662,6 @@ class MobileSyncConfigActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         headerRow.addView(titleText)
-
-        if (widgetId == SyncPreferences.MODE_TASKS) {
-            headerRow.addView(
-                createErgonomicTileIconButton(TileIconType.PLUS, false) {
-                    if (!isAppUnlockedForCustomization()) {
-                        showLockedCustomizationToast()
-                        return@createErgonomicTileIconButton
-                    }
-                    showManageTasksDialog()
-                }
-            )
-        }
 
         // Botão Mover para trás (◀)
         headerRow.addView(
@@ -3134,135 +3172,25 @@ class MobileSyncConfigActivity : Activity() {
     // DIÁLOGOS DE GERENCIAMENTO DE TAREFAS E APPS DE CLIMA
     // =========================================================================================
 
-    private fun showManageTasksDialog() {
-        val nowMs = System.currentTimeMillis()
-        val allUncompleted = prefs.getAllUncompletedTasks(nowMs)
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(12), dp(18), dp(8))
-        }
-
-        container.addView(
-            TextView(this).apply {
-                text = "Hierarquia do Canvas:\n1º Hoje (c/ hora) → 2º Amanhã (c/ hora) → 3º Sem data + Atrasadas em vermelho (sem data/hora)."
-                setTextColor(Color.parseColor("#CBD5E1"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-            }
-        )
-
-        for (task in allUncompleted) {
-            val catTag = when (task.scheduleCategory.uppercase(Locale.getDefault())) {
-                "TODAY" -> "Hoje • ${task.dueHHMM}"
-                "TOMORROW" -> "Amanhã • ${task.dueHHMM}"
-                "OVERDUE" -> "ATRASADA (Sem data/hora)"
-                else -> "Sem data"
-            }
-            val cb = CheckBox(this).apply {
-                text = "${task.title} [$catTag]"
-                setTextColor(
-                    if (task.isOverdue || task.scheduleCategory == "OVERDUE") {
-                        Color.parseColor("#F87171")
-                    } else {
-                        Color.WHITE
-                    }
+    private fun openGoogleTasksPlayStore() {
+        try {
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=com.google.android.apps.tasks")
                 )
-                setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        prefs.markTaskCompletedAndRemoveFromCanvas(task.id)
-                        cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
-                        virtualWatchView.invalidate()
-                        refreshWidgetsGridInPlace()
-                        triggerBackgroundSync("Tarefa concluída")
-                    }
-                }
-            }
-            container.addView(cb)
-        }
-
-        var selectedCategory = "TODAY"
-        val categoryRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            lp.topMargin = dp(8)
-            layoutParams = lp
-        }
-        val catButtons = mutableMapOf<String, Button>()
-        val cats = listOf(
-            "TODAY" to "Hoje",
-            "TOMORROW" to "Amanhã",
-            "UNDATED" to "Sem data",
-            "OVERDUE" to "Atrasada"
-        )
-        for ((idx, pair) in cats.withIndex()) {
-            val (catKey, catLabel) = pair
-            val btn = Button(this).apply {
-                text = catLabel
-                isAllCaps = false
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-                val lp = LinearLayout.LayoutParams(0, dp(34), 1f)
-                if (idx > 0) lp.leftMargin = dp(4)
-                layoutParams = lp
-                setOnClickListener {
-                    selectedCategory = catKey
-                    for ((k, b) in catButtons) {
-                        styleChipButton(b, k == selectedCategory)
-                    }
-                }
-            }
-            catButtons[catKey] = btn
-            categoryRow.addView(btn)
-        }
-        for ((k, b) in catButtons) {
-            styleChipButton(b, k == selectedCategory)
-        }
-        container.addView(categoryRow)
-
-        val inputTitle = EditText(this).apply {
-            hint = "Nova tarefa (ex.: Enviar relatório)"
-            inputType = InputType.TYPE_CLASS_TEXT
-        }
-        val inputTime = EditText(this).apply {
-            hint = "Horário HH:mm (apenas para Hoje ou Amanhã, ex.: 16:30)"
-            inputType = InputType.TYPE_CLASS_DATETIME
-        }
-        container.addView(inputTitle)
-        container.addView(inputTime)
-
-        AlertDialog.Builder(this)
-            .setTitle("Gerenciar Tarefas (Hoje / Amanhã / Sem Data / Atraso)")
-            .setView(container)
-            .setPositiveButton("Adicionar Tarefa") { _, _ ->
-                val title = inputTitle.text?.toString()?.trim().orEmpty()
-                val rawTime = inputTime.text?.toString()?.trim().orEmpty()
-                if (title.isNotBlank()) {
-                    val hasTime = selectedCategory == "TODAY" || selectedCategory == "TOMORROW"
-                    val timeLabel = if (hasTime) rawTime.ifBlank { "14:00" } else ""
-                    val updated = prefs.getAllUncompletedTasks(System.currentTimeMillis()).toMutableList()
-                    updated.add(
-                        0,
-                        MobileTaskItem(
-                            id = "t_${System.currentTimeMillis()}",
-                            title = title,
-                            dueHHMM = timeLabel,
-                            sourceLabel = "Tasks",
-                            completed = false,
-                            isTodayOrTimeless = true,
-                            scheduleCategory = selectedCategory,
-                            isOverdue = selectedCategory == "OVERDUE"
-                        )
+        } catch (_: Exception) {
+            try {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.tasks")
                     )
-                    prefs.saveMobileTaskItems(updated)
-                    cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
-                    virtualWatchView.invalidate()
-                    refreshWidgetsGridInPlace()
-                    triggerBackgroundSync("Nova tarefa adicionada")
-                }
+                )
+            } catch (_: Exception) {
             }
-            .setNegativeButton("Fechar", null)
-            .show()
+        }
     }
 
     private fun refreshCalendarsList() {

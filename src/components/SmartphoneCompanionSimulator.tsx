@@ -4,7 +4,6 @@ import {
   CalendarEventItem,
   SyncConfiguration,
   PrimaryContextMode,
-  TaskScheduleCategory,
   WEATHER_TRIGGER_CATALOG,
   DEFAULT_TASKS_LIST,
   formatCompactWeatherLocation,
@@ -168,11 +167,6 @@ export const SmartphoneCompanionSimulator: React.FC<
   const [isSyncedCalendarsDialogOpen, setIsSyncedCalendarsDialogOpen] =
     useState(false);
   const [isWeatherAppsDialogOpen, setIsWeatherAppsDialogOpen] = useState(false);
-  const [isManageTasksModalOpen, setIsManageTasksModalOpen] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDueHHMM, setNewTaskDueHHMM] = useState('14:00');
-  const [newTaskCategory, setNewTaskCategory] =
-    useState<TaskScheduleCategory>('TODAY');
   const [newTitle, setNewTitle] = useState('');
   const [newMinutesFromNow, setNewMinutesFromNow] = useState<number>(45);
 
@@ -352,7 +346,10 @@ export const SmartphoneCompanionSimulator: React.FC<
   const primaryAgendaEvent = strictAgendaEvents[0] || null;
 
   const allTasks = config.tasks ?? DEFAULT_TASKS_LIST;
-  const resolvedTasksState = resolveTasksCanvasState(allTasks);
+  const resolvedTasksState = resolveTasksCanvasState(allTasks, {
+    samsungReminderSyncEnabled: config.samsungReminderSyncEnabled ?? true,
+    googleTasksSyncEnabled: config.googleTasksSyncEnabled ?? true,
+  });
   const activeTodayOrTimelessTasks = resolvedTasksState.displayTasks;
 
   const handleCompleteTaskInWidget = (taskId: string, e: React.MouseEvent) => {
@@ -366,62 +363,6 @@ export const SmartphoneCompanionSimulator: React.FC<
     );
     onUpdateConfig({ tasks: updated });
     refreshConnectionAndStatus(true);
-  };
-
-  const handleApplyTasksTierScenario = (
-    tier: 'TODAY' | 'TOMORROW' | 'UNDATED_OVERDUE'
-  ) => {
-    if (isCustomizationLocked) {
-      showLockedToast();
-      return;
-    }
-    const updated = DEFAULT_TASKS_LIST.map((t) => {
-      if (t.id === 't7') return { ...t, completed: true };
-      if (tier === 'TODAY') {
-        return { ...t, completed: false };
-      }
-      if (tier === 'TOMORROW') {
-        return {
-          ...t,
-          completed: t.scheduleCategory === 'TODAY',
-        };
-      }
-      return {
-        ...t,
-        completed:
-          t.scheduleCategory === 'TODAY' || t.scheduleCategory === 'TOMORROW',
-      };
-    });
-    onUpdateConfig({
-      tasksSyncEnabled: true,
-      contextWindowMode: 'TASKS',
-      autoPrimaryContext: 'TASKS',
-      tasks: updated,
-    });
-    refreshConnectionAndStatus(true);
-  };
-
-  const handleAddNewTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskTitle.trim()) return;
-    const isTimed =
-      newTaskCategory === 'TODAY' || newTaskCategory === 'TOMORROW';
-    const created = {
-      id: `t_${Date.now()}`,
-      title: newTaskTitle.trim(),
-      dueHHMM: isTimed ? newTaskDueHHMM.trim() || '14:00' : '',
-      sourceLabel: 'Tasks' as const,
-      completed: false,
-      scheduleCategory: newTaskCategory,
-      isOverdue: newTaskCategory === 'OVERDUE',
-      isTodayOrTimeless: true,
-    };
-    onUpdateConfig({
-      tasksSyncEnabled: true,
-      tasks: [created, ...allTasks],
-    });
-    refreshConnectionAndStatus(true);
-    setNewTaskTitle('');
   };
 
   // Resolve qual contexto a Watchface 1:1 no topo deve desenhar (idêntico ao relógio)
@@ -1590,23 +1531,6 @@ export const SmartphoneCompanionSimulator: React.FC<
                             isCustomizationLocked ? 'opacity-45' : ''
                           }`}
                         >
-                          {widgetId === 'TASKS' && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isCustomizationLocked) {
-                                  showLockedToast();
-                                  return;
-                                }
-                                setIsManageTasksModalOpen(true);
-                              }}
-                              title="Gerenciar tarefas"
-                              className="w-8 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center hover:bg-emerald-500/30 active:scale-95 cursor-pointer"
-                            >
-                              <Plus className="w-4 h-4 stroke-[2.5]" />
-                            </button>
-                          )}
                           <button
                             type="button"
                             data-testid={`widget-move-prev-${widgetId}`}
@@ -1953,7 +1877,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                     Sincronizar Tarefas
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Hoje, Amanhã, Sem data e Atrasadas
+                    Captura direta da agenda do telefone
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -1968,16 +1892,96 @@ export const SmartphoneCompanionSimulator: React.FC<
                 />
               </div>
 
-              <button
-                type="button"
-                data-testid="phone-sync-tasks-now"
-                disabled={isCustomizationLocked}
-                onClick={() => setIsManageTasksModalOpen(true)}
-                className="w-full py-2 px-3 rounded-xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-emerald-300 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Gerenciar Tarefas</span>
-              </button>
+              {(config.tasksSyncEnabled ?? true) && (
+                <div className="space-y-2.5 pt-2 border-t border-white/5">
+                  <div
+                    data-testid="toggle-samsung-reminder-sync"
+                    onClick={() => {
+                      if (isCustomizationLocked) {
+                        showLockedToast();
+                        return;
+                      }
+                      onUpdateConfig({
+                        samsungReminderSyncEnabled: !(
+                          config.samsungReminderSyncEnabled ?? true
+                        ),
+                      });
+                    }}
+                    className="flex items-center justify-between gap-3 cursor-pointer"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-slate-100">
+                        Ler Samsung Reminder
+                      </div>
+                      <div className="text-[10.5px] text-slate-400">
+                        Lembretes integrados ao Calendário
+                      </div>
+                    </div>
+                    <ModernOneUiSwitch
+                      checked={config.samsungReminderSyncEnabled ?? true}
+                      ariaLabel="Ler Samsung Reminder"
+                      disabled={isCustomizationLocked}
+                      onChange={() =>
+                        onUpdateConfig({
+                          samsungReminderSyncEnabled: !(
+                            config.samsungReminderSyncEnabled ?? true
+                          ),
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div
+                    data-testid="toggle-google-tasks-sync"
+                    onClick={() => {
+                      if (isCustomizationLocked) {
+                        showLockedToast();
+                        return;
+                      }
+                      onUpdateConfig({
+                        googleTasksSyncEnabled: !(
+                          config.googleTasksSyncEnabled ?? true
+                        ),
+                      });
+                    }}
+                    className="flex items-center justify-between gap-3 cursor-pointer"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-slate-100">
+                        Ler Tarefas do Google (Google Tasks)
+                      </div>
+                      <div className="text-[10.5px] text-slate-400">
+                        Tarefas sincronizadas na agenda
+                      </div>
+                    </div>
+                    <ModernOneUiSwitch
+                      checked={config.googleTasksSyncEnabled ?? true}
+                      ariaLabel="Ler Tarefas do Google"
+                      disabled={isCustomizationLocked}
+                      onChange={() =>
+                        onUpdateConfig({
+                          googleTasksSyncEnabled: !(
+                            config.googleTasksSyncEnabled ?? true
+                          ),
+                        })
+                      }
+                    />
+                  </div>
+
+                  {(config.googleTasksSyncEnabled ?? true) && (
+                    <a
+                      href="https://play.google.com/store/apps/details?id=com.google.android.apps.tasks"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="install-google-tasks-btn"
+                      className="w-full py-2 px-3 rounded-xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-sky-300 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Instalar Google Tasks</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* SEÇÃO 4: CLIMA, SOL E SONO */}
@@ -2270,188 +2274,6 @@ export const SmartphoneCompanionSimulator: React.FC<
           })}
         </nav>
       </div>
-
-      {/* Modal Gerenciar Tarefas (Hoje c/ hora -> Amanhã c/ hora -> Sem data e Atrasadas em vermelho sem data/hora) */}
-      {isManageTasksModalOpen && (
-        <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-5 z-40">
-          <div className="w-full max-w-sm rounded-[26px] bg-[#161C18] border border-[#344038] p-5 space-y-3 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">
-                Hierarquia do Canvas de Tarefas
-              </h3>
-              <button
-                type="button"
-                data-testid="close-manage-tasks-modal"
-                title="Fechar"
-                onClick={() => setIsManageTasksModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Botões rápidos para testar os 3 níveis da regra estrita */}
-            <div className="space-y-1">
-              <span className="text-[10px] font-mono text-slate-300 block">
-                Simular Cenário no Relógio (Reflete Imediatamente):
-              </span>
-              <div className="grid grid-cols-3 gap-1">
-                <button
-                  type="button"
-                  data-testid="tasks-tier-btn-today"
-                  onClick={() => handleApplyTasksTierScenario('TODAY')}
-                  className={`py-1.5 px-1.5 rounded-xl text-[10px] font-bold border cursor-pointer ${
-                    resolvedTasksState.bucket === 'TODAY'
-                      ? 'bg-[#F5C438] text-slate-950 border-[#FDE047]'
-                      : 'bg-black/40 text-slate-200 border-slate-700'
-                  }`}
-                >
-                  1. Hoje (c/ hora)
-                </button>
-                <button
-                  type="button"
-                  data-testid="tasks-tier-btn-tomorrow"
-                  onClick={() => handleApplyTasksTierScenario('TOMORROW')}
-                  className={`py-1.5 px-1.5 rounded-xl text-[10px] font-bold border cursor-pointer ${
-                    resolvedTasksState.bucket === 'TOMORROW'
-                      ? 'bg-[#F5C438] text-slate-950 border-[#FDE047]'
-                      : 'bg-black/40 text-slate-200 border-slate-700'
-                  }`}
-                >
-                  2. Amanhã (c/ hora)
-                </button>
-                <button
-                  type="button"
-                  data-testid="tasks-tier-btn-undated-overdue"
-                  onClick={() =>
-                    handleApplyTasksTierScenario('UNDATED_OVERDUE')
-                  }
-                  className={`py-1.5 px-1.5 rounded-xl text-[10px] font-bold border cursor-pointer ${
-                    resolvedTasksState.bucket === 'UNDATED_OVERDUE'
-                      ? 'bg-[#EF4444] text-white border-red-400'
-                      : 'bg-black/40 text-red-300 border-red-500/40'
-                  }`}
-                >
-                  3. Sem Data / Atraso
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleAddNewTask} className="space-y-1.5">
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  placeholder="Nova tarefa..."
-                  className="flex-1 bg-black/50 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white"
-                />
-                {(newTaskCategory === 'TODAY' ||
-                  newTaskCategory === 'TOMORROW') && (
-                  <input
-                    type="text"
-                    value={newTaskDueHHMM}
-                    onChange={(e) => setNewTaskDueHHMM(e.target.value)}
-                    placeholder="14:00"
-                    className="w-16 bg-black/50 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-sky-300 font-mono"
-                  />
-                )}
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 rounded-xl bg-[#F5C438] text-slate-950 font-bold text-xs cursor-pointer"
-                >
-                  +
-                </button>
-              </div>
-              <div className="grid grid-cols-4 gap-1">
-                {(
-                  [
-                    { id: 'TODAY', label: 'Hoje' },
-                    { id: 'TOMORROW', label: 'Amanhã' },
-                    { id: 'UNDATED', label: 'Sem data' },
-                    { id: 'OVERDUE', label: 'Atrasada' },
-                  ] as const
-                ).map((cat) => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setNewTaskCategory(cat.id)}
-                    className={`py-1 rounded-lg text-[10px] font-semibold border cursor-pointer ${
-                      newTaskCategory === cat.id
-                        ? cat.id === 'OVERDUE'
-                          ? 'bg-red-500/30 border-red-400 text-red-200'
-                          : 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
-                        : 'bg-black/35 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-            </form>
-
-            <div className="space-y-1.5 max-h-48 overflow-y-auto">
-              {allTasks.map((t) => {
-                const isOverdueTask =
-                  t.scheduleCategory === 'OVERDUE' || Boolean(t.isOverdue);
-                const catBadge =
-                  t.scheduleCategory === 'TODAY'
-                    ? `Hoje • ${t.dueHHMM || '09:00'}`
-                    : t.scheduleCategory === 'TOMORROW'
-                    ? `Amanhã • ${t.dueHHMM || '09:00'}`
-                    : isOverdueTask
-                    ? 'Atrasada (Sem data/hora)'
-                    : 'Sem data';
-                return (
-                  <div
-                    key={t.id}
-                    onClick={(e) => handleCompleteTaskInWidget(t.id, e)}
-                    className={`flex items-center justify-between gap-2 p-2 rounded-xl border cursor-pointer ${
-                      t.completed
-                        ? 'bg-black/20 border-slate-800/60 opacity-50'
-                        : isOverdueTask
-                        ? 'bg-red-950/25 border-red-500/40'
-                        : 'bg-black/40 border-slate-800 hover:border-emerald-500/40'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] shrink-0 ${
-                          t.completed
-                            ? 'bg-emerald-500 border-emerald-400 text-slate-950'
-                            : isOverdueTask
-                            ? 'border-red-400 text-transparent'
-                            : 'border-sky-400 text-transparent'
-                        }`}
-                      >
-                        ✓
-                      </span>
-                      <span
-                        className={`text-xs font-semibold truncate ${
-                          t.completed
-                            ? 'line-through text-slate-400'
-                            : isOverdueTask
-                            ? 'text-[#F87171]'
-                            : 'text-white'
-                        }`}
-                      >
-                        {t.title}
-                      </span>
-                    </div>
-                    <span
-                      className={`text-[9.5px] font-mono shrink-0 ${
-                        isOverdueTask ? 'text-red-300 font-bold' : 'text-sky-300'
-                      }`}
-                    >
-                      {catBadge}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal Calendários Sincronizados */}
       {isSyncedCalendarsDialogOpen && (

@@ -553,6 +553,65 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today (with time
   assert.equal(stateAfterTodayPassed.dayEvents[0].id, 'ev-tomorrow-only');
 });
 
+test('resolveTasksCanvasState respects independent Samsung Reminder and Google Tasks toggles', async () => {
+  const { resolveTasksCanvasState } = await import('./calendarSyncEngine');
 
+  const sourceTasks = [
+    {
+      id: 't-rem-today',
+      title: 'Lembrete Samsung de Hoje',
+      dueHHMM: '11:30',
+      sourceLabel: 'Reminder' as const,
+      completed: false,
+      scheduleCategory: 'TODAY' as const,
+      isTodayOrTimeless: true,
+    },
+    {
+      id: 't-gtask-today',
+      title: 'Tarefa Google de Hoje',
+      dueHHMM: '14:00',
+      sourceLabel: 'Tasks' as const,
+      completed: false,
+      scheduleCategory: 'TODAY' as const,
+      isTodayOrTimeless: true,
+    },
+  ];
 
+  // Both enabled -> returns both
+  const bothOn = resolveTasksCanvasState(sourceTasks, {
+    samsungReminderSyncEnabled: true,
+    googleTasksSyncEnabled: true,
+  });
+  assert.deepEqual(
+    bothOn.displayTasks.map((t) => t.id),
+    ['t-rem-today', 't-gtask-today']
+  );
 
+  // Only Samsung Reminder enabled -> returns only Reminder task
+  const onlyReminder = resolveTasksCanvasState(sourceTasks, {
+    samsungReminderSyncEnabled: true,
+    googleTasksSyncEnabled: false,
+  });
+  assert.deepEqual(
+    onlyReminder.displayTasks.map((t) => t.id),
+    ['t-rem-today']
+  );
+
+  // Only Google Tasks enabled -> returns only Google Tasks item
+  const onlyGoogleTasks = resolveTasksCanvasState(sourceTasks, {
+    samsungReminderSyncEnabled: false,
+    googleTasksSyncEnabled: true,
+  });
+  assert.deepEqual(
+    onlyGoogleTasks.displayTasks.map((t) => t.id),
+    ['t-gtask-today']
+  );
+
+  // Both disabled -> empty
+  const bothOff = resolveTasksCanvasState(sourceTasks, {
+    samsungReminderSyncEnabled: false,
+    googleTasksSyncEnabled: false,
+  });
+  assert.equal(bothOff.bucket, 'EMPTY');
+  assert.equal(bothOff.displayTasks.length, 0);
+});
