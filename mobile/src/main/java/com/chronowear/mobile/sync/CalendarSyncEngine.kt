@@ -907,7 +907,7 @@ object CalendarSyncEngine {
                     CalendarContract.Instances.END,
                     CalendarContract.Instances.ALL_DAY,
                     CalendarContract.Instances.CALENDAR_DISPLAY_NAME,
-                    CalendarContract.Instances.ACCOUNT_NAME,
+                    CalendarContract.Calendars.ACCOUNT_NAME,
                     CalendarContract.Instances.OWNER_ACCOUNT,
                     CalendarContract.Instances.CUSTOM_APP_PACKAGE,
                     CalendarContract.Instances.DESCRIPTION,

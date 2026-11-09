@@ -26,7 +26,7 @@ jobs:
           gradle-version: '8.7'
 
       - name: Assemble Mobile, Wear OS and Watch Face APKs
-        run: gradle :mobile:assembleDebug :wear:assembleDebug :watchface:assembleDebug --stacktrace --info
+        run: gradle :mobile:assembleDebug :wear:assembleDebug :watchface:assembleDebug --stacktrace
 
       - name: Upload Smartphone APK (:mobile)
         uses: actions/upload-artifact@v4
