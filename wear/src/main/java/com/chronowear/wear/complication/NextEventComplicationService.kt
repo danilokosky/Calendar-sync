@@ -888,19 +888,28 @@ object AgendaCardBitmapRenderer {
         }
         canvas.drawPath(headerCheckPath, checkStrokePaint)
 
-        val headerTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#34D399")
-            textSize = 40f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        canvas.drawText(tasksSnap.headerTitle, 76f, 51f, headerTitlePaint)
-
         val rightCounterPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#67E8F9")
-            textSize = 30f
+            textSize = 29f
             textAlign = Paint.Align.RIGHT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
+        val rightBadgeWidth = rightCounterPaint.measureText(tasksSnap.rightBadgeText)
+
+        val headerTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#34D399")
+            textSize = 37f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val maxHeaderWidth = (CARD_WIDTH - 24f - rightBadgeWidth - 16f - 76f).coerceAtLeast(180f)
+        val ellipsizedHeader = TextUtils.ellipsize(
+            tasksSnap.headerTitle,
+            headerTitlePaint,
+            maxHeaderWidth,
+            TextUtils.TruncateAt.END
+        ).toString()
+        canvas.drawText(ellipsizedHeader, 76f, 51f, headerTitlePaint)
+
         val activeTasks = tasksSnap.tasks.filter { !it.completed }
         canvas.drawText(
             tasksSnap.rightBadgeText,

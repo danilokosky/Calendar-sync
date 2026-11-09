@@ -417,15 +417,15 @@ test('evaluateWatchAutonomousState shows Amanhã header when next events are tom
   assert.equal(stateNoActiveTasks.agendaDayHeader, 'Amanhã');
 });
 
-test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today (with time) -> Tomorrow (with time) -> Undated & Overdue in red (without date or time)', async () => {
+test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today -> Tomorrow -> Undated & Overdue (<= 30 days) and excludes tasks older than 30 days', async () => {
   const { resolveTasksCanvasState } = await import('./calendarSyncEngine');
 
   const mixedTasks = [
     {
       id: 't-today-1',
-      title: 'Revisar PR de hoje',
-      dueHHMM: '15:00',
-      sourceLabel: 'Tasks' as const,
+      title: 'fazer almoço',
+      dueHHMM: '12:30',
+      sourceLabel: 'Reminder' as const,
       completed: false,
       scheduleCategory: 'TODAY' as const,
       isTodayOrTimeless: true,
@@ -449,20 +449,32 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today (with time
       isTodayOrTimeless: true,
     },
     {
-      id: 't-overdue-1',
-      title: 'Pagar fatura atrasada',
+      id: 't-overdue-recent',
+      title: 'Pagar fatura atrasada (5 dias)',
       dueHHMM: 'Ontem 18:00',
       sourceLabel: 'Tasks' as const,
       completed: false,
       scheduleCategory: 'OVERDUE' as const,
       isOverdue: true,
+      ageDays: 5,
+      isTodayOrTimeless: true,
+    },
+    {
+      id: 't-overdue-ancient',
+      title: 'Spot the Station in Ba... (Mais de 1 mês)',
+      dueHHMM: '',
+      sourceLabel: 'Reminder' as const,
+      completed: false,
+      scheduleCategory: 'OVERDUE' as const,
+      isOverdue: true,
+      ageDays: 45, // > 30 days -> must be excluded!
       isTodayOrTimeless: true,
     },
     {
       id: 't-done',
-      title: 'Tarefa já concluída',
+      title: 'Tratar a água (Concluída)',
       dueHHMM: '11:00',
-      sourceLabel: 'Tasks' as const,
+      sourceLabel: 'Reminder' as const,
       completed: true,
       scheduleCategory: 'TODAY' as const,
       isTodayOrTimeless: true,
@@ -478,7 +490,7 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today (with time
     tier1.displayTasks.map((t) => t.id),
     ['t-today-1']
   );
-  assert.equal(tier1.displayTasks[0].displayTimeHHMM, '15:00');
+  assert.equal(tier1.displayTasks[0].displayTimeHHMM, '12:30');
   assert.equal(tier1.displayTasks[0].isRedOverdue, false);
 
   // TIER 2: When Today tasks are completed/absent -> ONLY Tomorrow tasks are shown, WITH time (showTime = true)
@@ -496,7 +508,7 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today (with time
   assert.equal(tier2.displayTasks[0].displayTimeHHMM, '10:30');
   assert.equal(tier2.displayTasks[0].isRedOverdue, false);
 
-  // TIER 3: When Today and Tomorrow tasks are absent -> Undated & Overdue tasks are shown WITHOUT date/time (showTime = false), and Overdue is flagged red
+  // TIER 3: When Today and Tomorrow tasks are absent -> Undated & recent Overdue (<= 30 days) tasks are shown WITHOUT date/time, and tasks > 30 days ('t-overdue-ancient') are excluded!
   const withoutTodayAndTomorrow = withoutToday.map((t) =>
     t.id === 't-tomorrow-1' ? { ...t, completed: true } : t
   );
@@ -506,12 +518,10 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today (with time
   assert.equal(tier3.showTime, false);
   assert.deepEqual(
     tier3.displayTasks.map((t) => t.id),
-    ['t-overdue-1', 't-undated-1']
+    ['t-overdue-recent', 't-undated-1']
   );
-  // Overdue task has NO date/time displayed and is marked red
   assert.equal(tier3.displayTasks[0].displayTimeHHMM, '');
   assert.equal(tier3.displayTasks[0].isRedOverdue, true);
-  // Undated task has NO date/time displayed and is not red
   assert.equal(tier3.displayTasks[1].displayTimeHHMM, '');
   assert.equal(tier3.displayTasks[1].isRedOverdue, false);
 

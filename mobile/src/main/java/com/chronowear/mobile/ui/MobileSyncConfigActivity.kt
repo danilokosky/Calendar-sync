@@ -2484,16 +2484,24 @@ class MobileSyncConfigActivity : Activity() {
                 path.lineTo(54f, 29f)
                 canvas.drawPath(path, paint)
 
-                textPaint.color = Color.parseColor("#34D399")
-                textPaint.textSize = 36f
                 textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textPaint.textAlign = Paint.Align.LEFT
-                canvas.drawText(resolvedTasks.headerTitle, 76f, 50f, textPaint)
-
                 textPaint.color = Color.parseColor("#67E8F9")
                 textPaint.textSize = 28f
                 textPaint.textAlign = Paint.Align.RIGHT
+                val rightBadgeW = textPaint.measureText(resolvedTasks.rightBadgeText)
                 canvas.drawText(resolvedTasks.rightBadgeText, cardW - 24f, 48f, textPaint)
+
+                textPaint.color = Color.parseColor("#34D399")
+                textPaint.textSize = 35f
+                textPaint.textAlign = Paint.Align.LEFT
+                val maxHeaderW = (cardW - 24f - rightBadgeW - 16f - 76f).coerceAtLeast(180f)
+                val safeHeader = TextUtils.ellipsize(
+                    resolvedTasks.headerTitle,
+                    textPaint,
+                    maxHeaderW,
+                    TextUtils.TruncateAt.END
+                ).toString()
+                canvas.drawText(safeHeader, 76f, 50f, textPaint)
 
                 val rowYs = listOf(108f, 174f, 240f)
                 for (i in rowYs.indices) {
@@ -2507,13 +2515,11 @@ class MobileSyncConfigActivity : Activity() {
                         paint.color = if (isOverdueRed) Color.parseColor("#EF4444") else Color.parseColor("#F5C438")
                         canvas.drawCircle(38f, cy, 12.5f, paint)
 
-                        if (showTime) {
+                        if (showTime && task.dueHHMM.isNotBlank()) {
                             textPaint.textAlign = Paint.Align.LEFT
                             textPaint.color = Color.WHITE
                             textPaint.textSize = 33f
-                            val hhmmRegex = Regex("^\\d{1,2}:\\d{2}$")
-                            val rawTime = task.dueHHMM.trim()
-                            val due = if (hhmmRegex.matches(rawTime)) rawTime.take(5) else "--:--"
+                            val due = task.dueHHMM.trim().take(5)
                             canvas.drawText(due, 64f, baseY, textPaint)
 
                             textPaint.color = if (isOverdueRed) Color.parseColor("#F87171") else Color.parseColor("#F8FAFC")

@@ -343,9 +343,9 @@ class SyncPreferences(context: Context) {
      * 1. Somente atividades agendadas para HOJE ("TODAY") — apresenta check de não feito + horário (HH:mm) + título.
      * 2. Se NÃO há atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ ("TOMORROW") — check de não feito + horário (HH:mm) + título.
      * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA ("UNDATED")
-     *    e as atividades EM ATRASO ("OVERDUE"):
+     *    e as atividades EM ATRASO ("OVERDUE") com no máximo 30 dias (1 mês):
      *    - Sem data definida: NÃO apresenta data nem hora, apenas o check de não feito + título.
-     *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
+     *    - Em atraso (<= 30 dias): NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
      */
     fun isTasksSyncEnabled(): Boolean {
         return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true) &&
@@ -392,6 +392,7 @@ class SyncPreferences(context: Context) {
         val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
         val todayIso = sdfIso.format(java.util.Date(nowMs))
         val tomorrowIso = sdfIso.format(java.util.Date(nowMs + 24L * 60L * 60L * 1000L))
+        val thirtyDaysAgoIso = sdfIso.format(java.util.Date(nowMs - 30L * 24L * 60L * 60L * 1000L))
         val timeRegex = Regex("(\\d{1,2}:\\d{2})")
         val allowReminder = isSamsungReminderSyncEnabled()
         val allowGoogleTasks = isGoogleTasksSyncEnabled()
@@ -412,6 +413,9 @@ class SyncPreferences(context: Context) {
 
                 val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(java.util.Locale.ROOT)
                 val dueDateIso = obj.optString("dueDateIso", "").trim()
+                // Regra estrita: tarefas com mais de 1 mês (30 dias) no passado nunca são sincronizadas
+                if (dueDateIso.isNotBlank() && dueDateIso < thirtyDaysAgoIso) continue
+
                 val rawDue = obj.optString("dueHHMM", "").trim()
                 val rawLower = rawDue.lowercase(java.util.Locale.ROOT)
                 val explicitOverdue = obj.optBoolean("isOverdue", false)
@@ -498,7 +502,7 @@ class SyncPreferences(context: Context) {
         if (undatedOrOverdue.isNotEmpty()) {
             return MobileResolvedTasksSnapshot(
                 headerTitle = "Tarefas • Sem data",
-                rightBadgeText = "${undatedOrOverdue.size} pendentes",
+                rightBadgeText = "${undatedOrOverdue.size} pend.",
                 showTime = false,
                 bucket = "UNDATED_OVERDUE",
                 displayTasks = undatedOrOverdue

@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="com.samsung.android.app.reminder.permission.READ" />
+    <uses-permission android:name="com.samsung.android.app.reminder.permission.WRITE" />
+    <uses-permission android:name="com.samsung.android.providers.calendar.permission.READ_CALENDAR" />
 
     <queries>
         <intent>
@@ -21,6 +24,10 @@
         </intent>
         <package android:name="com.google.android.apps.healthdata" />
         <package android:name="com.sec.android.app.shealth" />
+        <package android:name="com.samsung.android.app.reminder" />
+        <package android:name="com.samsung.android.calendar" />
+        <package android:name="com.google.android.apps.tasks" />
+        <provider android:authorities="com.samsung.android.app.reminder" />
     </queries>
 
     <application

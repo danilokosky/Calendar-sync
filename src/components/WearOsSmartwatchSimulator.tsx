@@ -1137,24 +1137,24 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   </div>
                 )}
 
-                {/* MODO 6: QUADRO DE TAREFAS (TASKS — Hierarquia Estrita: Hoje c/ hora -> Amanhã c/ hora -> Sem data e Atrasadas em vermelho sem data/hora) */}
+                {/* MODO 6: QUADRO DE TAREFAS (TASKS — Hierarquia Estrita de 4 níveis: Hoje c/ hora -> Amanhã c/ hora -> Próximas c/ data -> Sem data e Atrasadas <=30d em vermelho) */}
                 {effectiveMode === 'TASKS' && (
                   <div
                     data-testid="tasks-context-canvas"
                     data-tasks-bucket={resolvedTasksState.bucket}
                     className="flex flex-col justify-between h-full py-0.5"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <CheckSquare className="w-4 h-4 text-[#22C55E] shrink-0" />
                         <span
                           data-testid="watch-tasks-header-title"
-                          className="text-[14.5px] font-bold text-[#F5C438] leading-none"
+                          className="text-[14px] font-bold text-[#F5C438] leading-none truncate"
                         >
                           {resolvedTasksState.headerTitle}
                         </span>
                       </div>
-                      <span className="text-[10.5px] font-mono font-bold text-[#67E8F9]">
+                      <span className="text-[10.5px] font-mono font-bold text-[#67E8F9] shrink-0">
                         {resolvedTasksState.rightBadgeText}
                       </span>
                     </div>

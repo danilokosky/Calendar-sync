@@ -870,9 +870,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
      * 1. Somente atividades agendadas para HOJE ("TODAY") — apresenta check de não feito + horário (HH:mm) + título.
      * 2. Se NÃO há atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ ("TOMORROW") — check de não feito + horário (HH:mm) + título.
      * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA ("UNDATED")
-     *    e as atividades EM ATRASO ("OVERDUE"):
+     *    e as atividades EM ATRASO ("OVERDUE") com no máximo 30 dias (1 mês):
      *    - Sem data definida: NÃO apresenta data nem hora, apenas o check de não feito + título.
-     *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
+     *    - Em atraso (<= 30 dias): NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
      */
     fun getTasksSnapshot(nowMs: Long = System.currentTimeMillis()): TasksSnapshot {
         val rawJson = prefs.getString("cached_tasks_json", "") ?: ""
@@ -884,6 +884,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
                 val todayDateIso = sdfIso.format(Date(nowMs))
                 val tomorrowDateIso = sdfIso.format(Date(nowMs + TimeUnit.DAYS.toMillis(1L)))
+                val thirtyDaysAgoIso = sdfIso.format(Date(nowMs - TimeUnit.DAYS.toMillis(30L)))
                 val timeRegex = Regex("(\\d{1,2}:\\d{2})")
 
                 for (i in 0 until arr.length()) {
@@ -897,6 +898,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
                     }
                     val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(Locale.ROOT)
                     val dueDateIso = obj.optString("dueDateIso", "").trim()
+                    // Regra estrita: tarefas com mais de 1 mês (30 dias) no passado nunca são sincronizadas
+                    if (dueDateIso.isNotBlank() && dueDateIso < thirtyDaysAgoIso) continue
+
                     val rawDue = obj.optString("dueHHMM", "").trim()
                     val rawLower = rawDue.lowercase(Locale.ROOT)
                     val explicitOverdue = obj.optBoolean("isOverdue", false)
@@ -985,7 +989,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 tasks = undatedOrOverdue,
                 triggeredByTaskAlert = hasActiveTaskAlertOverride(nowMs),
                 headerTitle = "Tarefas • Sem data",
-                rightBadgeText = "${undatedOrOverdue.size} pendentes",
+                rightBadgeText = "${undatedOrOverdue.size} pend.",
                 showTime = false,
                 bucket = "UNDATED_OVERDUE"
             )

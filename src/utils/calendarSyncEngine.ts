@@ -30,7 +30,14 @@ export type PrimaryContextMode =
   | 'SLEEP';
 export type ContextWindowMode = 'DYNAMIC' | PrimaryContextMode;
 
-export type TaskScheduleCategory = 'TODAY' | 'TOMORROW' | 'UNDATED' | 'OVERDUE';
+export type TaskScheduleCategory =
+  | 'TODAY'
+  | 'TOMORROW'
+  | 'UNDATED'
+  | 'OVERDUE';
+
+export const MAX_PAST_TASK_AGE_DAYS = 30;
+export const MAX_PAST_TASK_AGE_MS = MAX_PAST_TASK_AGE_DAYS * 24 * 60 * 60 * 1000;
 
 export interface TaskItem {
   id: string;
@@ -41,6 +48,8 @@ export interface TaskItem {
   scheduleCategory?: TaskScheduleCategory;
   isOverdue?: boolean;
   isTodayOrTimeless?: boolean;
+  dueEpochMs?: number;
+  ageDays?: number;
 }
 
 export interface ResolvedTasksCanvasState {
@@ -61,8 +70,8 @@ export interface ResolvedTasksCanvasState {
 export const DEFAULT_TASKS_LIST: TaskItem[] = [
   {
     id: 't1',
-    title: 'Enviar relatório trimestral',
-    dueHHMM: '14:00',
+    title: 'fazer almoço',
+    dueHHMM: '12:30',
     sourceLabel: 'Reminder',
     completed: false,
     scheduleCategory: 'TODAY',
@@ -70,9 +79,9 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
   },
   {
     id: 't2',
-    title: 'Reunião de revisão da sprint',
-    dueHHMM: '16:30',
-    sourceLabel: 'Tasks',
+    title: 'Fazer almoço',
+    dueHHMM: '13:00',
+    sourceLabel: 'Reminder',
     completed: false,
     scheduleCategory: 'TODAY',
     isTodayOrTimeless: true,
@@ -103,6 +112,7 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     completed: false,
     scheduleCategory: 'OVERDUE',
     isOverdue: true,
+    ageDays: 5,
     isTodayOrTimeless: true,
   },
   {
@@ -116,11 +126,11 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
   },
   {
     id: 't7',
-    title: 'Comprar café em grãos',
-    dueHHMM: '18:00',
+    title: 'Tratar a água',
+    dueHHMM: '09:00',
     sourceLabel: 'Reminder',
     completed: true,
-    scheduleCategory: 'TODAY',
+    scheduleCategory: 'OVERDUE',
     isTodayOrTimeless: true,
   },
 ];
@@ -160,13 +170,15 @@ export function inferTaskScheduleCategory(task: TaskItem): TaskScheduleCategory 
  * Resolve estritamente qual grupo de tarefas NÃO concluídas deve aparecer no Canvas do relógio e do smartphone:
  * 1. Somente atividades agendadas para HOJE (com hora HH:mm e check de não feito).
  * 2. Se NÃO houver atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ (com hora HH:mm e check de não feito).
- * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA e as ATRASADAS:
+ * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA e as ATRASADAS (com no máximo 30 dias):
+ *    - Tarefas antigas com mais de 1 mês (> 30 dias) são ignoradas e nunca sincronizadas.
  *    - Sem data definida: NÃO apresenta data nem hora, apenas o check de não feito + título.
- *    - Em atraso: NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
+ *    - Em atraso (<= 30 dias): NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
  */
 export interface TasksSourceFilterOptions {
   samsungReminderSyncEnabled?: boolean;
   googleTasksSyncEnabled?: boolean;
+  referenceNowMs?: number;
 }
 
 export function resolveTasksCanvasState(
@@ -175,11 +187,20 @@ export function resolveTasksCanvasState(
 ): ResolvedTasksCanvasState {
   const allowReminder = sourceFilter?.samsungReminderSyncEnabled ?? true;
   const allowGoogleTasks = sourceFilter?.googleTasksSyncEnabled ?? true;
+  const nowMs = sourceFilter?.referenceNowMs ?? Date.now();
+  const maxPastCutoffMs = nowMs - MAX_PAST_TASK_AGE_MS;
 
   const uncompleted = tasks.filter((t) => {
     if (t.completed || !(t.isTodayOrTimeless ?? true)) return false;
     if (t.sourceLabel === 'Reminder' && !allowReminder) return false;
     if (t.sourceLabel === 'Tasks' && !allowGoogleTasks) return false;
+    // Regra de corte de 1 mês (30 dias): tarefas com mais de 30 dias no passado são descartadas
+    if (typeof t.ageDays === 'number' && t.ageDays > MAX_PAST_TASK_AGE_DAYS) {
+      return false;
+    }
+    if (typeof t.dueEpochMs === 'number' && t.dueEpochMs < maxPastCutoffMs) {
+      return false;
+    }
     return true;
   });
 
@@ -240,7 +261,7 @@ export function resolveTasksCanvasState(
   if (undatedOrOverdue.length > 0) {
     return {
       headerTitle: 'Tarefas • Sem data',
-      rightBadgeText: `${undatedOrOverdue.length} pendentes`,
+      rightBadgeText: `${undatedOrOverdue.length} pend.`,
       bucket: 'UNDATED_OVERDUE',
       showTime: false,
       displayTasks: undatedOrOverdue,
