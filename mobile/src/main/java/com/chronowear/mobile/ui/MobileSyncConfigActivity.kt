@@ -46,6 +46,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 import com.chronowear.mobile.sync.CalendarSyncEngine
 import com.chronowear.mobile.sync.CalendarSyncForegroundService
 import com.chronowear.mobile.sync.LocalCalendarEvent
@@ -73,17 +74,17 @@ class MobileSyncConfigActivity : Activity() {
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var prefs: SyncPreferences
+    private var activeToast: Toast? = null
 
     private val clockHandler = Handler(Looper.getMainLooper())
     private var currentTabIndex = 0
     private var isUpdatingToggleProgrammatically = false
     private var suppressSyncBroadcastUntilMs = 0L
 
-    // Pull-to-Refresh com Flecha Circular Animada
+    // Pull-to-Refresh apenas com a Flecha Circular Animada (sem caixa de texto no topo)
     private lateinit var pullScrollView: PullToRefreshScrollView
-    private lateinit var pullHeaderContainer: LinearLayout
+    private lateinit var pullSpinnerContainer: FrameLayout
     private lateinit var pullSpinnerView: PullRefreshArrowSpinnerView
-    private lateinit var pullHeaderText: TextView
     private var isPullRefreshing = false
 
     // Containers de abas
@@ -108,13 +109,8 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var permissionsListContainer: LinearLayout
     private lateinit var widgetsGridContainer: LinearLayout
 
-    // Camadas finas escuras de proteção (quando faltam permissões ou app Wear não está instalado)
-    private lateinit var watchPreviewLockOverlay: FrameLayout
-    private lateinit var watchPreviewLockText: TextView
-    private lateinit var widgetsLockOverlay: FrameLayout
-    private lateinit var widgetsLockText: TextView
+    // Camada fina escura apenas sobre as configurações de personalização quando bloqueado
     private lateinit var settingsLockOverlay: FrameLayout
-    private lateinit var settingsLockText: TextView
 
     // Aba Configurações: Controles e Switches
     private lateinit var switchCalendarEvents: Switch
@@ -147,6 +143,11 @@ class MobileSyncConfigActivity : Activity() {
     private var lastConnectionReport: WearConnectionReport? = null
     private var selectedVirtualPreviewOverride: String? = null
     private var discoveredWeatherTriggerApps: List<WeatherTriggerAppOption> = emptyList()
+
+    private fun showStatusToast(message: String) {
+        activeToast?.cancel()
+        activeToast = Toast.makeText(this, message, Toast.LENGTH_SHORT).also { it.show() }
+    }
 
     private val syncCompletedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -213,6 +214,7 @@ class MobileSyncConfigActivity : Activity() {
 
     override fun onDestroy() {
         clockHandler.removeCallbacks(liveClockRunnable)
+        activeToast?.cancel()
         try {
             unregisterReceiver(syncCompletedReceiver)
         } catch (_: Exception) {
@@ -265,59 +267,44 @@ class MobileSyncConfigActivity : Activity() {
             setPadding(dp(16), dp(14), dp(16), dp(104))
         }
 
-        // Indicador Puxar para Atualizar com Flecha Circular Animada que gira conforme puxa
-        pullHeaderContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            background = roundedRect("#0B111A", "#1E293B", 16)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            val lp = LinearLayout.LayoutParams(
+        // Indicador Puxar para Atualizar: apenas a flecha circular animada que surge ao puxar (sem quadro de texto)
+        pullSpinnerContainer = FrameLayout(this).apply {
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.bottomMargin = dp(10)
-            layoutParams = lp
+            ).apply {
+                bottomMargin = dp(8)
+            }
         }
 
         pullSpinnerView = PullRefreshArrowSpinnerView(this).apply {
-            val lp = LinearLayout.LayoutParams(dp(24), dp(24))
-            lp.rightMargin = dp(10)
-            layoutParams = lp
+            background = ovalDrawable("#111827")
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+            layoutParams = FrameLayout.LayoutParams(
+                dp(36),
+                dp(36),
+                Gravity.CENTER_HORIZONTAL
+            )
         }
-        pullHeaderContainer.addView(pullSpinnerView)
-
-        pullHeaderText = TextView(this).apply {
-            text = "Puxe a página para baixo para verificar conexão e atualizar"
-            setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        pullHeaderContainer.addView(pullHeaderText)
+        pullSpinnerContainer.addView(pullSpinnerView)
 
         pullScrollView.onPullProgressChanged = { pullPx, thresholdPx ->
             val ratio = (pullPx / thresholdPx).coerceIn(0f, 1.25f)
             pullSpinnerView.setPullProgress(ratio)
             if (!isPullRefreshing) {
-                when {
-                    pullPx >= thresholdPx -> {
-                        pullHeaderText.text = "Solte agora para verificar conexão, permissões e sincronizar..."
-                        pullHeaderText.setTextColor(Color.parseColor("#F5C438"))
-                    }
-                    pullPx > dp(6) -> {
-                        val pct = ((pullPx * 100f) / thresholdPx).toInt().coerceIn(1, 99)
-                        pullHeaderText.text = "Puxando para atualizar ($pct%)..."
-                        pullHeaderText.setTextColor(Color.parseColor("#67E8F9"))
-                    }
-                    else -> {
-                        updateIdlePullHeaderMessage()
-                    }
+                if (pullPx > dp(4)) {
+                    pullSpinnerContainer.visibility = View.VISIBLE
+                    pullSpinnerContainer.alpha = (ratio * 1.2f).coerceIn(0.25f, 1f)
+                } else {
+                    pullSpinnerContainer.visibility = View.GONE
+                    pullSpinnerContainer.alpha = 0f
                 }
             }
         }
-        pageColumn.addView(pullHeaderContainer)
+        pageColumn.addView(pullSpinnerContainer)
 
-        // Cabeçalho essencial (sem botão Atualizar redundante, pois o Puxar para Atualizar já faz isso)
+        // Cabeçalho essencial
         pageColumn.addView(buildCompactTopBar())
 
         // Abas
@@ -379,7 +366,7 @@ class MobileSyncConfigActivity : Activity() {
         )
         titleCol.addView(
             TextView(this).apply {
-                text = "v1.2.1 • Sincronização Inteligente Wear OS"
+                text = "v1.2.1 • Wear OS Sync"
                 setTextColor(Color.parseColor("#94A3B8"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
             }
@@ -389,7 +376,7 @@ class MobileSyncConfigActivity : Activity() {
     }
 
     // =========================================================================================
-    // ABA 1: INÍCIO (WATCHFACE IDÊNTICA AO RELÓGIO + STATUS + MINI TUTORIAL / PERMISSÕES + TILES)
+    // ABA 1: INÍCIO (PRÉ-VISUALIZAÇÃO DA WATCHFACE SEMPRE VISÍVEL + STATUS + PERMISSÕES + TILES)
     // =========================================================================================
 
     private fun buildHomeTab(): LinearLayout {
@@ -397,7 +384,7 @@ class MobileSyncConfigActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // 1. Card Superior: Cópia Idêntica da Watchface do Relógio + Status de Conexão
+        // 1. Card Superior: Pré-visualização da Watchface (SEMPRE VISÍVEL) + Status de Conexão
         val watchCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -411,88 +398,32 @@ class MobileSyncConfigActivity : Activity() {
             layoutParams = lp
         }
 
-        // Wrapper da Watchface (com camada fina escura quando bloqueado por falta de permissão ou app Wear)
-        val watchPreviewFrame = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val watchPreviewInnerCol = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
         watchPreviewModeLabel = TextView(this).apply {
-            text = "MOSTRADOR DO RELÓGIO • SINCRONIZADO"
+            text = "MOSTRADOR DO RELÓGIO"
             setTextColor(Color.parseColor("#F5C438"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
             typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
             letterSpacing = 0.08f
             gravity = Gravity.CENTER
         }
-        watchPreviewInnerCol.addView(watchPreviewModeLabel)
+        watchCard.addView(watchPreviewModeLabel)
 
         virtualWatchView = VirtualWatchCanvasView(this).apply {
             val lp = LinearLayout.LayoutParams(dp(264), dp(264))
             lp.topMargin = dp(10)
-            lp.bottomMargin = dp(8)
+            lp.bottomMargin = dp(4)
             layoutParams = lp
             setOnClickListener {
                 if (isAppUnlockedForCustomization()) {
                     cycleVirtualPreviewContext()
+                } else {
+                    showLockedCustomizationToast()
                 }
             }
         }
-        watchPreviewInnerCol.addView(virtualWatchView)
+        watchCard.addView(virtualWatchView)
 
-        watchPreviewInnerCol.addView(
-            TextView(this).apply {
-                text = "Cópia idêntica da Watch Face Format (WFF) do relógio • Toque para alternar o Canvas"
-                setTextColor(Color.parseColor("#64748B"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-                gravity = Gravity.CENTER
-            }
-        )
-
-        watchPreviewFrame.addView(watchPreviewInnerCol)
-
-        watchPreviewLockOverlay = FrameLayout(this).apply {
-            background = roundedRect("#BF05070B", "#263348", 18)
-            isClickable = true
-            isFocusable = true
-            visibility = View.GONE
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-        watchPreviewLockText = TextView(this).apply {
-            text = "🔒 Conclua as permissões e instale o app no relógio abaixo para interagir"
-            setTextColor(Color.parseColor("#E2E8F0"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-            typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = roundedRect("#E60B111A", "#334155", 14)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            ).apply {
-                setMargins(dp(16), dp(16), dp(16), dp(16))
-            }
-        }
-        watchPreviewLockOverlay.addView(watchPreviewLockText)
-        watchPreviewFrame.addView(watchPreviewLockOverlay)
-        watchCard.addView(watchPreviewFrame)
-
-        // Faixa de Status Preciso (SEMPRE APARENTE E DESBLOQUEADA)
+        // Faixa de Status Preciso
         val statusBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedRect("#101724", "#1E293B", 16)
@@ -501,7 +432,7 @@ class MobileSyncConfigActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            lp.topMargin = dp(12)
+            lp.topMargin = dp(10)
             layoutParams = lp
             setOnClickListener {
                 performPullToRefresh()
@@ -582,7 +513,7 @@ class MobileSyncConfigActivity : Activity() {
         watchCard.addView(statusBox)
         col.addView(watchCard)
 
-        // 2. Quadro Informativo de Permissões Pendentes + Mini Tutorial + Link www.laskosky.com.br (SEMPRE APARENTE)
+        // 2. Quadro de Permissões Pendentes em destaque quando faltar permissão ou app no relógio (sem tutorial prolixo)
         permissionsAlertContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedRect("#19120B", "#F59E0B", 18)
@@ -600,17 +531,10 @@ class MobileSyncConfigActivity : Activity() {
         permissionsAlertContainer.addView(permissionsListContainer)
         col.addView(permissionsAlertContainer)
 
-        // 3. Seção dos Blocos de Status (Tiles 2x2) com Camada Fina Escura de Proteção quando bloqueado
-        val widgetsProtectedFrame = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
+        // 3. Seção dos Blocos de Status (Tiles 2x2) — Sempre visíveis normalmente
         val widgetsSectionCol = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = FrameLayout.LayoutParams(
+            layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
@@ -636,13 +560,6 @@ class MobileSyncConfigActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
         )
-        widgetsHeaderRow.addView(
-            TextView(this).apply {
-                text = "◀ ▶ reordena • ⤢/⤡ expande ou reduz"
-                setTextColor(Color.parseColor("#94A3B8"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-            }
-        )
         widgetsSectionCol.addView(widgetsHeaderRow)
 
         widgetsGridContainer = LinearLayout(this).apply {
@@ -653,44 +570,13 @@ class MobileSyncConfigActivity : Activity() {
             )
         }
         widgetsSectionCol.addView(widgetsGridContainer)
-        widgetsProtectedFrame.addView(widgetsSectionCol)
-
-        widgetsLockOverlay = FrameLayout(this).apply {
-            background = roundedRect("#C405070B", "#263348", 20)
-            isClickable = true
-            isFocusable = true
-            visibility = View.GONE
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-        widgetsLockText = TextView(this).apply {
-            text = "🔒 Tiles bloqueados: conclua o passo a passo no quadro acima (liberar permissões e instalar o app no relógio)"
-            setTextColor(Color.parseColor("#F8FAFC"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = roundedRect("#E60B111A", "#F59E0B", 16)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                setMargins(dp(16), dp(28), dp(16), dp(16))
-            }
-        }
-        widgetsLockOverlay.addView(widgetsLockText)
-        widgetsProtectedFrame.addView(widgetsLockOverlay)
-
-        col.addView(widgetsProtectedFrame)
+        col.addView(widgetsSectionCol)
 
         return col
     }
 
     // =========================================================================================
-    // ABA 2: CONFIGURAÇÕES (PROTEGIDA POR CAMADA FINA ESCURA ATÉ LIBERAR PERMISSÕES E APP WEAR)
+    // ABA 2: CONFIGURAÇÕES (BLOQUEADA ENQUANTO PERMISSÕES OU RELÓGIO NÃO ESTIVEREM CONECTADOS)
     // =========================================================================================
 
     private fun buildSettingsTab(): FrameLayout {
@@ -713,7 +599,7 @@ class MobileSyncConfigActivity : Activity() {
         // Card 1: Modo do Canvas e Prioridade Automática
         val modeCard = createSectionCard(
             "MODO DO CANVAS NO RELÓGIO",
-            "Escolha se o mostrador gira no Automático Inteligente ou fica fixo em um contexto"
+            "Escolha se o mostrador gira no Automático ou fica fixo em um contexto"
         )
 
         val modeOptions = listOf(
@@ -730,6 +616,10 @@ class MobileSyncConfigActivity : Activity() {
                 options = modeOptions,
                 buttonStore = canvasModeChipButtons
             ) { selectedKey ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setContextWindowMode(selectedKey)
                 selectedVirtualPreviewOverride = if (selectedKey == SyncPreferences.MODE_AUTO) null else selectedKey
@@ -744,18 +634,22 @@ class MobileSyncConfigActivity : Activity() {
             createSubLabel("Foco Principal quando em Automático:")
         )
         val primaryOptions = listOf(
-            SyncPreferences.MODE_EVENTS to "Foco: Agenda",
-            SyncPreferences.MODE_TASKS to "Foco: Tarefas",
-            SyncPreferences.MODE_WEATHER to "Foco: Clima",
-            SyncPreferences.MODE_SUN to "Foco: Sol",
-            SyncPreferences.MODE_SLEEP to "Foco: Sono",
-            SyncPreferences.MODE_STEPS to "Foco: Passos"
+            SyncPreferences.MODE_EVENTS to "Agenda",
+            SyncPreferences.MODE_TASKS to "Tarefas",
+            SyncPreferences.MODE_WEATHER to "Clima",
+            SyncPreferences.MODE_SUN to "Sol",
+            SyncPreferences.MODE_SLEEP to "Sono",
+            SyncPreferences.MODE_STEPS to "Passos"
         )
         modeCard.addView(
             buildStaticChipGrid(
                 options = primaryOptions,
                 buttonStore = primaryContextChipButtons
             ) { selectedPrimary ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setAutoPrimaryContext(selectedPrimary)
                 selectedVirtualPreviewOverride = null
@@ -767,7 +661,7 @@ class MobileSyncConfigActivity : Activity() {
         )
 
         modeCard.addView(
-            createSubLabel("Tempo de retenção de alertas temporários antes de voltar ao Foco:")
+            createSubLabel("Tempo de retenção de alertas temporários:")
         )
         val holdOptions = listOf(5 to "5 min", 10 to "10 min", 15 to "15 min", 30 to "30 min")
         modeCard.addView(
@@ -775,6 +669,10 @@ class MobileSyncConfigActivity : Activity() {
                 options = holdOptions,
                 buttonStore = holdMinutesChipButtons
             ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setUnifiedCanvasHoldMinutes(mins)
                 updateAllChipSelectionsInPlace()
@@ -785,7 +683,7 @@ class MobileSyncConfigActivity : Activity() {
         switchAutoFallbackTasks = createResponsiveSettingToggleRow(
             parent = modeCard,
             title = "Priorizar Tarefas se Agenda de Hoje estiver vazia",
-            subtitle = "No modo Automático com foco em Agenda, exibe Tarefas ativas do dia quando não houver eventos hoje"
+            subtitle = "No modo Automático, exibe Tarefas quando não houver eventos hoje"
         ) { checked ->
             prefs.setAutoFallbackAgendaToTasksEnabled(checked)
             virtualWatchView.invalidate()
@@ -797,13 +695,13 @@ class MobileSyncConfigActivity : Activity() {
         // Card 2: Notificações do Relógio e Alerta de 15 Minutos
         val notifCard = createSectionCard(
             "NOTIFICAÇÕES NO RELÓGIO",
-            "Controle os avisos vibratórios na troca de Canvas e antes dos compromissos"
+            "Avisos vibratórios na troca de Canvas e antes dos compromissos"
         )
 
         switchNotifyOnCanvasChange = createResponsiveSettingToggleRow(
             parent = notifCard,
-            title = "Notificar no relógio ao atualizar o Canvas",
-            subtitle = "Gera aviso discreto no Wear OS quando o quadro central mudar de contexto"
+            title = "Notificar ao atualizar o Canvas",
+            subtitle = "Gera aviso discreto no Wear OS quando o quadro central mudar"
         ) { checked ->
             prefs.setNotifyWatchOnCanvasChangeEnabled(checked)
             triggerBackgroundSync("Notificar troca de Canvas")
@@ -812,7 +710,7 @@ class MobileSyncConfigActivity : Activity() {
         switchNotifyAgenda15Min = createResponsiveSettingToggleRow(
             parent = notifCard,
             title = "Notificar 15 min antes do compromisso",
-            subtitle = "Troca para a Agenda faltando 15 min e envia notificação opcional no relógio"
+            subtitle = "Troca para a Agenda faltando 15 min e envia alerta no relógio"
         ) { checked ->
             prefs.setNotifyAgenda15MinEnabled(checked)
             triggerBackgroundSync("Alerta 15 min Agenda")
@@ -831,8 +729,8 @@ class MobileSyncConfigActivity : Activity() {
 
         // Card 3: Sincronização de Agenda e Tarefas
         val agendaTasksCard = createSectionCard(
-            "AGENDA & TAREFAS (GOOGLE TASKS / REMINDER)",
-            "As tarefas ativas (Hoje ou Sem horário) sincronizam automaticamente junto com a Agenda"
+            "AGENDA & TAREFAS",
+            "Sincronização de calendários e tarefas pendentes"
         )
 
         switchCalendarEvents = createResponsiveSettingToggleRow(
@@ -851,7 +749,7 @@ class MobileSyncConfigActivity : Activity() {
         switchTasksSync = createResponsiveSettingToggleRow(
             parent = agendaTasksCard,
             title = "Sincronizar Quadro de Tarefas",
-            subtitle = "Exibe apenas tarefas não concluídas programadas para Hoje ou Sem horário"
+            subtitle = "Exibe tarefas de Hoje, Amanhã, Sem data e Atrasadas"
         ) { checked ->
             prefs.setTasksSyncEnabled(checked)
             virtualWatchView.invalidate()
@@ -859,18 +757,22 @@ class MobileSyncConfigActivity : Activity() {
             triggerBackgroundSync("Toggle Tarefas")
         }
 
-        val manageTasksBtn = createActionButton("＋ Adicionar / Gerenciar Tarefas de Hoje") {
+        val manageTasksBtn = createActionButton("Gerenciar Tarefas") {
             showManageTasksDialog()
         }
         agendaTasksCard.addView(manageTasksBtn)
 
-        agendaTasksCard.addView(createSubLabel("Horizonte de sincronização de eventos:"))
+        agendaTasksCard.addView(createSubLabel("Horizonte de sincronização:"))
         val horizonOpts = listOf(1 to "24 horas", 2 to "2 dias", 3 to "3 dias", 7 to "7 dias")
         agendaTasksCard.addView(
             buildStaticChipGrid(
                 options = horizonOpts,
                 buttonStore = horizonChipButtons
             ) { days ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setHorizonDays(days)
                 updateAllChipSelectionsInPlace()
@@ -878,13 +780,17 @@ class MobileSyncConfigActivity : Activity() {
             }
         )
 
-        agendaTasksCard.addView(createSubLabel("Janela da barra de progresso (0% → 100%):"))
+        agendaTasksCard.addView(createSubLabel("Janela da barra de progresso:"))
         val windowOpts = listOf(30 to "30 min", 60 to "60 min", 120 to "2 horas")
         agendaTasksCard.addView(
             buildStaticChipGrid(
                 options = windowOpts,
                 buttonStore = progressWindowChipButtons
             ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setProgressWindowMinutes(mins)
                 updateAllChipSelectionsInPlace()
@@ -894,7 +800,7 @@ class MobileSyncConfigActivity : Activity() {
             }
         )
 
-        agendaTasksCard.addView(createSubLabel("Calendários sincronizados no aparelho:"))
+        agendaTasksCard.addView(createSubLabel("Calendários sincronizados:"))
         calendarsCheckboxContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -904,14 +810,14 @@ class MobileSyncConfigActivity : Activity() {
 
         // Card 4: Localização Unificada (Clima + Nascer/Pôr do Sol)
         val weatherSunCard = createSectionCard(
-            "CLIMA & SOL (LOCALIZAÇÃO UNIFICADA)",
-            "Uma única atualização fixa de localização alimenta o Clima (com UF oficial) e o Pôr do Sol"
+            "CLIMA & SOL",
+            "Localização unificada para Clima e Pôr do Sol"
         )
 
         switchUnifiedWeatherSolar = createResponsiveSettingToggleRow(
             parent = weatherSunCard,
             title = "Atualização Unificada de Clima e Pôr do Sol",
-            subtitle = "Persiste a última coordenada real para nunca cair em localização genérica"
+            subtitle = "Mantém a coordenada real para clima e cálculo solar"
         ) { checked ->
             prefs.setPhoneWeatherAutoCheckEnabled(checked)
             if (checked && !CalendarSyncEngine.hasLocationPermission(this)) {
@@ -927,13 +833,17 @@ class MobileSyncConfigActivity : Activity() {
             triggerBackgroundSync("Toggle Clima+Sol Unificado")
         }
 
-        weatherSunCard.addView(createSubLabel("Intervalo de atualização no Smartphone:"))
+        weatherSunCard.addView(createSubLabel("Intervalo no Smartphone:"))
         val phoneWeatherIntervals = listOf(30 to "30 min", 60 to "1 hora", 120 to "2 horas", 180 to "3 horas")
         weatherSunCard.addView(
             buildStaticChipGrid(
                 options = phoneWeatherIntervals,
                 buttonStore = phoneWeatherIntervalChipButtons
             ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setPhoneWeatherCheckIntervalMinutes(mins)
                 updateAllChipSelectionsInPlace()
@@ -943,8 +853,8 @@ class MobileSyncConfigActivity : Activity() {
 
         switchWatchStandaloneWeather = createResponsiveSettingToggleRow(
             parent = weatherSunCard,
-            title = "Atualização Autônoma no Relógio (Wi-Fi / LTE / GPS)",
-            subtitle = "Permite ao relógio buscar Clima e calcular Pôr do Sol mesmo longe do telefone"
+            title = "Atualização Autônoma no Relógio",
+            subtitle = "Busca Clima e Sol via Wi-Fi / LTE / GPS quando longe do telefone"
         ) { checked ->
             prefs.setWatchStandaloneWeatherEnabled(checked)
             prefs.setWatchStandaloneSolarEnabled(checked)
@@ -958,6 +868,10 @@ class MobileSyncConfigActivity : Activity() {
                 options = watchWeatherIntervals,
                 buttonStore = watchWeatherIntervalChipButtons
             ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setWatchStandaloneWeatherIntervalMinutes(mins)
                 updateAllChipSelectionsInPlace()
@@ -966,7 +880,7 @@ class MobileSyncConfigActivity : Activity() {
         )
 
         weatherTriggerAppsSummaryText = TextView(this).apply {
-            text = "Apps gatilho de notificação de clima: carregando..."
+            text = "Apps monitorados para clima: carregando..."
             setTextColor(Color.parseColor("#94A3B8"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
             val lp = LinearLayout.LayoutParams(
@@ -979,7 +893,7 @@ class MobileSyncConfigActivity : Activity() {
         weatherSunCard.addView(weatherTriggerAppsSummaryText)
 
         weatherSunCard.addView(
-            createActionButton("Selecionar Apps Gatilho de Clima") {
+            createActionButton("Apps de Clima") {
                 showWeatherTriggerAppsDialog()
             }
         )
@@ -988,14 +902,14 @@ class MobileSyncConfigActivity : Activity() {
 
         // Card 5: Sono do Dia e Serviço em Segundo Plano
         val sleepSystemCard = createSectionCard(
-            "SONO DO DIA & SISTEMA",
-            "Sincroniza o sono de hoje automaticamente e valida quando não há dados registrados"
+            "SONO & SISTEMA",
+            "Sincronização de sono e serviço em segundo plano"
         )
 
         switchSleepSync = createResponsiveSettingToggleRow(
             parent = sleepSystemCard,
-            title = "Sincronizar Sono automaticamente no Relógio",
-            subtitle = "Exibe hipnograma de hoje ou informa 'Não há dados de sono para hoje' se vazio"
+            title = "Sincronizar Sono no Relógio",
+            subtitle = "Exibe o hipnograma do dia no mostrador"
         ) { checked ->
             prefs.setSleepSyncEnabled(checked)
             virtualWatchView.invalidate()
@@ -1003,19 +917,10 @@ class MobileSyncConfigActivity : Activity() {
             triggerBackgroundSync("Toggle Sono")
         }
 
-        val toggleSleepTodayStateBtn = createActionButton("Alternar Estado de Dados de Sono de Hoje (Com Dados / Sem Dados)") {
-            val currentlyHas = prefs.hasVerifiedSleepDataForToday()
-            prefs.setSleepHasDataForToday(!currentlyHas)
-            virtualWatchView.invalidate()
-            refreshWidgetsGridInPlace()
-            triggerBackgroundSync("Verificação Sono de Hoje")
-        }
-        sleepSystemCard.addView(toggleSleepTodayStateBtn)
-
         switchUpdateOnWake = createResponsiveSettingToggleRow(
             parent = sleepSystemCard,
-            title = "Atualizar mostrador ao ligar a tela do relógio",
-            subtitle = "Recalcula timers e expira eventos passados instantaneamente no pulso"
+            title = "Atualizar mostrador ao ligar a tela",
+            subtitle = "Recalcula timers e expira eventos passados instantaneamente"
         ) { checked ->
             prefs.setUpdateOnScreenWakeEnabled(checked)
             triggerBackgroundSync("Toggle Update On Wake")
@@ -1037,9 +942,9 @@ class MobileSyncConfigActivity : Activity() {
         col.addView(sleepSystemCard)
         rootFrame.addView(col)
 
-        // Camada fina escura de proteção sobre todas as configurações quando bloqueado
+        // Camada fina escura de proteção apenas sobre as configurações quando bloqueado (sem caixas de texto gigantes)
         settingsLockOverlay = FrameLayout(this).apply {
-            background = roundedRect("#C405070B", "#263348", 20)
+            background = roundedRect("#9905070B", "#1E293B", 20)
             isClickable = true
             isFocusable = true
             visibility = View.GONE
@@ -1047,27 +952,10 @@ class MobileSyncConfigActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-        }
-        settingsLockText = TextView(this).apply {
-            text = "🔒 Opções de personalização bloqueadas.\nVolte à aba Início para liberar as permissões pendentes e instalar o app ChronoWear no relógio."
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
-            typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = roundedRect("#EB0B111A", "#F59E0B", 18)
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                setMargins(dp(16), dp(24), dp(16), dp(16))
-            }
             setOnClickListener {
-                switchTabAnimated(0)
+                showLockedCustomizationToast()
             }
         }
-        settingsLockOverlay.addView(settingsLockText)
         rootFrame.addView(settingsLockOverlay)
 
         return rootFrame
@@ -1140,7 +1028,7 @@ class MobileSyncConfigActivity : Activity() {
     }
 
     // =========================================================================================
-    // VALIDAÇÃO REALISTA DE PERMISSÕES, CONEXÃO E PULL-TO-REFRESH (SEM FALSO POSITIVO)
+    // VALIDAÇÃO DE PERMISSÕES, CONEXÃO E PULL-TO-REFRESH COM AVISO POPUP (TOAST)
     // =========================================================================================
 
     private fun countMissingPermissions(): Int {
@@ -1163,35 +1051,23 @@ class MobileSyncConfigActivity : Activity() {
         return countMissingPermissions() == 0 && isWatchAppDetected()
     }
 
-    private fun updateIdlePullHeaderMessage() {
+    private fun showLockedCustomizationToast() {
         val missingPerms = countMissingPermissions()
         val report = lastConnectionReport
-        when {
-            missingPerms > 0 -> {
-                pullHeaderText.text = "⚠ Pendente: libere as $missingPerms permissões abaixo (Puxe p/ revalidar)"
-                pullHeaderText.setTextColor(Color.parseColor("#F59E0B"))
-            }
-            report != null && !report.bluetoothEnabled -> {
-                pullHeaderText.text = "⚠ Bluetooth desligado • Ative o Bluetooth e puxe para atualizar"
-                pullHeaderText.setTextColor(Color.parseColor("#FCA5A5"))
-            }
-            report != null && report.state != WearConnectionState.CONNECTED_WITH_APP_INSTALLED -> {
-                pullHeaderText.text = "⚠ App do relógio não detectado • Instale o app e puxe para atualizar"
-                pullHeaderText.setTextColor(Color.parseColor("#FCD34D"))
-            }
-            else -> {
-                pullHeaderText.text = "Puxe a página para baixo para verificar conexão e atualizar"
-                pullHeaderText.setTextColor(Color.parseColor("#94A3B8"))
-            }
+        val msg = when {
+            missingPerms > 0 -> "Conceda as permissões pendentes primeiro para personalizar."
+            report != null && !report.bluetoothEnabled -> "Ative o Bluetooth e conecte o relógio para personalizar."
+            else -> "Conecte o relógio com o app ChronoWear instalado para personalizar."
         }
+        showStatusToast(msg)
     }
 
     private fun performPullToRefresh() {
         if (isPullRefreshing) return
         isPullRefreshing = true
+        pullSpinnerContainer.visibility = View.VISIBLE
+        pullSpinnerContainer.alpha = 1f
         pullSpinnerView.startSpinning()
-        pullHeaderText.text = "Verificando permissões, Bluetooth e App no Relógio..."
-        pullHeaderText.setTextColor(Color.parseColor("#F5C438"))
 
         uiScope.launch {
             val missingPerms = countMissingPermissions()
@@ -1211,21 +1087,15 @@ class MobileSyncConfigActivity : Activity() {
 
             applyConnectionReportToUi(report)
 
-            val hhmm = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-
             when {
                 missingPerms > 0 -> {
-                    // NUNCA afirma que os dados foram atualizados quando faltam permissões!
-                    pullHeaderText.text = "⚠ Dados não atualizados ($hhmm): libere as $missingPerms permissões pendentes abaixo"
-                    pullHeaderText.setTextColor(Color.parseColor("#F59E0B"))
+                    showStatusToast("Conceda as $missingPerms permissões pendentes para sincronizar.")
                 }
                 !report.bluetoothEnabled -> {
-                    pullHeaderText.text = "⚠ Não sincronizado ($hhmm): Bluetooth desligado no smartphone"
-                    pullHeaderText.setTextColor(Color.parseColor("#FCA5A5"))
+                    showStatusToast("Bluetooth desligado no smartphone.")
                 }
                 report.state != WearConnectionState.CONNECTED_WITH_APP_INSTALLED -> {
-                    pullHeaderText.text = "⚠ Não sincronizado ($hhmm): app ChronoWear não instalado no relógio"
-                    pullHeaderText.setTextColor(Color.parseColor("#FCD34D"))
+                    showStatusToast("App ChronoWear não detectado no relógio.")
                 }
                 else -> {
                     withContext(Dispatchers.IO) {
@@ -1238,13 +1108,14 @@ class MobileSyncConfigActivity : Activity() {
                             "Puxar para Atualizar"
                         )
                     }
-                    pullHeaderText.text = "✓ Sincronizado com o relógio às $hhmm • Puxe para atualizar"
-                    pullHeaderText.setTextColor(Color.parseColor("#34D399"))
+                    showStatusToast("Sincronizado com o relógio.")
                 }
             }
 
             isPullRefreshing = false
             pullSpinnerView.stopSpinning()
+            pullSpinnerContainer.visibility = View.GONE
+            pullSpinnerContainer.alpha = 0f
             refreshUiState(checkRemoteConnection = false)
         }
     }
@@ -1318,8 +1189,8 @@ class MobileSyncConfigActivity : Activity() {
         lastConnectionReport = report
         if (!report.bluetoothEnabled) {
             connectionDotView.background = ovalDrawable("#EF4444")
-            connectionHeadlineText.text = "Bluetooth Desativado no Smartphone"
-            connectionDetailText.text = "Ative o Bluetooth para restabelecer a comunicação com o Galaxy Watch / Wear OS."
+            connectionHeadlineText.text = "Bluetooth Desativado"
+            connectionDetailText.text = "Ative o Bluetooth para conectar ao relógio Wear OS."
             bluetoothBadgeText.text = "Bluetooth: Desligado"
             bluetoothBadgeText.setTextColor(Color.parseColor("#FCA5A5"))
             watchAppBadgeText.text = "App Wear: Inacessível"
@@ -1333,68 +1204,45 @@ class MobileSyncConfigActivity : Activity() {
                     val nodeNames = report.installedAppNodeNames.joinToString().ifBlank { "Wear OS" }
                     connectionDotView.background = ovalDrawable("#10B981")
                     connectionHeadlineText.text = "Conectado • $nodeNames"
-                    connectionDetailText.text = "Bluetooth ativo e app ChronoWear Wear OS v1.2.1 respondendo em tempo real."
+                    connectionDetailText.text = "Bluetooth ativo e app ChronoWear conectado no relógio."
                     watchAppBadgeText.text = "App Wear: Instalado"
                     watchAppBadgeText.setTextColor(Color.parseColor("#34D399"))
                 }
                 WearConnectionState.WEARABLE_CONNECTED_APP_MISSING -> {
                     val nodeNames = report.wearableDisplayNames.joinToString().ifBlank { "Relógio" }
                     connectionDotView.background = ovalDrawable("#F59E0B")
-                    connectionHeadlineText.text = "Relógio Pareado ($nodeNames) • App Wear Ausente"
-                    connectionDetailText.text = "O Bluetooth está conectado ao relógio, mas o app ChronoWear não foi detectado no relógio."
+                    connectionHeadlineText.text = "Relógio Pareado ($nodeNames) • App Ausente"
+                    connectionDetailText.text = "Bluetooth conectado, mas o app ChronoWear não foi detectado no relógio."
                     watchAppBadgeText.text = "App Wear: Não detectado"
                     watchAppBadgeText.setTextColor(Color.parseColor("#FCD34D"))
                 }
                 WearConnectionState.DISCONNECTED -> {
                     connectionDotView.background = ovalDrawable("#EF4444")
                     connectionHeadlineText.text = "Relógio Desconectado"
-                    connectionDetailText.text = "Bluetooth ligado no telefone, mas nenhum relógio Wear OS está conectado no alcance."
+                    connectionDetailText.text = "Nenhum relógio Wear OS conectado no alcance."
                     watchAppBadgeText.text = "App Wear: Offline"
                     watchAppBadgeText.setTextColor(Color.parseColor("#FCA5A5"))
                 }
             }
         }
 
-        // Reconstroi o quadro de permissões + aviso de instalação do app no relógio e atualiza as camadas de bloqueio
         refreshPermissionsBanner()
         refreshProtectionLockOverlays()
-        if (!isPullRefreshing) {
-            updateIdlePullHeaderMessage()
-        }
     }
 
     /**
-     * Aplica ou remove a camada fina escura sobre todos os controles e textos de personalização:
-     * - Enquanto faltar qualquer permissão obrigatória OU enquanto o app do relógio não for detectado,
-     *   mantém a proteção escura sobre os controles, deixando aparente apenas o status de conexão e
-     *   o quadro de permissões / instalação do app no relógio.
+     * Bloqueia apenas as opções de personalização quando faltam permissões ou quando o relógio não está conectado:
+     * - O relógio de pré-visualização e os Tiles permanecem sempre visíveis normalmente.
+     * - Assim que as permissões são concedidas e o relógio está conectado, o software desbloqueia automaticamente.
      */
     private fun refreshProtectionLockOverlays() {
-        val missingPerms = countMissingPermissions()
-        val watchDetected = isWatchAppDetected()
-        val locked = missingPerms > 0 || !watchDetected
-
-        val reasonMessage = when {
-            missingPerms > 0 && !watchDetected ->
-                "🔒 Libere as $missingPerms permissões pendentes no Passo 1 e instale o app no relógio no Passo 2 para desbloquear as opções"
-            missingPerms > 0 ->
-                "🔒 Passo 1 pendente: clique nos botões 'Conceder' no tutorial acima ($missingPerms restantes) para liberar o acesso"
-            else ->
-                "🔒 Passo 2 pendente: app não detectado no relógio. Instale o app ChronoWear no relógio pelo botão acima (www.laskosky.com.br) para desbloquear as opções"
-        }
-
-        watchPreviewLockText.text = reasonMessage
-        widgetsLockText.text = reasonMessage
-        settingsLockText.text = "$reasonMessage\n(Toque aqui para voltar ao Início)"
-
-        val vis = if (locked) View.VISIBLE else View.GONE
-        watchPreviewLockOverlay.visibility = vis
-        widgetsLockOverlay.visibility = vis
-        settingsLockOverlay.visibility = vis
+        val locked = !isAppUnlockedForCustomization()
+        settingsLockOverlay.visibility = if (locked) View.VISIBLE else View.GONE
+        tabSettingsContainer.getChildAt(0)?.alpha = if (locked) 0.45f else 1.0f
     }
 
     // =========================================================================================
-    // QUADRO DE PERMISSÕES PENDENTES + MINI TUTORIAL + LINK WWW.LASKOSKY.COM.BR
+    // QUADRO EM DESTAQUE DE PERMISSÕES PENDENTES (SEM TUTORIAL PROLIXO)
     // =========================================================================================
 
     private data class MissingPermItem(
@@ -1412,9 +1260,9 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.hasCalendarPermission(this)) {
             missing.add(
                 MissingPermItem(
-                    title = "Acesso ao Calendário (Agenda)",
-                    reason = "Necessário para ler os próximos compromissos de Hoje e Amanhã.",
-                    actionLabel = "Conceder",
+                    title = "Calendário (Agenda)",
+                    reason = "Leitura dos compromissos de Hoje e Amanhã.",
+                    actionLabel = "Permitir",
                     onGrantClick = {
                         requestPermissions(arrayOf(Manifest.permission.READ_CALENDAR), 101)
                     }
@@ -1425,9 +1273,9 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.hasLocationPermission(this)) {
             missing.add(
                 MissingPermItem(
-                    title = "Localização Unificada (Clima & Pôr do Sol)",
-                    reason = "Necessário para obter a cidade/UF exata e calcular o pôr do sol local.",
-                    actionLabel = "Conceder",
+                    title = "Localização (Clima & Sol)",
+                    reason = "Cidade/UF atual e cálculo do pôr do sol.",
+                    actionLabel = "Permitir",
                     onGrantClick = {
                         requestPermissions(
                             arrayOf(
@@ -1444,8 +1292,8 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.hasNotificationPermission(this)) {
             missing.add(
                 MissingPermItem(
-                    title = "Permissão de Notificações",
-                    reason = "Necessária para exibir status de sincronização em segundo plano.",
+                    title = "Notificações",
+                    reason = "Avisos de sincronização em segundo plano.",
                     actionLabel = "Permitir",
                     onGrantClick = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1459,8 +1307,8 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.isNotificationListenerEnabled(this)) {
             missing.add(
                 MissingPermItem(
-                    title = "Leitor de Gatilhos de Clima",
-                    reason = "Necessário para detectar alertas meteorológicos e lembretes.",
+                    title = "Acesso a Notificações",
+                    reason = "Detecção de alertas de clima e tarefas.",
                     actionLabel = "Ativar",
                     onGrantClick = {
                         try {
@@ -1475,8 +1323,8 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.isIgnoringBatteryOptimizations(this)) {
             missing.add(
                 MissingPermItem(
-                    title = "Sincronização Sem Restrição de Bateria",
-                    reason = "Evita que o sistema congele o envio de agenda e sono ao relógio.",
+                    title = "Bateria sem Restrição",
+                    reason = "Mantém a sincronização ativa em segundo plano.",
                     actionLabel = "Liberar",
                     onGrantClick = {
                         try {
@@ -1494,122 +1342,26 @@ class MobileSyncConfigActivity : Activity() {
         val watchDetected = isWatchAppDetected()
 
         if (missing.isEmpty() && watchDetected) {
-            permissionsAlertContainer.background = roundedRect("#091914", "#10B981", 16)
-            permissionsListContainer.addView(
-                TextView(this).apply {
-                    text = "✓ Configuração Completa: Todas as permissões foram concedidas e o app ChronoWear está ativo no relógio. Personalização desbloqueada!"
-                    setTextColor(Color.parseColor("#34D399"))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-                    typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-                }
-            )
+            permissionsAlertContainer.visibility = View.GONE
             return
         }
 
+        permissionsAlertContainer.visibility = View.VISIBLE
         permissionsAlertContainer.background = roundedRect("#19120B", "#F59E0B", 18)
 
-        // Cabeçalho do Mini Tutorial de Liberação Obrigatória
-        val tutorialBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = roundedRect("#24190C", "#F5C438", 12)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.bottomMargin = dp(10)
-            layoutParams = lp
-        }
-        tutorialBox.addView(
+        permissionsListContainer.addView(
             TextView(this).apply {
                 text = if (missing.isNotEmpty()) {
-                    "🧭 MINI TUTORIAL (PASSO 1 DE 2) • LIBERAÇÃO DE PERMISSÕES (${missing.size} PENDENTES)"
+                    "PERMISSÕES PENDENTES (${missing.size})"
                 } else {
-                    "🧭 MINI TUTORIAL (PASSO 2 DE 2) • INSTALAÇÃO DO APP NO RELÓGIO"
+                    "CONEXÃO DO APP NO RELÓGIO PENDENTE"
                 }
                 setTextColor(Color.parseColor("#F5C438"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                letterSpacing = 0.04f
             }
         )
-        tutorialBox.addView(
-            TextView(this).apply {
-                text = if (missing.isNotEmpty()) {
-                    "As demais funções e personalizações estão protegidas. Clique apenas nos botões amarelos de liberação abaixo e, em seguida, certifique-se de ter o app instalado no relógio para desbloquear o aplicativo."
-                } else {
-                    "Permissões do smartphone concluídas! Porém o app ChronoWear ainda não foi detectado no relógio. As opções de personalização só serão desbloqueadas quando o app estiver instalado e conectado no relógio."
-                }
-                setTextColor(Color.parseColor("#F8FAFC"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                val lp = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                lp.topMargin = dp(4)
-                layoutParams = lp
-            }
-        )
-        permissionsListContainer.addView(tutorialBox)
-
-        // Bloco Informativo de Instalação do App no Relógio + Link www.laskosky.com.br (sempre visível dentro do quadro quando o app do relógio não for detectado)
-        if (!watchDetected) {
-            val installWatchBox = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = roundedRect("#101926", "#38BDF8", 14)
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                val lp = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                lp.bottomMargin = if (missing.isNotEmpty()) dp(10) else 0
-                layoutParams = lp
-            }
-
-            installWatchBox.addView(
-                TextView(this).apply {
-                    text = "⌚ É NECESSÁRIO INSTALAR O APP CHRONOWEAR NO RELÓGIO"
-                    setTextColor(Color.parseColor("#67E8F9"))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-                    typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-                }
-            )
-            installWatchBox.addView(
-                TextView(this).apply {
-                    text = "Para sincronizar dados reais e desbloquear a personalização dos tiles e mostrador, instale o app complementar no seu Galaxy Watch / Wear OS."
-                    setTextColor(Color.parseColor("#CBD5E1"))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                    val lp = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                    lp.topMargin = dp(3)
-                    lp.bottomMargin = dp(8)
-                    layoutParams = lp
-                }
-            )
-
-            val linkBtn = Button(this).apply {
-                text = "Baixar App do Relógio (www.laskosky.com.br)"
-                isAllCaps = false
-                setTextColor(Color.parseColor("#050507"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-                background = roundedRect("#38BDF8", "#67E8F9", 999)
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                minHeight = dp(38)
-                minimumHeight = dp(38)
-                setOnClickListener {
-                    try {
-                        startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.laskosky.com.br"))
-                        )
-                    } catch (_: Exception) {
-                    }
-                }
-            }
-            installWatchBox.addView(linkBtn)
-            permissionsListContainer.addView(installWatchBox)
-        }
 
         // Lista de Permissões Pendentes
         for (item in missing) {
@@ -1655,8 +1407,8 @@ class MobileSyncConfigActivity : Activity() {
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
                 background = roundedRect("#F5C438", "#FDE047", 999)
                 setPadding(dp(14), dp(6), dp(14), dp(6))
-                minHeight = dp(36)
-                minimumHeight = dp(36)
+                minHeight = dp(34)
+                minimumHeight = dp(34)
                 val lp = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1668,10 +1420,75 @@ class MobileSyncConfigActivity : Activity() {
             row.addView(btn)
             permissionsListContainer.addView(row)
         }
+
+        // Item conciso caso o app do relógio não seja detectado
+        if (!watchDetected) {
+            val installRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = roundedRect("#101926", "#38BDF8", 12)
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = dp(6)
+                layoutParams = lp
+            }
+
+            val textCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            textCol.addView(
+                TextView(this).apply {
+                    text = "App ChronoWear no Relógio"
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                }
+            )
+            textCol.addView(
+                TextView(this).apply {
+                    text = "Instale ou conecte o app no Wear OS"
+                    setTextColor(Color.parseColor("#CBD5E1"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+                }
+            )
+            installRow.addView(textCol)
+
+            val linkBtn = Button(this).apply {
+                text = "Instalar"
+                isAllCaps = false
+                setTextColor(Color.parseColor("#050507"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                background = roundedRect("#38BDF8", "#67E8F9", 999)
+                setPadding(dp(14), dp(6), dp(14), dp(6))
+                minHeight = dp(34)
+                minimumHeight = dp(34)
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.leftMargin = dp(8)
+                layoutParams = lp
+                setOnClickListener {
+                    try {
+                        startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.laskosky.com.br"))
+                        )
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            installRow.addView(linkBtn)
+            permissionsListContainer.addView(installRow)
+        }
     }
 
     // =========================================================================================
-    // BLOCOS DE TILES 2X2 (BOTÕES ERGONÔMICOS GRANDES E EXPANSÃO/REDUÇÃO CONFIÁVEL)
+    // BLOCOS DE TILES 2X2 (SEMPRE VISÍVEIS, COM CONTROLES DE PERSONALIZAÇÃO BLOQUEADOS SE DESCONECTADO)
     // =========================================================================================
 
     private val activeWidgetCanvasViews = mutableListOf<WidgetBlockCanvasView>()
@@ -1799,17 +1616,11 @@ class MobileSyncConfigActivity : Activity() {
         if (widgetId == SyncPreferences.MODE_TASKS) {
             headerRow.addView(
                 createErgonomicTileIconButton(TileIconType.PLUS, false) {
+                    if (!isAppUnlockedForCustomization()) {
+                        showLockedCustomizationToast()
+                        return@createErgonomicTileIconButton
+                    }
                     showManageTasksDialog()
-                }
-            )
-        } else if (widgetId == SyncPreferences.MODE_SLEEP) {
-            headerRow.addView(
-                createErgonomicTileIconButton(TileIconType.SWAP, false) {
-                    val hasNow = prefs.hasVerifiedSleepDataForToday()
-                    prefs.setSleepHasDataForToday(!hasNow)
-                    virtualWatchView.invalidate()
-                    refreshWidgetsGridInPlace()
-                    triggerBackgroundSync("Alternar Sono Hoje")
                 }
             )
         }
@@ -1817,12 +1628,20 @@ class MobileSyncConfigActivity : Activity() {
         // Botão Mover para trás (◀)
         headerRow.addView(
             createErgonomicTileIconButton(TileIconType.MOVE_LEFT, false) {
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@createErgonomicTileIconButton
+                }
                 moveWidgetInOrder(widgetId, -1)
             }
         )
         // Botão Mover para frente (▶)
         headerRow.addView(
             createErgonomicTileIconButton(TileIconType.MOVE_RIGHT, false) {
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@createErgonomicTileIconButton
+                }
                 moveWidgetInOrder(widgetId, +1)
             }
         )
@@ -1832,6 +1651,10 @@ class MobileSyncConfigActivity : Activity() {
                 if (isFullWidth) TileIconType.COLLAPSE else TileIconType.EXPAND,
                 isFullWidth
             ) {
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@createErgonomicTileIconButton
+                }
                 prefs.setWidgetExpandedFullRow(widgetId, !isFullWidth)
                 refreshWidgetsGridInPlace()
             }
@@ -1847,6 +1670,10 @@ class MobileSyncConfigActivity : Activity() {
                 1f
             )
             setOnClickListener {
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@setOnClickListener
+                }
                 selectedVirtualPreviewOverride = widgetId
                 if (prefs.getContextWindowMode() == SyncPreferences.MODE_AUTO) {
                     prefs.setAutoPrimaryContext(widgetId)
@@ -1859,6 +1686,10 @@ class MobileSyncConfigActivity : Activity() {
                 triggerBackgroundSync("Foco Imediato no Relógio: $widgetId")
             }
             setOnLongClickListener {
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@setOnLongClickListener true
+                }
                 val clip = ClipData.newPlainText("widget_id", widgetId)
                 val shadow = View.DragShadowBuilder(card)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -1874,6 +1705,7 @@ class MobileSyncConfigActivity : Activity() {
         card.addView(blockCanvas)
 
         card.setOnDragListener { v, event ->
+            if (!isAppUnlockedForCustomization()) return@setOnDragListener false
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED -> true
                 DragEvent.ACTION_DRAG_ENTERED -> {
@@ -1917,6 +1749,7 @@ class MobileSyncConfigActivity : Activity() {
         return TileHeaderIconButtonView(this, iconType, isActiveHighlight).apply {
             isClickable = true
             isFocusable = true
+            alpha = if (isAppUnlockedForCustomization()) 1.0f else 0.5f
             val lp = LinearLayout.LayoutParams(dp(36), dp(30))
             lp.leftMargin = dp(5)
             layoutParams = lp
@@ -3171,8 +3004,15 @@ class MobileSyncConfigActivity : Activity() {
             )
             lp.leftMargin = dp(10)
             layoutParams = lp
-            setOnCheckedChangeListener { _, isChecked ->
+            setOnCheckedChangeListener { buttonView, isChecked ->
                 if (isUpdatingToggleProgrammatically) return@setOnCheckedChangeListener
+                if (!isAppUnlockedForCustomization()) {
+                    isUpdatingToggleProgrammatically = true
+                    buttonView.isChecked = !isChecked
+                    isUpdatingToggleProgrammatically = false
+                    showLockedCustomizationToast()
+                    return@setOnCheckedChangeListener
+                }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 onToggle(isChecked)
             }
@@ -3180,6 +3020,10 @@ class MobileSyncConfigActivity : Activity() {
         row.addView(sw)
 
         row.setOnClickListener {
+            if (!isAppUnlockedForCustomization()) {
+                showLockedCustomizationToast()
+                return@setOnClickListener
+            }
             sw.toggle()
         }
 
@@ -3232,6 +3076,10 @@ class MobileSyncConfigActivity : Activity() {
                 if (idx % perRow != 0) lp.leftMargin = dp(6)
                 layoutParams = lp
                 setOnClickListener {
+                    if (!isAppUnlockedForCustomization()) {
+                        showLockedCustomizationToast()
+                        return@setOnClickListener
+                    }
                     onSelect(key)
                 }
             }

@@ -137,11 +137,22 @@ export const SmartphoneCompanionSimulator: React.FC<
   const [lastStatusCheckHHMMSS, setLastStatusCheckHHMMSS] = useState('09:00:00');
   const [hasVerifiedValidSync, setHasVerifiedValidSync] = useState(true);
 
-  // Permissões do Smartphone (com Mini Tutorial e Proteção por Camada Fina Escura)
+  // Permissões do Smartphone
   const [calendarPermGranted, setCalendarPermGranted] = useState(true);
   const [locationPermGranted, setLocationPermGranted] = useState(true);
   const [notifPermGranted, setNotifPermGranted] = useState(true);
   const [batteryOptIgnored, setBatteryOptIgnored] = useState(true);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+  };
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const t = setTimeout(() => setToastMessage(null), 2800);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
 
   // Estados das chaves de Settings
   const [bgServiceEnabled, setBgServiceEnabled] = useState(true);
@@ -178,26 +189,26 @@ export const SmartphoneCompanionSimulator: React.FC<
   const missingPermissions = [
     !calendarPermGranted && {
       id: 'cal',
-      title: 'Acesso ao Calendário (Agenda)',
-      desc: 'Necessário para ler os próximos compromissos de Hoje e Amanhã.',
+      title: 'Calendário (Agenda)',
+      desc: 'Leitura de compromissos.',
       onGrant: () => setCalendarPermGranted(true),
     },
     !locationPermGranted && {
       id: 'loc',
-      title: 'Localização Unificada (Clima e Pôr do Sol)',
-      desc: 'Usada simultaneamente para obter a cidade/UF oficial e calcular o pôr do sol.',
+      title: 'Localização (Clima e Sol)',
+      desc: 'Cidade oficial e pôr do sol.',
       onGrant: () => setLocationPermGranted(true),
     },
     !notifPermGranted && {
       id: 'notif',
-      title: 'Notificações e Leitor de Gatilhos',
-      desc: 'Necessário para alertas de mudança climática e lembretes de tarefas.',
+      title: 'Notificações e Gatilhos',
+      desc: 'Alertas e sincronização.',
       onGrant: () => setNotifPermGranted(true),
     },
     !batteryOptIgnored && {
       id: 'bat',
-      title: 'Execução em 2º Plano sem Restrição de Bateria',
-      desc: 'Garante que a sincronização de agenda, tarefas e sono não trave.',
+      title: 'Execução em 2º Plano',
+      desc: 'Sincronização sem restrição de bateria.',
       onGrant: () => setBatteryOptIgnored(true),
     },
   ].filter(Boolean) as Array<{
@@ -207,11 +218,19 @@ export const SmartphoneCompanionSimulator: React.FC<
     onGrant: () => void;
   }>;
 
-  // Bloqueio de Personalização: ativo sempre que faltar permissão OU o app não estiver instalado/conectado no relógio
+  // Bloqueio apenas da Personalização quando faltar permissão ou o relógio não estiver conectado
   const isCustomizationLocked =
     missingPermissions.length > 0 ||
     !isBluetoothConnected ||
     !isWearAppInstalledOnWatch;
+
+  const showLockedToast = () => {
+    if (missingPermissions.length > 0) {
+      showToast('Conceda as permissões pendentes para personalizar.');
+    } else {
+      showToast('Conecte o relógio e instale o app Wear OS para personalizar.');
+    }
+  };
 
   const formatHHMM = (epochMs: number) => {
     const d = new Date(epochMs);
@@ -270,6 +289,17 @@ export const SmartphoneCompanionSimulator: React.FC<
       refreshConnectionAndStatus(true);
       setIsPullRefreshing(false);
       setPullDragY(0);
+      if (missingPermissions.length > 0) {
+        showToast(
+          `Conceda as ${missingPermissions.length} permissão(ões) pendente(s) para sincronizar.`
+        );
+      } else if (!isBluetoothConnected) {
+        showToast('Relógio desconectado via Bluetooth.');
+      } else if (!isWearAppInstalledOnWatch) {
+        showToast('Instale o app ChronoWear no relógio para sincronizar.');
+      } else {
+        showToast('Sincronizado com o relógio.');
+      }
     }, 420);
   };
 
@@ -327,7 +357,10 @@ export const SmartphoneCompanionSimulator: React.FC<
 
   const handleCompleteTaskInWidget = (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isCustomizationLocked) return;
+    if (isCustomizationLocked) {
+      showLockedToast();
+      return;
+    }
     const updated = allTasks.map((t) =>
       t.id === taskId ? { ...t, completed: !t.completed } : t
     );
@@ -338,7 +371,10 @@ export const SmartphoneCompanionSimulator: React.FC<
   const handleApplyTasksTierScenario = (
     tier: 'TODAY' | 'TOMORROW' | 'UNDATED_OVERDUE'
   ) => {
-    if (isCustomizationLocked) return;
+    if (isCustomizationLocked) {
+      showLockedToast();
+      return;
+    }
     const updated = DEFAULT_TASKS_LIST.map((t) => {
       if (t.id === 't7') return { ...t, completed: true };
       if (tier === 'TODAY') {
@@ -411,7 +447,10 @@ export const SmartphoneCompanionSimulator: React.FC<
 
   // Ao tocar na Watchface 1:1 ou escolher um contexto no smartphone, reflete IMEDIATAMENTE no relógio!
   const handleSelectAndPushFocusToWatch = (nextMode: PrimaryContextMode) => {
-    if (isCustomizationLocked) return;
+    if (isCustomizationLocked) {
+      showLockedToast();
+      return;
+    }
     setVirtualWatchPreviewOverride(null);
     if (config.contextWindowMode === 'DYNAMIC') {
       onUpdateConfig({ autoPrimaryContext: nextMode });
@@ -425,7 +464,10 @@ export const SmartphoneCompanionSimulator: React.FC<
   };
 
   const handleCycleVirtualWatchPreview = () => {
-    if (isCustomizationLocked) return;
+    if (isCustomizationLocked) {
+      showLockedToast();
+      return;
+    }
     const cycle: PrimaryContextMode[] = [
       'EVENTS',
       'TASKS',
@@ -439,14 +481,17 @@ export const SmartphoneCompanionSimulator: React.FC<
     handleSelectAndPushFocusToWatch(nextMode);
   };
 
-  // Expansão e Redução determinística dos Blocos de Widgets (corrige bug de aumentar mas não diminuir)
+  // Expansão e Redução determinística dos Blocos de Widgets
   const handleToggleExpandWidget = (
     widgetId: PrimaryContextMode,
     e: React.MouseEvent
   ) => {
     e.stopPropagation();
     e.preventDefault();
-    if (isCustomizationLocked) return;
+    if (isCustomizationLocked) {
+      showLockedToast();
+      return;
+    }
     const currentSet = new Set(expandedWidgets);
     if (currentSet.has(widgetId)) {
       currentSet.delete(widgetId);
@@ -463,7 +508,10 @@ export const SmartphoneCompanionSimulator: React.FC<
   ) => {
     e.stopPropagation();
     e.preventDefault();
-    if (isCustomizationLocked) return;
+    if (isCustomizationLocked) {
+      showLockedToast();
+      return;
+    }
     const list = [...widgetOrder];
     const idx = list.indexOf(widgetId);
     if (idx < 0) return;
@@ -1042,44 +1090,6 @@ export const SmartphoneCompanionSimulator: React.FC<
     }
   };
 
-  // Status honesto de atualização ao puxar a página (nunca afirma que atualizou os dados se faltar permissão ou se o app do relógio não estiver instalado)
-  const pullRefreshBannerStatus = (() => {
-    if (isPullRefreshing) {
-      return {
-        tone: 'border-amber-400/50 bg-[#141C16] text-amber-300',
-        text: 'Verificando permissões, Bluetooth e app ChronoWear no relógio...',
-      };
-    }
-    if (missingPermissions.length > 0) {
-      return {
-        tone: 'border-amber-500/45 bg-amber-500/10 text-amber-300',
-        text: `⚠ Dados não atualizados: libere as ${missingPermissions.length} permissão(ões) pendente(s) abaixo`,
-      };
-    }
-    if (!isBluetoothConnected) {
-      return {
-        tone: 'border-rose-500/45 bg-rose-500/10 text-rose-300',
-        text: '⚠ Não sincronizado: Bluetooth desligado ou relógio desconectado',
-      };
-    }
-    if (!isWearAppInstalledOnWatch) {
-      return {
-        tone: 'border-amber-500/45 bg-amber-500/10 text-amber-300',
-        text: '⚠ Não sincronizado: app ChronoWear não instalado no relógio',
-      };
-    }
-    if (hasVerifiedValidSync) {
-      return {
-        tone: 'border-emerald-500/35 bg-[#0D1511] text-emerald-300',
-        text: `✓ Sincronizado com o relógio às ${lastStatusCheckHHMMSS} • Puxe a página para atualizar`,
-      };
-    }
-    return {
-      tone: 'border-[#26352C] bg-[#0D1310] text-sky-300',
-      text: '↓ Puxe a página para baixo para verificar e atualizar',
-    };
-  })();
-
   const pullArrowRotationDeg = Math.round(
     Math.min(1, pullDragY / 56) * 320
   );
@@ -1110,90 +1120,203 @@ export const SmartphoneCompanionSimulator: React.FC<
           'linear-gradient(180deg, #1E241E 0%, #101713 28%, #090C0A 65%, #070908 100%)',
       }}
     >
-      <div className="px-5 pt-3.5 pb-24 flex-1 flex flex-col">
-        {/* INDICADOR DE PUXAR A PÁGINA COM FLECHA CIRCULAR QUE GIRA QUANTO MAIS PUXA (SEM BOTÃO "ATUALIZAR" NO TOPO) */}
+      {/* MENSAGEM POPUP (TOAST) DE AVISO */}
+      {toastMessage && (
+        <div
+          data-testid="phone-toast-popup"
+          onClick={() => setToastMessage(null)}
+          className="absolute top-14 left-1/2 -translate-x-1/2 z-50 max-w-[90%] px-4 py-2 rounded-full bg-[#121815]/95 border border-amber-400/50 text-xs font-semibold text-amber-200 shadow-2xl flex items-center gap-2 cursor-pointer"
+        >
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      <div className="px-5 pt-2.5 pb-24 flex-1 flex flex-col">
+        {/* ANIMAÇÃO DA FLECHA CIRCULAR DE PUXAR A PÁGINA (SEM QUADRO DE TEXTO NO TOPO) */}
         <div
           data-testid="phone-pull-to-refresh-bar"
           onClick={handleTriggerPullRefresh}
-          title="Puxe a página para baixo para girar a flecha circular e atualizar"
+          title="Puxe a página para baixo para atualizar"
           style={{
             transform:
               pullDragY > 0 ? `translateY(${pullDragY * 0.22}px)` : undefined,
           }}
-          className={`w-full mb-2.5 py-1.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-[11px] font-semibold transition-all cursor-pointer select-none ${pullRefreshBannerStatus.tone}`}
+          className="w-full mb-1.5 flex items-center justify-center cursor-pointer select-none"
         >
-          {/* Flecha Circular Vetorial que Gira Proporcionalmente ao Puxar */}
-          <svg
-            data-testid="phone-pull-arrow-spinner"
-            viewBox="0 0 24 24"
-            style={{
-              transform: !isPullRefreshing
-                ? `rotate(${pullArrowRotationDeg}deg)`
-                : undefined,
-            }}
-            className={`w-4 h-4 shrink-0 text-[#F5C438] transition-transform duration-75 ${
-              isPullRefreshing ? 'animate-spin' : ''
-            }`}
-          >
-            <path
-              d="M 20 12 A 8 8 0 1 1 17.6 6.3"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-            />
-            <polyline
-              points="14 6 18.2 6.2 18 2"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span className="truncate">{pullRefreshBannerStatus.text}</span>
+          <div className="w-7 h-7 rounded-full bg-[#121A15] border border-[#2A3B31] flex items-center justify-center shadow-md hover:border-amber-400/50 transition-colors">
+            <svg
+              data-testid="phone-pull-arrow-spinner"
+              viewBox="0 0 24 24"
+              style={{
+                transform: !isPullRefreshing
+                  ? `rotate(${pullArrowRotationDeg}deg)`
+                  : undefined,
+              }}
+              className={`w-4 h-4 shrink-0 text-[#F5C438] transition-transform duration-75 ${
+                isPullRefreshing ? 'animate-spin' : ''
+              }`}
+            >
+              <path
+                d="M 20 12 A 8 8 0 1 1 17.6 6.3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+              />
+              <polyline
+                points="14 6 18.2 6.2 18 2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
         </div>
 
-        {/* Cabeçalho Essencial do App Smartphone (Sem botão redundante "Atualizar") */}
+        {/* Cabeçalho do App Smartphone */}
         <div className="flex items-center justify-between gap-2 pb-2.5 mb-3 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <span className="text-base font-bold tracking-tight text-white">
-              ChronoWear Companion
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base font-bold tracking-tight text-white truncate">
+              ChronoWear
             </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
               v1.2.1
             </span>
           </div>
 
-          <button
-            type="button"
-            data-testid="phone-toggle-wear-installed"
-            onClick={() => setIsWearAppInstalledOnWatch((prev) => !prev)}
-            title="Simular detecção do app ChronoWear instalado ou ausente no relógio"
-            className={`px-2.5 py-1 rounded-full text-[10.5px] font-semibold transition-all duration-150 active:scale-95 cursor-pointer ${
-              isWearAppInstalledOnWatch
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/35'
-                : 'bg-amber-500/20 text-amber-200 border border-amber-400/35'
-            }`}
-          >
-            {isWearAppInstalledOnWatch
-              ? 'App Wear: Detectado'
-              : 'App Wear: Não detectado'}
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              data-testid="phone-simulate-permissions-toggle"
+              onClick={() => {
+                if (missingPermissions.length === 0) {
+                  setCalendarPermGranted(false);
+                  setLocationPermGranted(false);
+                } else {
+                  setCalendarPermGranted(true);
+                  setLocationPermGranted(true);
+                  setNotifPermGranted(true);
+                  setBatteryOptIgnored(true);
+                }
+              }}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all cursor-pointer ${
+                missingPermissions.length === 0
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/35'
+                  : 'bg-amber-500/20 text-amber-200 border-amber-400/45'
+              }`}
+            >
+              {missingPermissions.length === 0
+                ? 'Permissões: OK'
+                : `Permissões (${missingPermissions.length})`}
+            </button>
+
+            <button
+              type="button"
+              data-testid="phone-toggle-wear-installed"
+              onClick={() => setIsWearAppInstalledOnWatch((prev) => !prev)}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all cursor-pointer ${
+                isWearAppInstalledOnWatch
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/35'
+                  : 'bg-amber-500/20 text-amber-200 border-amber-400/45'
+              }`}
+            >
+              {isWearAppInstalledOnWatch ? 'Relógio: OK' : 'Relógio: Ausente'}
+            </button>
+          </div>
         </div>
 
         {/* =============================================================== */}
-        {/* ABA 1: INÍCIO (CÓPIA IDÊNTICA 1:1 DA WATCHFACE + MINI TUTORIAL  */}
-        {/* DE PERMISSÕES / LINK LASKOSKY + TILES 2X2 ERGONÔMICOS)          */}
+        {/* ABA 1: INÍCIO (PERMISSÕES EM DESTAQUE SE PENDENTES +            */}
+        {/* PRÉ-VISUALIZAÇÃO DA WATCHFACE 1:1 SEMPRE VISÍVEL + TILES 2X2)   */}
         {/* =============================================================== */}
         {activeTab === 'home' && (
           <div
             key="tab-home"
             className="space-y-3 flex-1 flex flex-col transition-all duration-200"
           >
-            {/* 1. WATCHFACE IDÊNTICA 1:1 AO RELÓGIO + STATUS PRECISO DE CONEXÃO */}
+            {/* 1. PASSOS PENDENTES EM DESTAQUE AO ABRIR O APP (OCULTO AUTOMATICAMENTE QUANDO TUDO LIBERADO) */}
+            {isCustomizationLocked && (
+              <div
+                data-testid="phone-permissions-status-card"
+                className="rounded-[20px] border bg-amber-500/10 border-amber-500/45 p-3.5 transition-colors space-y-2.5 shadow-lg"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="text-xs font-bold text-white">
+                      {missingPermissions.length > 0
+                        ? `Permissões Pendentes (${missingPermissions.length})`
+                        : 'Conexão com o Relógio Pendente'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-amber-300">
+                    Personalização bloqueada
+                  </span>
+                </div>
+
+                {/* Lista de Permissões Pendentes */}
+                {missingPermissions.length > 0 && (
+                  <div className="space-y-1.5">
+                    {missingPermissions.map((perm) => (
+                      <div
+                        key={perm.id}
+                        className="flex items-center justify-between gap-2 rounded-xl bg-black/45 border border-amber-500/30 px-2.5 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-amber-200 truncate">
+                            {perm.title}
+                          </div>
+                          <div className="text-[10px] text-slate-300 truncate">
+                            {perm.desc}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={perm.onGrant}
+                          className="px-3 py-1 rounded-full bg-[#F5C438] hover:bg-[#FDE047] text-slate-950 font-bold text-[10.5px] shrink-0 cursor-pointer"
+                        >
+                          Permitir
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Instalação / Conexão do App no Relógio */}
+                {(!isWearAppInstalledOnWatch || !isBluetoothConnected) && (
+                  <div
+                    data-testid="phone-watch-install-info-box"
+                    className="rounded-xl border bg-amber-500/15 border-amber-400/50 px-3 py-2 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-white truncate">
+                        {!isBluetoothConnected
+                          ? 'Bluetooth desconectado'
+                          : 'App não detectado no relógio'}
+                      </div>
+                      <div className="text-[10px] text-slate-300 truncate">
+                        Instale o app Wear OS em www.laskosky.com.br
+                      </div>
+                    </div>
+                    <a
+                      href="https://www.laskosky.com.br"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="phone-install-watch-app-link"
+                      className="px-3 py-1 rounded-full bg-[#F5C438] hover:bg-[#FDE047] text-[#050507] font-bold text-[10.5px] flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <span>Instalar</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. PRÉ-VISUALIZAÇÃO DA WATCHFACE 1:1 (SEMPRE VISÍVEL, NUNCA OCULTA) */}
             <div className="rounded-[24px] bg-[#0B100E] border border-[#24332B] p-3.5 shadow-lg flex flex-col items-center">
-              {/* Contêiner da Watchface com Proteção de Camada Fina Escura quando bloqueado */}
               <div className="relative w-full flex flex-col items-center">
                 <div className="w-full flex items-center justify-between text-[10.5px] mb-2">
                   <span className="font-mono font-bold text-[#F5C438] uppercase tracking-wider">
@@ -1203,7 +1326,13 @@ export const SmartphoneCompanionSimulator: React.FC<
                       : `Fixo (${virtualWatchMode})`}
                   </span>
                   <span className="text-slate-400 text-[10px]">
-                    Toque no Canvas p/ alternar
+                    {isCustomizationLocked ? (
+                      <span className="inline-flex items-center gap-1 text-amber-300">
+                        <Lock className="w-3 h-3" /> Bloqueado
+                      </span>
+                    ) : (
+                      'Toque p/ alternar'
+                    )}
                   </span>
                 </div>
 
@@ -1211,7 +1340,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                 <div
                   data-testid="phone-virtual-watch-preview"
                   onClick={handleCycleVirtualWatchPreview}
-                  title="Cópia idêntica 1:1 da Watchface do relógio gerada pelo app de smartphone"
+                  title="Pré-visualização 1:1 da Watchface do relógio"
                   className="relative w-[292px] h-[292px] rounded-full bg-black border-[7px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-2 px-5 cursor-pointer select-none overflow-hidden"
                 >
                   {/* SVG Overlay Idêntico ao do Relógio (Arcos Laterais Bicolores + Bolinha Laranja + Barra Tubo de Ensaio 62%) */}
@@ -1356,225 +1485,49 @@ export const SmartphoneCompanionSimulator: React.FC<
                     </div>
                   </div>
                 </div>
-
-                {/* CAMADA FINA ESCURA DE PROTEÇÃO SOBRE A WATCHFACE QUANDO FALTA PERMISSÃO OU APP NO RELÓGIO */}
-                {isCustomizationLocked && (
-                  <div
-                    data-testid="watch-preview-lock-overlay"
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute inset-0 rounded-[18px] bg-black/65 backdrop-blur-[1px] z-20 flex flex-col items-center justify-center p-4 text-center select-none"
-                  >
-                    <div className="px-3 py-1.5 rounded-full bg-[#111714]/95 border border-amber-400/50 flex items-center gap-1.5 text-[11px] font-bold text-amber-300 shadow-lg">
-                      <Lock className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        {missingPermissions.length > 0
-                          ? 'Conclua o Passo 1 (Permissões) abaixo'
-                          : 'Instale o App no Relógio para liberar'}
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Status de Sincronização e Conexão (Sempre visível e descoberto para informar o usuário) */}
+              {/* Status de Sincronização e Conexão */}
               <div
                 data-testid="phone-accurate-connection-banner"
-                className="w-full mt-3 pt-2.5 border-t border-white/10 flex flex-col gap-1.5"
+                className="w-full mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between gap-2"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                        !isBluetoothConnected
-                          ? 'bg-rose-500'
-                          : !isWearAppInstalledOnWatch
-                          ? 'bg-amber-400'
-                          : 'bg-emerald-400'
-                      }`}
-                    />
-                    <span className="text-xs font-bold text-white truncate">
-                      {!isBluetoothConnected
-                        ? 'Desconectado • Bluetooth Desligado'
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                      !isBluetoothConnected
+                        ? 'bg-rose-500'
                         : !isWearAppInstalledOnWatch
-                        ? 'Relógio Pareado • App Wear Não Detectado'
-                        : 'Conectado • Galaxy Watch7 (Wear v1.2.1)'}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-emerald-300 shrink-0">
-                    {isCustomizationLocked ? 'Bloqueado' : `${syncedEventsCount} eventos`}
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                    }`}
+                  />
+                  <span className="text-xs font-bold text-white truncate">
+                    {!isBluetoothConnected
+                      ? 'Bluetooth Desconectado'
+                      : !isWearAppInstalledOnWatch
+                      ? 'Relógio Pareado • App Ausente'
+                      : 'Conectado • Galaxy Watch7'}
                   </span>
                 </div>
-
-                <div className="grid grid-cols-2 gap-1.5 text-[10.5px]">
-                  <div
-                    className={`rounded-lg px-2.5 py-1 border flex items-center justify-between ${
-                      isBluetoothConnected
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                        : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1">
-                      <Bluetooth className="w-3 h-3" />
-                      Bluetooth:
-                    </span>
-                    <span className="font-bold">
-                      {isBluetoothConnected ? 'Ativo' : 'Offline'}
-                    </span>
-                  </div>
-                  <div
-                    className={`rounded-lg px-2.5 py-1 border flex items-center justify-between ${
-                      isBluetoothConnected && isWearAppInstalledOnWatch
-                        ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
-                        : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                    }`}
-                  >
-                    <span>App Wear:</span>
-                    <span className="font-bold">
-                      {!isBluetoothConnected
-                        ? 'Inacessível'
-                        : isWearAppInstalledOnWatch
-                        ? 'Instalado'
-                        : 'Não detectado'}
-                    </span>
-                  </div>
-                </div>
+                <span className="text-[10px] font-mono text-emerald-300 shrink-0">
+                  {isCustomizationLocked
+                    ? 'Sincronização pendente'
+                    : `Sincronizado (${syncedEventsCount})`}
+                </span>
               </div>
             </div>
 
-            {/* 2. QUADRO DE PERMISSÕES PENDENTES + MINI TUTORIAL OBRIGATÓRIO + AVISO E LINK WWW.LASKOSKY.COM.BR */}
-            <div
-              data-testid="phone-permissions-status-card"
-              className={`rounded-[20px] border p-3.5 transition-colors space-y-2.5 ${
-                isCustomizationLocked
-                  ? 'bg-amber-500/10 border-amber-500/45'
-                  : 'bg-emerald-500/10 border-emerald-500/30'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  {isCustomizationLocked ? (
-                    <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-                  ) : (
-                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  )}
-                  <span className="text-xs font-bold text-white">
-                    {missingPermissions.length > 0
-                      ? `PASSO 1: Permissões Pendentes (${missingPermissions.length})`
-                      : !isWearAppInstalledOnWatch || !isBluetoothConnected
-                      ? 'PASSO 2: Instalar / Conectar App no Relógio'
-                      : 'Permissões e App do Relógio Verificados'}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  data-testid="phone-simulate-permissions-toggle"
-                  onClick={() => {
-                    if (missingPermissions.length === 0) {
-                      setCalendarPermGranted(false);
-                      setLocationPermGranted(false);
-                    } else {
-                      setCalendarPermGranted(true);
-                      setLocationPermGranted(true);
-                      setNotifPermGranted(true);
-                      setBatteryOptIgnored(true);
-                    }
-                  }}
-                  className="text-[10px] font-mono underline text-slate-300 hover:text-white cursor-pointer"
-                >
-                  {missingPermissions.length === 0
-                    ? 'Simular Pendente'
-                    : 'Liberar Todas'}
-                </button>
-              </div>
-
-              {/* MINI TUTORIAL PASSO A PASSO FORÇANDO A LIBERAÇÃO DAS PERMISSÕES E DETECÇÃO DO APP NO RELÓGIO */}
-              {isCustomizationLocked && (
-                <div
-                  data-testid="phone-onboarding-mini-tutorial"
-                  className="rounded-xl bg-[#0D1310] border border-amber-400/35 px-3 py-2 text-[11px] text-amber-100 leading-snug space-y-1"
-                >
-                  <div className="font-bold text-[#F5C438]">
-                    {missingPermissions.length > 0
-                      ? '📌 Mini Tutorial (Passo 1 de 2): Libere as permissões abaixo primeiro'
-                      : '📌 Mini Tutorial (Passo 2 de 2): Instale o app ChronoWear no relógio'}
-                  </div>
-                  <p className="text-[10.5px] text-slate-300">
-                    {missingPermissions.length > 0
-                      ? 'Por segurança e precisão, as opções de personalização e os blocos permanecem protegidos por uma camada escura até você tocar em "Conceder" nas permissões abaixo.'
-                      : 'Permissões concluídas! Porém o módulo no relógio não foi detectado. As opções de customização só são desbloqueadas após instalar o app no relógio.'}
-                  </p>
-                </div>
-              )}
-
-              {/* Lista de Permissões Pendentes para Clicar */}
-              {missingPermissions.length > 0 && (
-                <div className="space-y-1.5">
-                  {missingPermissions.map((perm) => (
-                    <div
-                      key={perm.id}
-                      className="flex items-center justify-between gap-2 rounded-xl bg-black/45 border border-amber-500/30 px-2.5 py-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-bold text-amber-200 truncate">
-                          {perm.title}
-                        </div>
-                        <div className="text-[10px] text-slate-300 truncate">
-                          {perm.desc}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={perm.onGrant}
-                        className="px-3 py-1 rounded-full bg-[#F5C438] hover:bg-[#FDE047] text-slate-950 font-bold text-[10.5px] shrink-0 cursor-pointer"
-                      >
-                        Conceder
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Bloco Informativo de Instalação do App no Relógio + Botão para www.laskosky.com.br */}
-              <div
-                data-testid="phone-watch-install-info-box"
-                className={`rounded-xl border px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                  !isWearAppInstalledOnWatch
-                    ? 'bg-amber-500/15 border-amber-400/50'
-                    : 'bg-black/35 border-white/10'
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="text-[11px] font-bold text-white">
-                    {!isWearAppInstalledOnWatch
-                      ? '⚠ App ChronoWear não detectado no relógio'
-                      : '✓ App ChronoWear instalado no relógio'}
-                  </div>
-                  <div className="text-[10px] text-slate-300 leading-tight">
-                    É necessário instalar o app no relógio Wear OS para sincronizar e liberar a customização.
-                  </div>
-                </div>
-                <a
-                  href="https://www.laskosky.com.br"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid="phone-install-watch-app-link"
-                  className="px-3 py-1.5 rounded-full bg-[#F5C438] hover:bg-[#FDE047] text-[#050507] font-bold text-[10.5px] flex items-center justify-center gap-1 shrink-0 cursor-pointer"
-                >
-                  <span>www.laskosky.com.br</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
-
-            {/* 3. QUADROS DOS STATUS EM BLOCOS 2X2 (COM BOTÕES ERGONÔMICOS MAIORES E PROTEÇÃO POR CAMADA ESCURA QUANDO BLOQUEADO) */}
+            {/* 3. TILES 2X2 SEMPRE VISÍVEIS (APENAS CONTROLES DE PERSONALIZAÇÃO BLOQUEADOS QUANDO DESCONECTADO/SEM PERMISSÃO) */}
             <div className="relative space-y-2">
               <div className="flex items-center justify-between px-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-200">
-                  Quadros de Status (Widgets 2×2)
+                  Quadros de Status (Tiles 2×2)
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  ◀ ▶ reordena • ⤢ / ⤡ expande e reduz
+                  {isCustomizationLocked
+                    ? 'Personalização bloqueada'
+                    : '◀ ▶ reordena • ⤢ / ⤡ tamanho'}
                 </span>
               </div>
 
@@ -1610,11 +1563,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                           setDraggedWidgetId(null);
                         }
                       }}
-                      onClick={() => {
-                        if (!isCustomizationLocked) {
-                          handleSelectAndPushFocusToWatch(widgetId);
-                        }
-                      }}
+                      onClick={() => handleSelectAndPushFocusToWatch(widgetId)}
                       className={`${
                         isExpanded ? 'col-span-2' : 'col-span-1'
                       } h-[156px] rounded-[20px] bg-[#0E1411] border p-2.5 flex flex-col justify-between transition-all cursor-pointer select-none ${
@@ -1623,53 +1572,39 @@ export const SmartphoneCompanionSimulator: React.FC<
                           : 'border-[#233129] hover:border-slate-600'
                       }`}
                     >
-                      {/* Barra Superior do Bloco Widget com Botões Ergonômicos Maiores (w-8 h-7 e ícones w-4 h-4 bem visíveis) */}
+                      {/* Barra Superior do Bloco Widget */}
                       <div
                         draggable={false}
                         onClick={(e) => e.stopPropagation()}
                         className="flex items-center justify-between gap-1 pb-1.5 border-b border-white/10"
                       >
                         <div className="flex items-center gap-1 min-w-0">
-                          <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0 cursor-grab" />
+                          <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span className="text-[11.5px] font-bold text-white truncate">
                             {widgetTitleMap[widgetId]}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div
+                          className={`flex items-center gap-1 shrink-0 ${
+                            isCustomizationLocked ? 'opacity-45' : ''
+                          }`}
+                        >
                           {widgetId === 'TASKS' && (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (!isCustomizationLocked) {
-                                  setIsManageTasksModalOpen(true);
+                                if (isCustomizationLocked) {
+                                  showLockedToast();
+                                  return;
                                 }
+                                setIsManageTasksModalOpen(true);
                               }}
-                              title="Adicionar ou gerenciar tarefas"
+                              title="Gerenciar tarefas"
                               className="w-8 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center hover:bg-emerald-500/30 active:scale-95 cursor-pointer"
                             >
                               <Plus className="w-4 h-4 stroke-[2.5]" />
-                            </button>
-                          )}
-                          {widgetId === 'SLEEP' && (
-                            <button
-                              type="button"
-                              data-testid="widget-toggle-sleep-today-data"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!isCustomizationLocked) {
-                                  onUpdateConfig({
-                                    sleepHasDataToday: !(
-                                      config.sleepHasDataToday ?? true
-                                    ),
-                                  });
-                                }
-                              }}
-                              title="Alternar entre Com Dados de Sono Hoje vs Sem Dados de Sono para Hoje"
-                              className="h-7 px-2 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-200 text-[10px] font-bold hover:bg-purple-500/30 active:scale-95 cursor-pointer"
-                            >
-                              {(config.sleepHasDataToday ?? true) ? 'Hoje' : 'Vazio'}
                             </button>
                           )}
                           <button
@@ -1678,7 +1613,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                             onClick={(e) =>
                               handleMoveWidgetOrder(widgetId, -1, e)
                             }
-                            title="Mover bloco para trás"
+                            title="Mover para trás"
                             className="w-8 h-7 rounded-lg bg-[#1A2420] border border-[#33463E] text-slate-100 flex items-center justify-center hover:bg-[#24322C] active:scale-95 cursor-pointer"
                           >
                             <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
@@ -1689,7 +1624,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                             onClick={(e) =>
                               handleMoveWidgetOrder(widgetId, +1, e)
                             }
-                            title="Mover bloco para frente"
+                            title="Mover para frente"
                             className="w-8 h-7 rounded-lg bg-[#1A2420] border border-[#33463E] text-slate-100 flex items-center justify-center hover:bg-[#24322C] active:scale-95 cursor-pointer"
                           >
                             <ChevronRight className="w-4 h-4 stroke-[2.5]" />
@@ -1700,11 +1635,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                             onClick={(e) =>
                               handleToggleExpandWidget(widgetId, e)
                             }
-                            title={
-                              isExpanded
-                                ? 'Diminuir para meio bloco (1 coluna)'
-                                : 'Expandir para linha inteira (2 colunas)'
-                            }
+                            title={isExpanded ? 'Reduzir' : 'Expandir'}
                             className={`w-8 h-7 rounded-lg border flex items-center justify-center active:scale-95 cursor-pointer ${
                               isExpanded
                                 ? 'bg-[#F5C438]/25 border-[#F5C438] text-[#F5C438]'
@@ -1728,34 +1659,13 @@ export const SmartphoneCompanionSimulator: React.FC<
                   );
                 })}
               </div>
-
-              {/* CAMADA FINA ESCURA DE PROTEÇÃO SOBRE OS TILES QUANDO FALTA PERMISSÃO OU APP NO RELÓGIO */}
-              {isCustomizationLocked && (
-                <div
-                  data-testid="widgets-lock-overlay"
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute inset-0 rounded-[20px] bg-black/65 backdrop-blur-[1px] z-20 flex flex-col items-center justify-center p-5 text-center select-none"
-                >
-                  <div className="max-w-xs rounded-2xl bg-[#101613]/95 border border-amber-400/50 px-4 py-3 space-y-1.5 shadow-2xl">
-                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-[#F5C438]">
-                      <Lock className="w-4 h-4" />
-                      <span>Customização de Blocos Bloqueada</span>
-                    </div>
-                    <p className="text-[11px] text-slate-200 leading-snug">
-                      {missingPermissions.length > 0
-                        ? 'Libere todas as permissões pendentes no quadro acima para interagir com os blocos.'
-                        : 'O app ChronoWear não foi detectado no relógio. Instale-o pelo link www.laskosky.com.br no quadro acima para desbloquear.'}
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
 
         {/* =============================================================== */}
-        {/* ABA 2: CONFIGURAÇÕES (PROTEGIDA PELA CAMADA FINA ESCURA SE      */}
-        {/* FALTAR PERMISSÃO OU APP NO RELÓGIO)                             */}
+        {/* ABA 2: CONFIGURAÇÕES DE PERSONALIZAÇÃO (BLOQUEADAS QUANDO       */}
+        {/* PERMISSÕES OU RELÓGIO NÃO ESTÃO CONECTADOS)                     */}
         {/* =============================================================== */}
         {activeTab === 'settings' && (
           <div
@@ -1813,22 +1723,24 @@ export const SmartphoneCompanionSimulator: React.FC<
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) {
-                    onUpdateConfig({
-                      autoFallbackAgendaToTasks: !(
-                        config.autoFallbackAgendaToTasks ?? true
-                      ),
-                    });
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
                   }
+                  onUpdateConfig({
+                    autoFallbackAgendaToTasks: !(
+                      config.autoFallbackAgendaToTasks ?? true
+                    ),
+                  });
                 }}
                 className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Priorizar Tarefas se Não Houver Agenda Hoje
+                    Priorizar Tarefas sem Agenda Hoje
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Alterna para Tarefas ativas do dia quando Hoje estiver sem eventos
+                    Alterna para Tarefas quando Hoje estiver livre
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -1874,27 +1786,29 @@ export const SmartphoneCompanionSimulator: React.FC<
             {/* SEÇÃO 2: NOTIFICAÇÕES NO RELÓGIO */}
             <div className="rounded-[22px] bg-[#141A16] border border-[#253029] p-4 space-y-3">
               <div className="text-[11px] font-bold tracking-wider uppercase text-[#F5C438]">
-                2. Notificações do Relógio e Alerta 15m
+                2. Notificações do Relógio
               </div>
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) {
-                    onUpdateConfig({
-                      notifyWatchOnCanvasChange: !(
-                        config.notifyWatchOnCanvasChange ?? true
-                      ),
-                    });
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
                   }
+                  onUpdateConfig({
+                    notifyWatchOnCanvasChange: !(
+                      config.notifyWatchOnCanvasChange ?? true
+                    ),
+                  });
                 }}
                 className="flex items-center justify-between gap-3 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Notificar no Relógio ao Atualizar o Canvas
+                    Notificar ao Atualizar o Canvas
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Gera alerta no relógio quando o Canvas mudar de contexto
+                    Alerta no relógio ao mudar contexto
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -1913,22 +1827,24 @@ export const SmartphoneCompanionSimulator: React.FC<
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) {
-                    onUpdateConfig({
-                      notifyAgenda15MinEnabled: !(
-                        config.notifyAgenda15MinEnabled ?? true
-                      ),
-                    });
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
                   }
+                  onUpdateConfig({
+                    notifyAgenda15MinEnabled: !(
+                      config.notifyAgenda15MinEnabled ?? true
+                    ),
+                  });
                 }}
                 className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Notificar Compromisso Faltando 15 Minutos
+                    Alerta 15 Minutos Antes
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Troca para a Agenda faltando 15 min e avisa no pulso
+                    Destaca o compromisso faltando 15 min
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -1947,20 +1863,22 @@ export const SmartphoneCompanionSimulator: React.FC<
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) {
-                    onUpdateConfig({
-                      highFreq15MinRule: !config.highFreq15MinRule,
-                    });
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
                   }
+                  onUpdateConfig({
+                    highFreq15MinRule: !config.highFreq15MinRule,
+                  });
                 }}
                 className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Regra Turbo 15 Minutos (1 em 1 min)
+                    Regra Turbo 15 Minutos
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Atualiza o contador minuto a minuto nos 15 min finais
+                    Atualiza minuto a minuto nos 15 min finais
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -1976,24 +1894,28 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 3: AGENDA & TAREFAS (SINCRONIZAÇÃO CONJUNTA) */}
+            {/* SEÇÃO 3: AGENDA & TAREFAS */}
             <div className="rounded-[22px] bg-[#141A16] border border-[#253029] p-4 space-y-3">
               <div className="text-[11px] font-bold tracking-wider uppercase text-[#F5C438]">
-                3. Agenda &amp; Tarefas (Hoje / Sem Horário)
+                3. Agenda &amp; Tarefas
               </div>
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) setCalendarSyncEnabled((v) => !v);
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
+                  }
+                  setCalendarSyncEnabled((v) => !v);
                 }}
                 className="flex items-center justify-between gap-3 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Sincronizar Compromissos da Agenda
+                    Sincronizar Agenda
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Progresso autônomo no relógio até o fim dos eventos do dia
+                    Compromissos de Hoje e Amanhã
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -2011,25 +1933,27 @@ export const SmartphoneCompanionSimulator: React.FC<
                 className="w-full py-2 px-3 rounded-xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-white flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Calendários Sincronizados ({selectedCalendarsCount})</span>
+                <span>Calendários ({selectedCalendarsCount})</span>
               </button>
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) {
-                    onUpdateConfig({
-                      tasksSyncEnabled: !(config.tasksSyncEnabled ?? true),
-                    });
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
                   }
+                  onUpdateConfig({
+                    tasksSyncEnabled: !(config.tasksSyncEnabled ?? true),
+                  });
                 }}
                 className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Sincronizar Tarefas Automaticamente com a Agenda
+                    Sincronizar Tarefas
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Envia apenas tarefas não concluídas de Hoje ou Sem horário
+                    Hoje, Amanhã, Sem data e Atrasadas
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -2052,33 +1976,33 @@ export const SmartphoneCompanionSimulator: React.FC<
                 className="w-full py-2 px-3 rounded-xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-emerald-300 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
-                <span>
-                  Gerenciar Tarefas Ativas ({activeTodayOrTimelessTasks.length})
-                </span>
+                <span>Gerenciar Tarefas</span>
               </button>
             </div>
 
-            {/* SEÇÃO 4: CLIMA, SOL UNIFICADO E SONO DE HOJE */}
+            {/* SEÇÃO 4: CLIMA, SOL E SONO */}
             <div className="rounded-[22px] bg-[#141A16] border border-[#253029] p-4 space-y-3">
               <div className="text-[11px] font-bold tracking-wider uppercase text-[#F5C438]">
-                4. Clima &amp; Sol Unificados + Sono do Dia
+                4. Clima, Sol &amp; Sono
               </div>
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) {
-                    const next = !(config.phoneWeatherAutoCheckEnabled ?? true);
-                    onUpdateConfig({
-                      phoneWeatherAutoCheckEnabled: next,
-                      phoneSolarAutoSyncEnabled: next,
-                    });
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
                   }
+                  const next = !(config.phoneWeatherAutoCheckEnabled ?? true);
+                  onUpdateConfig({
+                    phoneWeatherAutoCheckEnabled: next,
+                    phoneSolarAutoSyncEnabled: next,
+                  });
                 }}
                 className="flex items-center justify-between gap-3 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Localização Fixa Unificada (Clima + Pôr do Sol)
+                    Localização Unificada (Clima + Sol)
                   </div>
                   <div className="text-[10.5px] text-slate-400">
                     📍{' '}
@@ -2110,27 +2034,27 @@ export const SmartphoneCompanionSimulator: React.FC<
                 className="w-full py-2 px-3 rounded-xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-sky-300 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <CloudRain className="w-3.5 h-3.5 text-sky-400" />
-                <span>
-                  Apps Gatilho de Clima ({selectedWeatherApps.length} selecionados)
-                </span>
+                <span>Apps de Clima</span>
               </button>
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) {
-                    onUpdateConfig({
-                      sleepSyncEnabled: !(config.sleepSyncEnabled ?? true),
-                    });
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
                   }
+                  onUpdateConfig({
+                    sleepSyncEnabled: !(config.sleepSyncEnabled ?? true),
+                  });
                 }}
                 className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Sincronizar Sono do Dia Automaticamente
+                    Sincronizar Sono
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Verifica se há dados hoje ou informa que não há dados de sono
+                    Dados de sono do dia
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -2147,16 +2071,20 @@ export const SmartphoneCompanionSimulator: React.FC<
 
               <div
                 onClick={() => {
-                  if (!isCustomizationLocked) setBgServiceEnabled((v) => !v);
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
+                  }
+                  setBgServiceEnabled((v) => !v);
                 }}
                 className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Serviço Contínuo em Segundo Plano
+                    Serviço em Segundo Plano
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Mantém sincronização ativa de agenda, tarefas, clima e sono
+                    Sincronização contínua ativa
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -2168,28 +2096,27 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* CAMADA FINA ESCURA SOBRE AS CONFIGURAÇÕES QUANDO FALTA PERMISSÃO OU APP NO RELÓGIO */}
+            {/* BLOQUEIO DE PERSONALIZAÇÃO QUANDO PERMISSÕES OU RELÓGIO NÃO ESTÃO CONECTADOS */}
             {isCustomizationLocked && (
               <div
                 data-testid="settings-lock-overlay"
-                className="absolute inset-0 rounded-[22px] bg-black/65 backdrop-blur-[1px] z-20 flex flex-col items-center justify-center p-5 text-center select-none"
+                onClick={() => showLockedToast()}
+                className="absolute inset-0 rounded-[22px] bg-black/55 z-20 flex flex-col items-center justify-center p-5 text-center select-none"
               >
-                <div className="max-w-xs rounded-2xl bg-[#101613]/95 border border-amber-400/50 p-4 space-y-2 shadow-2xl">
+                <div className="rounded-2xl bg-[#101613]/95 border border-amber-400/50 px-4 py-3 space-y-2 shadow-2xl">
                   <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-[#F5C438]">
                     <Lock className="w-4 h-4" />
-                    <span>Opções de Personalização Bloqueadas</span>
+                    <span>Personalização Bloqueada</span>
                   </div>
-                  <p className="text-[11px] text-slate-200 leading-snug">
-                    {missingPermissions.length > 0
-                      ? 'Volte à aba Início e libere todas as permissões pendentes primeiro.'
-                      : 'O app ChronoWear não foi detectado no relógio. Instale-o em www.laskosky.com.br para liberar as configurações.'}
-                  </p>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('home')}
-                    className="px-3.5 py-1.5 rounded-full bg-[#F5C438] text-slate-950 font-bold text-[11px] cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab('home');
+                    }}
+                    className="px-3.5 py-1 rounded-full bg-[#F5C438] text-slate-950 font-bold text-[11px] cursor-pointer"
                   >
-                    Ir para Permissões e Status
+                    Ver Permissões
                   </button>
                 </div>
               </div>
