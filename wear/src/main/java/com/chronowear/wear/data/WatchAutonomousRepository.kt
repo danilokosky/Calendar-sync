@@ -1204,8 +1204,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
     fun resolveEffectiveContextMode(nowMs: Long, upcomingThree: List<CachedWearEvent>): String {
         val unifiedHoldMin = getUnifiedCanvasHoldMinutes().toLong()
         val tapOverride = getActiveTapOverrideMode(nowMs, unifiedHoldMin)
-        val tapTs = prefs.getLong("tap_override_timestamp_ms", 0L)
-        val lastSyncMs = getLastSyncEpochMs()
+        val tapTs: Long = prefs.getLong("tap_override_timestamp_ms", 0L)
+        val lastSyncMs: Long = getLastSyncTimestampMs()
 
         // 1. Se o usuário escolheu um MODO FIXO no smartphone (ex: TASKS, WEATHER, SUN, STEPS, SLEEP, EVENTS),
         //    reflete IMEDIATAMENTE no relógio (exceto se o usuário tocou na tela do relógio após a última sincronização).
@@ -1331,6 +1331,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     fun getLastSyncTimestampMs(): Long {
         return prefs.getLong("last_sync_ms", 0L)
+    }
+
+    fun getLastSyncEpochMs(): Long {
+        return getLastSyncTimestampMs()
     }
 
     companion object {

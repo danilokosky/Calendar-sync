@@ -750,7 +750,6 @@ class SyncPreferences(context: Context) {
         val minT = pickedTemps.minOrNull() ?: 22
         val maxT = pickedTemps.maxOrNull() ?: 22
         val firstT = pickedTemps.firstOrNull() ?: 22
-        val lastT = pickedTemps.lastOrNull() ?: firstT
 
         val shiftAcrossHours = (maxT - minT) >= 3
         val shiftFromPreviousFetch = prevFirstTemp != null && abs(firstT - prevFirstTemp) >= 2
