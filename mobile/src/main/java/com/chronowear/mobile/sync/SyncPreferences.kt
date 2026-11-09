@@ -339,7 +339,7 @@ class SyncPreferences(context: Context) {
     }
 
     /**
-     * QUADRO DE TAREFAS (Samsung Reminder + Google Tasks) — Hierarquia Estrita:
+     * QUADRO DE TAREFAS (Google Tasks REST API) — Hierarquia Estrita:
      * 1. Somente atividades agendadas para HOJE ("TODAY") — apresenta check de não feito + horário (HH:mm) + título.
      * 2. Se NÃO há atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ ("TOMORROW") — check de não feito + horário (HH:mm) + título.
      * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA ("UNDATED")
@@ -348,49 +348,49 @@ class SyncPreferences(context: Context) {
      *    - Em atraso (<= 30 dias): NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
      */
     fun isTasksSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true) &&
-            (isSamsungReminderSyncEnabled() || isGoogleTasksSyncEnabled())
+        return prefs.getBoolean(KEY_TASKS_SYNC_ENABLED, true)
     }
 
     fun setTasksSyncEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_TASKS_SYNC_ENABLED, enabled).commit()
     }
 
-    fun isSamsungReminderSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_SAMSUNG_REMINDER_SYNC_ENABLED, true)
+    fun getGoogleTasksAccountEmail(): String {
+        return prefs.getString(KEY_GOOGLE_TASKS_ACCOUNT_EMAIL, "") ?: ""
     }
 
-    fun setSamsungReminderSyncEnabled(enabled: Boolean) {
-        val editor = prefs.edit().putBoolean(KEY_SAMSUNG_REMINDER_SYNC_ENABLED, enabled)
-        if (enabled) editor.putBoolean(KEY_TASKS_SYNC_ENABLED, true)
-        editor.commit()
+    fun setGoogleTasksAccountEmail(email: String) {
+        prefs.edit().putString(KEY_GOOGLE_TASKS_ACCOUNT_EMAIL, email.trim()).commit()
     }
 
-    fun isGoogleTasksSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_GOOGLE_TASKS_SYNC_ENABLED, true)
+    fun getGoogleTasksAccessToken(): String {
+        return prefs.getString(KEY_GOOGLE_TASKS_ACCESS_TOKEN, "") ?: ""
     }
 
-    fun setGoogleTasksSyncEnabled(enabled: Boolean) {
-        val editor = prefs.edit().putBoolean(KEY_GOOGLE_TASKS_SYNC_ENABLED, enabled)
-        if (enabled) editor.putBoolean(KEY_TASKS_SYNC_ENABLED, true)
-        editor.commit()
+    fun setGoogleTasksAccessToken(token: String) {
+        prefs.edit().putString(KEY_GOOGLE_TASKS_ACCESS_TOKEN, token.trim()).commit()
+    }
+
+    fun getGoogleTasksLastSyncMs(): Long {
+        return prefs.getLong(KEY_GOOGLE_TASKS_LAST_SYNC_MS, 0L)
+    }
+
+    fun setGoogleTasksLastSyncMs(tsMs: Long) {
+        prefs.edit().putLong(KEY_GOOGLE_TASKS_LAST_SYNC_MS, tsMs).commit()
+    }
+
+    fun getGoogleTasksSyncStatus(): String {
+        return prefs.getString(KEY_GOOGLE_TASKS_SYNC_STATUS, "Conecte sua conta Google Tasks")
+            ?: "Conecte sua conta Google Tasks"
+    }
+
+    fun setGoogleTasksSyncStatus(status: String) {
+        prefs.edit().putString(KEY_GOOGLE_TASKS_SYNC_STATUS, status).commit()
     }
 
     fun getTasksJson(): String {
         val raw = prefs.getString(KEY_TASKS_JSON, "") ?: ""
         return raw.ifBlank { "[]" }
-    }
-
-    fun getObservedNotificationTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
-        val raw = prefs.getString(KEY_OBSERVED_NOTIF_TASKS_JSON, "") ?: ""
-        if (raw.isBlank()) return emptyList()
-        return parseTaskItemsFromJsonString(raw, nowMs)
-    }
-
-    fun getObservedScreenTasks(nowMs: Long = System.currentTimeMillis()): List<MobileTaskItem> {
-        val raw = prefs.getString(KEY_OBSERVED_SCREEN_TASKS_JSON, "") ?: ""
-        if (raw.isBlank()) return emptyList()
-        return parseTaskItemsFromJsonString(raw, nowMs)
     }
 
     private fun parseTaskItemsFromJsonString(jsonStr: String, nowMs: Long): List<MobileTaskItem> {
@@ -400,8 +400,6 @@ class SyncPreferences(context: Context) {
         val tomorrowIso = sdfIso.format(java.util.Date(nowMs + 24L * 60L * 60L * 1000L))
         val thirtyDaysAgoIso = sdfIso.format(java.util.Date(nowMs - 30L * 24L * 60L * 60L * 1000L))
         val timeRegex = Regex("(\\d{1,2}:\\d{2})")
-        val allowReminder = isSamsungReminderSyncEnabled()
-        val allowGoogleTasks = isGoogleTasksSyncEnabled()
         try {
             val arr = org.json.JSONArray(jsonStr)
             for (i in 0 until arr.length()) {
@@ -410,12 +408,6 @@ class SyncPreferences(context: Context) {
                 if (title.isBlank()) continue
                 val done = obj.optBoolean("completed", false)
                 if (done) continue
-
-                val sourceLabel = obj.optString("sourceLabel", "Reminder").trim().ifBlank { "Reminder" }
-                val isReminderSource = sourceLabel.contains("reminder", ignoreCase = true) ||
-                    sourceLabel.contains("lembrete", ignoreCase = true)
-                if (isReminderSource && !allowReminder) continue
-                if (!isReminderSource && !allowGoogleTasks) continue
 
                 val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(java.util.Locale.ROOT)
                 val dueDateIso = obj.optString("dueDateIso", "").trim()
@@ -460,7 +452,7 @@ class SyncPreferences(context: Context) {
                         id = obj.optString("id", "t_$i"),
                         title = title,
                         dueHHMM = formattedTime,
-                        sourceLabel = sourceLabel,
+                        sourceLabel = "Tasks",
                         completed = false,
                         isTodayOrTimeless = true,
                         scheduleCategory = resolvedCategory,
@@ -543,7 +535,7 @@ class SyncPreferences(context: Context) {
                     put("id", t.id)
                     put("title", t.title)
                     put("dueHHMM", t.dueHHMM)
-                    put("sourceLabel", t.sourceLabel)
+                    put("sourceLabel", "Tasks")
                     put("completed", false)
                     put("isTodayOrTimeless", true)
                     put("scheduleCategory", t.scheduleCategory)
@@ -589,7 +581,7 @@ class SyncPreferences(context: Context) {
                     put("id", t.id)
                     put("title", t.title)
                     put("dueHHMM", t.dueHHMM)
-                    put("sourceLabel", t.sourceLabel.ifBlank { "Reminder" })
+                    put("sourceLabel", "Tasks")
                     put("completed", false)
                     put("isTodayOrTimeless", true)
                     put("scheduleCategory", t.scheduleCategory.ifBlank { "TODAY" })
@@ -602,200 +594,6 @@ class SyncPreferences(context: Context) {
 
     fun getTasksAlertTimestampMs(): Long {
         return prefs.getLong(KEY_TASKS_ALERT_TS_MS, 0L)
-    }
-
-    fun recordObservedTaskNotification(
-        title: String,
-        sourceLabel: String,
-        dueHHMM: String = "",
-        timestampMs: Long = System.currentTimeMillis()
-    ) {
-        val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
-        val resolvedDue = dueHHMM.trim()
-        val resolvedCat = if (resolvedDue.contains(":")) "TODAY" else "UNDATED"
-        try {
-            val existingNotif = getObservedNotificationTasks(timestampMs)
-            val nextArr = org.json.JSONArray()
-            nextArr.put(
-                org.json.JSONObject().apply {
-                    put("id", "notif_task_$timestampMs")
-                    put("title", cleanTitle)
-                    put("dueHHMM", if (resolvedCat == "TODAY") resolvedDue else "")
-                    put("sourceLabel", sourceLabel)
-                    put("completed", false)
-                    put("isTodayOrTimeless", true)
-                    put("scheduleCategory", resolvedCat)
-                    put("isOverdue", false)
-                }
-            )
-            for (t in existingNotif) {
-                if (!t.title.equals(cleanTitle, ignoreCase = true) && nextArr.length() < 8) {
-                    nextArr.put(
-                        org.json.JSONObject().apply {
-                            put("id", t.id)
-                            put("title", t.title)
-                            put("dueHHMM", t.dueHHMM)
-                            put("sourceLabel", t.sourceLabel)
-                            put("completed", false)
-                            put("isTodayOrTimeless", true)
-                            put("scheduleCategory", t.scheduleCategory)
-                            put("isOverdue", t.isOverdue)
-                        }
-                    )
-                }
-            }
-            prefs.edit()
-                .putString(KEY_OBSERVED_NOTIF_TASKS_JSON, nextArr.toString())
-                .putLong(KEY_TASKS_ALERT_TS_MS, timestampMs)
-                .commit()
-        } catch (_: Exception) {
-        }
-    }
-
-    fun removeObservedTaskNotification(
-        title: String,
-        sourceLabel: String,
-        timestampMs: Long = System.currentTimeMillis()
-    ): Boolean {
-        val cleanTitle = title.trim()
-        if (cleanTitle.isBlank()) return false
-        try {
-            val existingNotif = getObservedNotificationTasks(timestampMs)
-            if (existingNotif.isEmpty()) return false
-            val nextArr = org.json.JSONArray()
-            var removedAny = false
-            for (t in existingNotif) {
-                val matchesTitle = t.title.equals(cleanTitle, ignoreCase = true)
-                val matchesSource = sourceLabel.isBlank() || t.sourceLabel.equals(sourceLabel, ignoreCase = true)
-                if (matchesTitle && matchesSource) {
-                    removedAny = true
-                } else {
-                    nextArr.put(
-                        org.json.JSONObject().apply {
-                            put("id", t.id)
-                            put("title", t.title)
-                            put("dueHHMM", t.dueHHMM)
-                            put("sourceLabel", t.sourceLabel)
-                            put("completed", false)
-                            put("isTodayOrTimeless", true)
-                            put("scheduleCategory", t.scheduleCategory)
-                            put("isOverdue", t.isOverdue)
-                        }
-                    )
-                }
-            }
-            if (removedAny) {
-                prefs.edit()
-                    .putString(KEY_OBSERVED_NOTIF_TASKS_JSON, nextArr.toString())
-                    .commit()
-            }
-            return removedAny
-        } catch (_: Exception) {
-            return false
-        }
-    }
-
-    /**
-     * Atualiza o cache local de tarefas capturadas em tempo real das janelas do Samsung Calendar,
-     * Samsung Reminder e Google Tasks via ChronoWearTasksAccessibilityService.
-     * Retorna true se houve alteração efetiva na lista de tarefas observadas.
-     */
-    fun recordObservedScreenTasksSnapshot(
-        capturedTasks: List<MobileTaskItem>,
-        completedTitles: Set<String> = emptySet(),
-        replaceSourceLabel: String? = null,
-        replaceScheduleCategory: String? = null,
-        clearAllForSourceLabel: String? = null,
-        nowMs: Long = System.currentTimeMillis()
-    ): Boolean {
-        try {
-            val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
-            val todayIso = sdfIso.format(java.util.Date(nowMs))
-            val tomorrowIso = sdfIso.format(java.util.Date(nowMs + 24L * 60L * 60L * 1000L))
-            val yesterdayIso = sdfIso.format(java.util.Date(nowMs - 24L * 60L * 60L * 1000L))
-
-            val prevRaw = prefs.getString(KEY_OBSERVED_SCREEN_TASKS_JSON, "") ?: "[]"
-            val existing = getObservedScreenTasks(nowMs).toMutableList()
-
-            val completedLower = completedTitles.map { it.trim().lowercase(java.util.Locale.ROOT) }.toSet()
-            if (completedLower.isNotEmpty()) {
-                for (doneTitle in completedTitles) {
-                    removeObservedTaskNotification(doneTitle, "")
-                }
-            }
-
-            // 1. Filtra itens existentes que foram concluídos ou que pertencem ao escopo substituído
-            val retained = existing.filter { item ->
-                val titleLower = item.title.trim().lowercase(java.util.Locale.ROOT)
-                if (completedLower.contains(titleLower)) {
-                    false
-                } else if (!clearAllForSourceLabel.isNullOrBlank() &&
-                    item.sourceLabel.equals(clearAllForSourceLabel, ignoreCase = true)
-                ) {
-                    false
-                } else if (!replaceSourceLabel.isNullOrBlank() &&
-                    item.sourceLabel.equals(replaceSourceLabel, ignoreCase = true) &&
-                    (replaceScheduleCategory.isNullOrBlank() || item.scheduleCategory == replaceScheduleCategory)
-                ) {
-                    false
-                } else {
-                    true
-                }
-            }.toMutableList()
-
-            // 2. Insere ou atualiza as tarefas recém-capturadas na tela
-            for (candidate in capturedTasks) {
-                if (candidate.completed) continue
-                val cleanTitle = candidate.title.trim()
-                if (cleanTitle.isBlank()) continue
-                if (completedLower.contains(cleanTitle.lowercase(java.util.Locale.ROOT))) continue
-
-                val existingIdx = retained.indexOfFirst {
-                    it.title.equals(cleanTitle, ignoreCase = true) &&
-                        it.sourceLabel.equals(candidate.sourceLabel, ignoreCase = true)
-                }
-                if (existingIdx >= 0) {
-                    retained[existingIdx] = candidate
-                } else {
-                    retained.add(candidate)
-                }
-            }
-
-            val nextArr = org.json.JSONArray()
-            for (t in retained.take(40)) {
-                val dueDateIso = when (t.scheduleCategory) {
-                    "TODAY" -> todayIso
-                    "TOMORROW" -> tomorrowIso
-                    "OVERDUE" -> yesterdayIso
-                    else -> ""
-                }
-                nextArr.put(
-                    org.json.JSONObject().apply {
-                        put("id", t.id)
-                        put("title", t.title)
-                        put("dueHHMM", if (t.scheduleCategory == "TODAY" || t.scheduleCategory == "TOMORROW") t.dueHHMM else "")
-                        put("dueDateIso", dueDateIso)
-                        put("sourceLabel", t.sourceLabel)
-                        put("completed", false)
-                        put("isTodayOrTimeless", true)
-                        put("scheduleCategory", t.scheduleCategory)
-                        put("isOverdue", t.isOverdue || t.scheduleCategory == "OVERDUE")
-                    }
-                )
-            }
-
-            val nextRaw = nextArr.toString()
-            if (nextRaw != prevRaw) {
-                prefs.edit()
-                    .putString(KEY_OBSERVED_SCREEN_TASKS_JSON, nextRaw)
-                    .putLong(KEY_TASKS_ALERT_TS_MS, nowMs)
-                    .commit()
-                return true
-            }
-            return false
-        } catch (_: Exception) {
-            return false
-        }
     }
 
     fun getTasksSummaryLabel(): String {
@@ -1135,18 +933,18 @@ class SyncPreferences(context: Context) {
         private const val KEY_SLEEP_STAGES_CSV = "sleep_stages_csv"
         private const val KEY_SLEEP_WAKE_TS_MS = "sleep_wake_ts_ms"
         private const val KEY_TASKS_SYNC_ENABLED = "tasks_sync_enabled"
-        private const val KEY_SAMSUNG_REMINDER_SYNC_ENABLED = "samsung_reminder_sync_enabled"
-        private const val KEY_GOOGLE_TASKS_SYNC_ENABLED = "google_tasks_sync_enabled"
-        private const val KEY_OBSERVED_NOTIF_TASKS_JSON = "observed_notif_tasks_json"
-        private const val KEY_OBSERVED_SCREEN_TASKS_JSON = "observed_screen_tasks_json"
+        private const val KEY_GOOGLE_TASKS_ACCOUNT_EMAIL = "google_tasks_account_email"
+        private const val KEY_GOOGLE_TASKS_ACCESS_TOKEN = "google_tasks_access_token"
+        private const val KEY_GOOGLE_TASKS_LAST_SYNC_MS = "google_tasks_last_sync_ms"
+        private const val KEY_GOOGLE_TASKS_SYNC_STATUS = "google_tasks_sync_status"
         private const val KEY_TASKS_JSON = "tasks_json"
         private const val KEY_TASKS_ALERT_TS_MS = "tasks_alert_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"
         const val DEFAULT_TASKS_JSON = """[
-            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
+            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
             {"id":"t2","title":"Reunião de revisão da sprint","dueHHMM":"16:30","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
-            {"id":"t3","title":"Apresentar protótipo Wear OS","dueHHMM":"10:00","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TOMORROW","isOverdue":false},
-            {"id":"t4","title":"Pagar fatura do cartão corporativo","dueHHMM":"","sourceLabel":"Reminder","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"OVERDUE","isOverdue":true},
+            {"id":"t3","title":"Apresentar protótipo Wear OS","dueHHMM":"10:00","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TOMORROW","isOverdue":false},
+            {"id":"t4","title":"Pagar fatura do cartão corporativo","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"OVERDUE","isOverdue":true},
             {"id":"t5","title":"Organizar documentos da contabilidade","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"UNDATED","isOverdue":false}
         ]"""
         private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"

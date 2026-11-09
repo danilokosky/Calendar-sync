@@ -1,6 +1,7 @@
 package com.chronowear.mobile.ui
 
 import android.Manifest
+import android.accounts.AccountManager
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.AlertDialog
@@ -49,6 +50,8 @@ import android.widget.TextView
 import android.widget.Toast
 import com.chronowear.mobile.sync.CalendarSyncEngine
 import com.chronowear.mobile.sync.CalendarSyncForegroundService
+import com.chronowear.mobile.sync.GoogleTasksApiClient
+import com.chronowear.mobile.sync.GoogleTasksAuthResult
 import com.chronowear.mobile.sync.LocalCalendarEvent
 import com.chronowear.mobile.sync.LocalCalendarItem
 import com.chronowear.mobile.sync.MobileTaskItem
@@ -56,6 +59,7 @@ import com.chronowear.mobile.sync.SyncPreferences
 import com.chronowear.mobile.sync.WearConnectionReport
 import com.chronowear.mobile.sync.WearConnectionState
 import com.chronowear.mobile.sync.WeatherTriggerAppOption
+import com.google.android.gms.common.AccountPicker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,9 +119,9 @@ class MobileSyncConfigActivity : Activity() {
     // Aba Configurações: Controles e Switches
     private lateinit var switchCalendarEvents: Switch
     private lateinit var switchTasksSync: Switch
-    private lateinit var switchSamsungReminderSync: Switch
-    private lateinit var switchGoogleTasksSync: Switch
-    private lateinit var installGoogleTasksBtn: Button
+    private lateinit var googleTasksAccountStatusText: TextView
+    private lateinit var connectGoogleTasksAccountBtn: Button
+    private lateinit var syncGoogleTasksNowBtn: Button
     private lateinit var switchAutoFallbackTasks: Switch
     private lateinit var switchNotifyOnCanvasChange: Switch
     private lateinit var switchNotifyAgenda15Min: Switch
@@ -236,6 +240,100 @@ class MobileSyncConfigActivity : Activity() {
         refreshUiState(checkRemoteConnection = true)
         if (countMissingPermissions() == 0) {
             triggerBackgroundSync("Permissões liberadas")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        when (requestCode) {
+            REQUEST_CODE_PICK_GOOGLE_ACCOUNT -> {
+                if (resultCode == RESULT_OK && data != null) {
+                    val email = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)?.trim().orEmpty()
+                    if (email.isNotBlank()) {
+                        prefs.setGoogleTasksAccountEmail(email)
+                        authorizeAndSyncGoogleTasks(email)
+                    }
+                }
+            }
+            REQUEST_CODE_GOOGLE_TASKS_CONSENT -> {
+                if (resultCode == RESULT_OK) {
+                    val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+                    authorizeAndSyncGoogleTasks(email)
+                } else {
+                    prefs.setGoogleTasksSyncStatus("Permissão OAuth2 do Google Tasks recusada pelo usuário")
+                    refreshUiState(checkRemoteConnection = false)
+                }
+            }
+        }
+    }
+
+    private fun startGoogleTasksAccountPicker() {
+        try {
+            @Suppress("DEPRECATION")
+            val intent = AccountPicker.newChooseAccountIntent(
+                null,
+                null,
+                arrayOf("com.google"),
+                false,
+                "Selecione a conta Google para sincronizar suas tarefas via Google Tasks API",
+                null,
+                null,
+                null
+            )
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_CODE_PICK_GOOGLE_ACCOUNT)
+        } catch (_: Exception) {
+            val fallbackEmail = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+            if (fallbackEmail.isNotBlank()) {
+                authorizeAndSyncGoogleTasks(fallbackEmail)
+            } else {
+                showStatusToast("Adicione uma conta Google nas configurações do Android.")
+            }
+        }
+    }
+
+    private fun authorizeAndSyncGoogleTasks(accountEmail: String) {
+        uiScope.launch {
+            showStatusToast("Conectando ao Google Tasks API...")
+            val authResult = withContext(Dispatchers.IO) {
+                GoogleTasksApiClient.acquireAccessToken(
+                    context = this@MobileSyncConfigActivity,
+                    prefs = prefs,
+                    explicitEmail = accountEmail
+                )
+            }
+            when (authResult) {
+                is GoogleTasksAuthResult.Authorized -> {
+                    withContext(Dispatchers.IO) {
+                        GoogleTasksApiClient.fetchTasksFromGoogleApi(
+                            this@MobileSyncConfigActivity,
+                            prefs,
+                            System.currentTimeMillis()
+                        )
+                        CalendarSyncEngine.performFullSyncToWatch(
+                            this@MobileSyncConfigActivity,
+                            "Google Tasks API Conectado"
+                        )
+                    }
+                    cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
+                    refreshUiState(checkRemoteConnection = false)
+                    showStatusToast("Tarefas sincronizadas via Google Tasks API (${cachedTasks.size} ativas).")
+                }
+                is GoogleTasksAuthResult.NeedsUserConsent -> {
+                    try {
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(authResult.consentIntent, REQUEST_CODE_GOOGLE_TASKS_CONSENT)
+                    } catch (_: Exception) {
+                        showStatusToast("Não foi possível abrir a janela de autorização do Google.")
+                    }
+                }
+                is GoogleTasksAuthResult.Error -> {
+                    prefs.setGoogleTasksSyncStatus(authResult.reason)
+                    refreshUiState(checkRemoteConnection = false)
+                    showStatusToast(authResult.reason)
+                }
+            }
         }
     }
 
@@ -751,58 +849,51 @@ class MobileSyncConfigActivity : Activity() {
 
         switchTasksSync = createResponsiveSettingToggleRow(
             parent = agendaTasksCard,
-            title = "Sincronizar Quadro de Tarefas",
-            subtitle = "Exibe tarefas de Hoje, Amanhã, Sem data e Atrasadas"
+            title = "Sincronizar Quadro de Tarefas (Google Tasks API)",
+            subtitle = "Sincroniza tarefas de Hoje, Amanhã, Sem data e Atrasadas direto da nuvem"
         ) { checked ->
             prefs.setTasksSyncEnabled(checked)
-            CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, System.currentTimeMillis())
-            cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
-            virtualWatchView.invalidate()
-            refreshWidgetsGridInPlace()
-            triggerBackgroundSync("Toggle Tarefas")
-        }
-
-        switchSamsungReminderSync = createResponsiveSettingToggleRow(
-            parent = agendaTasksCard,
-            title = "Ler Samsung Reminder",
-            subtitle = "Captura lembretes direto da agenda oficial do telefone"
-        ) { checked ->
-            prefs.setSamsungReminderSyncEnabled(checked)
-            CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, System.currentTimeMillis())
-            cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
-            virtualWatchView.invalidate()
-            refreshWidgetsGridInPlace()
-            triggerBackgroundSync("Toggle Samsung Reminder")
-        }
-
-        switchGoogleTasksSync = createResponsiveSettingToggleRow(
-            parent = agendaTasksCard,
-            title = "Ler Tarefas do Google (Google Tasks)",
-            subtitle = "Captura tarefas do Google integradas à agenda"
-        ) { checked ->
-            prefs.setGoogleTasksSyncEnabled(checked)
-            val installed = CalendarSyncEngine.isGoogleTasksInstalled(this)
-            installGoogleTasksBtn.visibility = if (checked && !installed) View.VISIBLE else View.GONE
-            if (checked && !installed) {
-                showStatusToast("Instale o Google Tasks para sincronizar na agenda.")
-            }
-            CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, System.currentTimeMillis())
-            cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
-            virtualWatchView.invalidate()
-            refreshWidgetsGridInPlace()
-            triggerBackgroundSync("Toggle Google Tasks")
-        }
-
-        installGoogleTasksBtn = createActionButton("Instalar Google Tasks ↗") {
-            openGoogleTasksPlayStore()
-        }.apply {
-            visibility = if (prefs.isGoogleTasksSyncEnabled() && !CalendarSyncEngine.isGoogleTasksInstalled(this@MobileSyncConfigActivity)) {
-                View.VISIBLE
+            if (checked) {
+                val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+                authorizeAndSyncGoogleTasks(email)
             } else {
-                View.GONE
+                prefs.saveTasksJson("[]")
+                cachedTasks = emptyList()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Toggle Tarefas Desativado")
             }
         }
-        agendaTasksCard.addView(installGoogleTasksBtn)
+
+        googleTasksAccountStatusText = TextView(this).apply {
+            text = "Conta Google Tasks API: verificando..."
+            setTextColor(Color.parseColor("#CBD5E1"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+            background = roundedRect("#0B111A", "#1E293B", 12)
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(8)
+            layoutParams = lp
+        }
+        agendaTasksCard.addView(googleTasksAccountStatusText)
+
+        connectGoogleTasksAccountBtn = createActionButton("Conectar / Trocar Conta Google Tasks") {
+            startGoogleTasksAccountPicker()
+        }
+        agendaTasksCard.addView(connectGoogleTasksAccountBtn)
+
+        syncGoogleTasksNowBtn = createActionButton("Sincronizar Google Tasks Agora ↻") {
+            val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+            if (email.isBlank()) {
+                startGoogleTasksAccountPicker()
+            } else {
+                authorizeAndSyncGoogleTasks(email)
+            }
+        }
+        agendaTasksCard.addView(syncGoogleTasksNowBtn)
 
         agendaTasksCard.addView(createSubLabel("Horizonte de sincronização:"))
         val horizonOpts = listOf(1 to "24 horas", 2 to "2 dias", 3 to "3 dias", 7 to "7 dias")
@@ -1079,7 +1170,6 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.hasLocationPermission(this)) count++
         if (!CalendarSyncEngine.hasNotificationPermission(this)) count++
         if (!CalendarSyncEngine.isNotificationListenerEnabled(this)) count++
-        if (!CalendarSyncEngine.isTaskAccessibilityServiceEnabled(this)) count++
         if (!CalendarSyncEngine.isIgnoringBatteryOptimizations(this)) count++
         return count
     }
@@ -1177,11 +1267,26 @@ class MobileSyncConfigActivity : Activity() {
         } else {
             emptyList()
         }
-        val prevTasksJson = prefs.getTasksJson()
-        val latestTasksJson = CalendarSyncEngine.buildMergedTasksJsonForWatch(this, prefs, nowMs)
         cachedTasks = prefs.getActiveUncompletedTasks(nowMs)
-        if (checkRemoteConnection && latestTasksJson != prevTasksJson) {
-            triggerBackgroundSync("Tarefas atualizadas automaticamente")
+        if (checkRemoteConnection && prefs.isTasksSyncEnabled()) {
+            uiScope.launch(Dispatchers.IO) {
+                val prevTasksJson = prefs.getTasksJson()
+                val latestTasksJson = GoogleTasksApiClient.fetchTasksFromGoogleApi(
+                    this@MobileSyncConfigActivity,
+                    prefs,
+                    System.currentTimeMillis()
+                )
+                val updatedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
+                withContext(Dispatchers.Main) {
+                    cachedTasks = updatedTasks
+                    refreshGoogleTasksAccountSummary()
+                    virtualWatchView.invalidate()
+                    refreshWidgetsGridInPlace()
+                    if (latestTasksJson != prevTasksJson) {
+                        triggerBackgroundSync("Tarefas atualizadas via Google Tasks API")
+                    }
+                }
+            }
         }
 
         // Atualiza Switches sem disparar listeners recursivos
@@ -1189,13 +1294,6 @@ class MobileSyncConfigActivity : Activity() {
         try {
             switchCalendarEvents.isChecked = prefs.isCalendarEventsSyncEnabled()
             switchTasksSync.isChecked = prefs.isTasksSyncEnabled()
-            switchSamsungReminderSync.isChecked = prefs.isSamsungReminderSyncEnabled()
-            switchGoogleTasksSync.isChecked = prefs.isGoogleTasksSyncEnabled()
-            installGoogleTasksBtn.visibility = if (prefs.isGoogleTasksSyncEnabled() && !CalendarSyncEngine.isGoogleTasksInstalled(this)) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
             switchAutoFallbackTasks.isChecked = prefs.isAutoFallbackAgendaToTasksEnabled()
             switchNotifyOnCanvasChange.isChecked = prefs.isNotifyWatchOnCanvasChangeEnabled()
             switchNotifyAgenda15Min.isChecked = prefs.isNotifyAgenda15MinEnabled()
@@ -1209,6 +1307,7 @@ class MobileSyncConfigActivity : Activity() {
             isUpdatingToggleProgrammatically = false
         }
 
+        refreshGoogleTasksAccountSummary()
         updateAllChipSelectionsInPlace()
         refreshPermissionsBanner()
         refreshCalendarsList()
@@ -1363,27 +1462,11 @@ class MobileSyncConfigActivity : Activity() {
             missing.add(
                 MissingPermItem(
                     title = "Acesso a Notificações",
-                    reason = "Detecção de alertas de clima e tarefas.",
+                    reason = "Detecção de alertas de clima e sono do telefone.",
                     actionLabel = "Ativar",
                     onGrantClick = {
                         try {
                             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                        } catch (_: Exception) {
-                        }
-                    }
-                )
-            )
-        }
-
-        if (!CalendarSyncEngine.isTaskAccessibilityServiceEnabled(this)) {
-            missing.add(
-                MissingPermItem(
-                    title = "Sincronizador de Tarefas (Reminder / Tasks)",
-                    reason = "Lê em tempo real tarefas da Agenda, Reminder e Google Tasks.",
-                    actionLabel = "Ativar",
-                    onGrantClick = {
-                        try {
-                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         } catch (_: Exception) {
                         }
                     }
@@ -3199,25 +3282,12 @@ class MobileSyncConfigActivity : Activity() {
     // DIÁLOGOS DE GERENCIAMENTO DE TAREFAS E APPS DE CLIMA
     // =========================================================================================
 
-    private fun openGoogleTasksPlayStore() {
-        try {
-            startActivity(
-                Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("market://details?id=com.google.android.apps.tasks")
-                )
-            )
-        } catch (_: Exception) {
-            try {
-                startActivity(
-                    Intent(
-                        Intent.ACTION_VIEW,
-                        Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.tasks")
-                    )
-                )
-            } catch (_: Exception) {
-            }
-        }
+    private fun refreshGoogleTasksAccountSummary() {
+        if (!::googleTasksAccountStatusText.isInitialized) return
+        val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+        val status = prefs.getGoogleTasksSyncStatus()
+        val accountLine = if (email.isNotBlank()) "Conta Google: $email" else "Conta Google: não selecionada"
+        googleTasksAccountStatusText.text = "$accountLine\nStatus API: $status"
     }
 
     private fun refreshCalendarsList() {
@@ -3598,5 +3668,10 @@ class MobileSyncConfigActivity : Activity() {
             }
             return super.onTouchEvent(ev)
         }
+    }
+
+    companion object {
+        private const val REQUEST_CODE_PICK_GOOGLE_ACCOUNT = 201
+        private const val REQUEST_CODE_GOOGLE_TASKS_CONSENT = 202
     }
 }

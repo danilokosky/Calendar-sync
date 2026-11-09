@@ -1,12 +1,18 @@
 /// <reference types="vite/client" />
 
 import settingsGradleRaw from '../../settings.gradle.kts?raw';
+import rootBuildGradleRaw from '../../build.gradle.kts?raw';
+import gradlePropertiesRaw from '../../gradle.properties?raw';
 import readmeRaw from '../../README.md?raw';
 import workflowRaw from '../../.github/workflows/android-build.yml?raw';
+import mobileBuildGradleRaw from '../../mobile/build.gradle.kts?raw';
 import mobileManifestRaw from '../../mobile/src/main/AndroidManifest.xml?raw';
 import mobileLauncherIconRaw from '../../mobile/src/main/res/drawable/ic_launcher_chronowear.xml?raw';
 import mobileActivityRaw from '../../mobile/src/main/java/com/chronowear/mobile/ui/MobileSyncConfigActivity.kt?raw';
 import mobileEngineRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncEngine.kt?raw';
+import mobileGoogleTasksApiRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/GoogleTasksApiClient.kt?raw';
+import mobileForegroundServiceRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncForegroundService.kt?raw';
+import mobileCalendarReceiverRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarChangeReceiver.kt?raw';
 import mobilePrefsRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/SyncPreferences.kt?raw';
 import mobileWearListenerRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/WearRequestListenerService.kt?raw';
 import mobileWorkerRaw from '../../mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncWorker.kt?raw';
@@ -45,12 +51,28 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     content: settingsGradleRaw,
   },
   {
+    path: 'build.gradle.kts',
+    module: 'root',
+    language: 'gradle',
+    title: 'build.gradle.kts (Raiz do Projeto)',
+    description: 'Plugins Android Application e Kotlin Android compartilhados pelos módulos.',
+    content: rootBuildGradleRaw,
+  },
+  {
+    path: 'gradle.properties',
+    module: 'root',
+    language: 'gradle',
+    title: 'gradle.properties',
+    description: 'Propriedades AndroidX e JVM para compilação no GitHub Actions.',
+    content: gradlePropertiesRaw,
+  },
+  {
     path: 'README.md',
     module: 'root',
     language: 'markdown',
     title: 'Documentação Oficial para o GitHub',
     description:
-      'Instruções de compilação dos APKs (:mobile, :wear, :watchface), permissões controladas pelo usuário e verificação de app instalado no relógio.',
+      'Instruções de compilação dos APKs (:mobile, :wear, :watchface), sincronização via Google Tasks REST API e verificação de app instalado no relógio.',
     content: readmeRaw,
   },
   {
@@ -63,12 +85,21 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     content: workflowRaw,
   },
   {
+    path: 'mobile/build.gradle.kts',
+    module: 'mobile',
+    language: 'gradle',
+    title: 'mobile/build.gradle.kts (Dependências Smartphone + Google Auth OAuth2)',
+    description:
+      'Inclui play-services-wearable, play-services-auth (OAuth2 Google Tasks API) e WorkManager.',
+    content: mobileBuildGradleRaw,
+  },
+  {
     path: 'mobile/src/main/AndroidManifest.xml',
     module: 'mobile',
     language: 'xml',
     title: 'Manifesto do Smartphone (:mobile) + Ícone Dedicado ChronoWear',
     description:
-      'Declara @drawable/ic_launcher_chronowear, permissões de Calendário, Saúde (Sono), Localização e PhoneWeatherNotificationListenerService.',
+      'Declara @drawable/ic_launcher_chronowear, permissões de Calendário, Saúde (Sono), Localização e PhoneWeatherNotificationListenerService (sem AccessibilityService).',
     content: mobileManifestRaw,
   },
   {
@@ -84,19 +115,46 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     path: 'mobile/src/main/java/com/chronowear/mobile/ui/MobileSyncConfigActivity.kt',
     module: 'mobile',
     language: 'kotlin',
-    title: 'MobileSyncConfigActivity.kt (3 Abas + Contexto Canvas + Clima pelo Telefone)',
+    title: 'MobileSyncConfigActivity.kt (3 Abas + Google Tasks API OAuth2 + Clima)',
     description:
-      'Interface estilo Samsung Health com seletor de função da Janela de Contexto, regra de 1 min (≤15m) e autorização de leitura de notificações (App Google / App Clima).',
+      'Interface com autorização OAuth 2.0 para Google Tasks API, seletor de função da Janela de Contexto e regra de 1 min (≤15m).',
     content: mobileActivityRaw,
+  },
+  {
+    path: 'mobile/src/main/java/com/chronowear/mobile/sync/GoogleTasksApiClient.kt',
+    module: 'mobile',
+    language: 'kotlin',
+    title: 'GoogleTasksApiClient.kt (Cliente Oficial Google Tasks REST API v1)',
+    description:
+      'Autentica via GoogleAuthUtil OAuth 2.0 (escopos tasks e tasks.readonly) e consulta https://tasks.googleapis.com/tasks/v1/users/@me/lists sem depender de leitura local.',
+    content: mobileGoogleTasksApiRaw,
   },
   {
     path: 'mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncEngine.kt',
     module: 'mobile',
     language: 'kotlin',
-    title: 'CalendarSyncEngine.kt (Agenda + Previsão Horária pelo Telefone)',
+    title: 'CalendarSyncEngine.kt (Agenda + Google Tasks API + Clima pelo Telefone)',
     description:
-      'Busca as previsões horárias reais pelo telefone (Open-Meteo API) e envia junto com os compromissos e avisos do App Google / App Clima para o relógio.',
+      'Sincroniza compromissos da agenda, tarefas da nuvem via GoogleTasksApiClient e previsões horárias pelo telefone para o relógio.',
     content: mobileEngineRaw,
+  },
+  {
+    path: 'mobile/src/main/java/com/chronowear/mobile/sync/CalendarSyncForegroundService.kt',
+    module: 'mobile',
+    language: 'kotlin',
+    title: 'CalendarSyncForegroundService.kt (Observador de Agenda + Polling Google Tasks API)',
+    description:
+      'Observa alterações em CalendarContract e sincroniza periodicamente com a Google Tasks REST API em segundo plano.',
+    content: mobileForegroundServiceRaw,
+  },
+  {
+    path: 'mobile/src/main/java/com/chronowear/mobile/sync/CalendarChangeReceiver.kt',
+    module: 'mobile',
+    language: 'kotlin',
+    title: 'CalendarChangeReceiver.kt (Receptor de Alterações na Agenda)',
+    description:
+      'Reage a eventos ACTION_PROVIDER_CHANGED do CalendarContract e de inicialização do sistema.',
+    content: mobileCalendarReceiverRaw,
   },
   {
     path: 'mobile/src/main/java/com/chronowear/mobile/sync/WearRequestListenerService.kt',
@@ -104,16 +162,16 @@ export const ANDROID_PROJECT_FILES: ProjectSourceFile[] = [
     language: 'kotlin',
     title: 'WearRequestListenerService.kt + PhoneWeatherNotificationListenerService',
     description:
-      'Observa notificações sobre clima no smartphone vindas do App Google ou do App Clima, atualiza a previsão horária pelo telefone e sincroniza imediatamente com o relógio.',
+      'Observa notificações sobre clima e sono no smartphone e sincroniza imediatamente com o relógio.',
     content: mobileWearListenerRaw,
   },
   {
     path: 'mobile/src/main/java/com/chronowear/mobile/sync/SyncPreferences.kt',
     module: 'mobile',
     language: 'kotlin',
-    title: 'SyncPreferences.kt (Preferências + Cache de Previsão do Telefone)',
+    title: 'SyncPreferences.kt (Preferências + Estado Google Tasks API + Clima)',
     description:
-      'Armazena configurações da Janela de Contexto, regra Turbo 15 min, curva horária de clima buscada pelo telefone e última notificação observada (App Google / App Clima).',
+      'Armazena configurações da Janela de Contexto, conta conectada à Google Tasks API, hierarquia de tarefas de 3 níveis e curva horária de clima.',
     content: mobilePrefsRaw,
   },
   {

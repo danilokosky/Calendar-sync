@@ -328,7 +328,7 @@ test('formatCompactWeatherLocation converts full state names to official IBGE 2-
   );
 });
 
-test('evaluateWatchAutonomousState supports TASKS context mode and prioritizes TASKS on Samsung Reminder / Google Tasks alert', () => {
+test('evaluateWatchAutonomousState supports TASKS context mode and prioritizes TASKS on Google Tasks alert', () => {
   const syncedEvents = buildSyncPayload(mockEvents, mockCalendars, baseTime, 7);
 
   // Explicit TASKS mode
@@ -343,7 +343,7 @@ test('evaluateWatchAutonomousState supports TASKS context mode and prioritizes T
   const fixedState = evaluateWatchAutonomousState(fixedTasksCache, baseTime);
   assert.equal(fixedState.effectiveContextMode, 'TASKS');
 
-  // Dynamic mode with active Samsung Reminder / Google Tasks alert overrides primary context to TASKS
+  // Dynamic mode with active Google Tasks alert overrides primary context to TASKS
   const dynamicTaskAlertCache: WatchCacheState = {
     cachedEvents: syncedEvents,
     lastSyncEpochMs: baseTime,
@@ -386,7 +386,7 @@ test('evaluateWatchAutonomousState shows Amanhã header when next events are tom
         id: 't1',
         title: 'Enviar relatório trimestral',
         dueHHMM: '14:00',
-        sourceLabel: 'Reminder',
+        sourceLabel: 'Tasks',
         completed: false,
       },
     ],
@@ -407,7 +407,7 @@ test('evaluateWatchAutonomousState shows Amanhã header when next events are tom
         id: 't1',
         title: 'Enviar relatório trimestral',
         dueHHMM: '14:00',
-        sourceLabel: 'Reminder',
+        sourceLabel: 'Tasks',
         completed: true,
       },
     ],
@@ -425,7 +425,7 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today -> Tomorro
       id: 't-today-1',
       title: 'fazer almoço',
       dueHHMM: '12:30',
-      sourceLabel: 'Reminder' as const,
+      sourceLabel: 'Tasks' as const,
       completed: false,
       scheduleCategory: 'TODAY' as const,
       isTodayOrTimeless: true,
@@ -434,7 +434,7 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today -> Tomorro
       id: 't-tomorrow-1',
       title: 'Apresentação de amanhã',
       dueHHMM: '10:30',
-      sourceLabel: 'Reminder' as const,
+      sourceLabel: 'Tasks' as const,
       completed: false,
       scheduleCategory: 'TOMORROW' as const,
       isTodayOrTimeless: true,
@@ -443,7 +443,7 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today -> Tomorro
       id: 't-undated-1',
       title: 'Ligar para contabilidade',
       dueHHMM: '',
-      sourceLabel: 'Reminder' as const,
+      sourceLabel: 'Tasks' as const,
       completed: false,
       scheduleCategory: 'UNDATED' as const,
       isTodayOrTimeless: true,
@@ -463,7 +463,7 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today -> Tomorro
       id: 't-overdue-ancient',
       title: 'Spot the Station in Ba... (Mais de 1 mês)',
       dueHHMM: '',
-      sourceLabel: 'Reminder' as const,
+      sourceLabel: 'Tasks' as const,
       completed: false,
       scheduleCategory: 'OVERDUE' as const,
       isOverdue: true,
@@ -474,7 +474,7 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today -> Tomorro
       id: 't-done',
       title: 'Tratar a água (Concluída)',
       dueHHMM: '11:00',
-      sourceLabel: 'Reminder' as const,
+      sourceLabel: 'Tasks' as const,
       completed: true,
       scheduleCategory: 'TODAY' as const,
       isTodayOrTimeless: true,
@@ -563,23 +563,23 @@ test('resolveTasksCanvasState enforces strict 3-tier hierarchy: Today -> Tomorro
   assert.equal(stateAfterTodayPassed.dayEvents[0].id, 'ev-tomorrow-only');
 });
 
-test('resolveTasksCanvasState respects independent Samsung Reminder and Google Tasks toggles', async () => {
+test('resolveTasksCanvasState respects Google Tasks API sync toggle', async () => {
   const { resolveTasksCanvasState } = await import('./calendarSyncEngine');
 
   const sourceTasks = [
     {
-      id: 't-rem-today',
-      title: 'Lembrete Samsung de Hoje',
-      dueHHMM: '11:30',
-      sourceLabel: 'Reminder' as const,
+      id: 't-gtask-today-1',
+      title: 'fazer almoço',
+      dueHHMM: '12:30',
+      sourceLabel: 'Tasks' as const,
       completed: false,
       scheduleCategory: 'TODAY' as const,
       isTodayOrTimeless: true,
     },
     {
-      id: 't-gtask-today',
-      title: 'Tarefa Google de Hoje',
-      dueHHMM: '14:00',
+      id: 't-gtask-today-2',
+      title: 'Fazer almoço',
+      dueHHMM: '18:00',
       sourceLabel: 'Tasks' as const,
       completed: false,
       scheduleCategory: 'TODAY' as const,
@@ -587,41 +587,19 @@ test('resolveTasksCanvasState respects independent Samsung Reminder and Google T
     },
   ];
 
-  // Both enabled -> returns both
-  const bothOn = resolveTasksCanvasState(sourceTasks, {
-    samsungReminderSyncEnabled: true,
+  // Google Tasks enabled -> returns tasks
+  const enabledState = resolveTasksCanvasState(sourceTasks, {
     googleTasksSyncEnabled: true,
   });
   assert.deepEqual(
-    bothOn.displayTasks.map((t) => t.id),
-    ['t-rem-today', 't-gtask-today']
+    enabledState.displayTasks.map((t) => t.id),
+    ['t-gtask-today-1', 't-gtask-today-2']
   );
 
-  // Only Samsung Reminder enabled -> returns only Reminder task
-  const onlyReminder = resolveTasksCanvasState(sourceTasks, {
-    samsungReminderSyncEnabled: true,
+  // Google Tasks disabled -> empty
+  const disabledState = resolveTasksCanvasState(sourceTasks, {
     googleTasksSyncEnabled: false,
   });
-  assert.deepEqual(
-    onlyReminder.displayTasks.map((t) => t.id),
-    ['t-rem-today']
-  );
-
-  // Only Google Tasks enabled -> returns only Google Tasks item
-  const onlyGoogleTasks = resolveTasksCanvasState(sourceTasks, {
-    samsungReminderSyncEnabled: false,
-    googleTasksSyncEnabled: true,
-  });
-  assert.deepEqual(
-    onlyGoogleTasks.displayTasks.map((t) => t.id),
-    ['t-gtask-today']
-  );
-
-  // Both disabled -> empty
-  const bothOff = resolveTasksCanvasState(sourceTasks, {
-    samsungReminderSyncEnabled: false,
-    googleTasksSyncEnabled: false,
-  });
-  assert.equal(bothOff.bucket, 'EMPTY');
-  assert.equal(bothOff.displayTasks.length, 0);
+  assert.equal(disabledState.bucket, 'EMPTY');
+  assert.equal(disabledState.displayTasks.length, 0);
 });

@@ -79,17 +79,14 @@ class CalendarSyncForegroundService : Service() {
     }
 
     /**
-     * Registra ContentObserver em tempo real tanto na Agenda (`CalendarContract.CONTENT_URI`)
-     * quanto no provedor nativo do Samsung Reminder (`content://com.samsung.android.app.reminder`),
-     * disparando sincronização com debounce de 2 segundos assim que um compromisso ou tarefa
-     * é criado, editado, concluído ou excluído.
+     * Registra ContentObserver em tempo real na Agenda (`CalendarContract.CONTENT_URI`),
+     * disparando sincronização com debounce quando um compromisso da agenda é criado, editado ou excluído.
      */
     private fun refreshCalendarAndTasksObservers() {
         val prefs = SyncPreferences(this)
         val shouldObserveCalendar = CalendarSyncEngine.hasCalendarPermission(this) && prefs.isAutoSyncOnCalendarChangeEnabled()
-        val shouldObserveTasks = prefs.isTasksSyncEnabled()
 
-        if (!shouldObserveCalendar && !shouldObserveTasks) {
+        if (!shouldObserveCalendar) {
             unregisterCalendarObserver()
             return
         }
@@ -104,60 +101,32 @@ class CalendarSyncForegroundService : Service() {
             override fun onChange(selfChange: Boolean, uri: android.net.Uri?) {
                 super.onChange(selfChange, uri)
                 val currentPrefs = SyncPreferences(this@CalendarSyncForegroundService)
-                if (!currentPrefs.isAutoSyncOnCalendarChangeEnabled() && !currentPrefs.isTasksSyncEnabled()) return
+                if (!currentPrefs.isAutoSyncOnCalendarChangeEnabled()) return
 
-                val isReminderUri = uri?.toString()?.contains("reminder", ignoreCase = true) == true
                 val debounceSec = currentPrefs.getChangeDebounceSeconds().coerceAtLeast(1)
                 debounceJob?.cancel()
                 debounceJob = serviceScope.launch {
                     delay(debounceSec * 1000L)
-                    val reason = if (isReminderUri) {
-                        "Alteração no Samsung Reminder (Tempo Real)"
-                    } else {
-                        "Alteração na Agenda / Tarefas (Tempo Real)"
-                    }
-                    triggerSync(reason)
+                    triggerSync("Alteração na Agenda (Tempo Real)")
                 }
             }
         }
         calendarAndTasksObserver = observer
 
-        if (shouldObserveCalendar || shouldObserveTasks) {
-            try {
-                contentResolver.registerContentObserver(
-                    CalendarContract.CONTENT_URI,
-                    true,
-                    observer
-                )
-            } catch (_: Exception) {
-            }
-        }
-
-        if (shouldObserveTasks) {
-            val reminderUris = listOf(
-                "content://com.samsung.android.app.reminder",
-                "content://com.samsung.android.app.reminder/open/reminder_time_view",
-                "content://com.samsung.android.app.reminder/open/reminder",
-                "content://com.google.android.apps.tasks"
+        try {
+            contentResolver.registerContentObserver(
+                CalendarContract.CONTENT_URI,
+                true,
+                observer
             )
-            for (uriStr in reminderUris) {
-                try {
-                    contentResolver.registerContentObserver(
-                        android.net.Uri.parse(uriStr),
-                        true,
-                        observer
-                    )
-                } catch (_: Exception) {
-                }
-            }
+        } catch (_: Exception) {
         }
     }
 
     /**
-     * Verificador leve em segundo plano (a cada 45 segundos) que compara a assinatura JSON
-     * das tarefas ativas (Samsung Reminder + Google Tasks). Caso alguma tarefa tenha sido
-     * criada, concluída ou sincronizada silenciosamente na nuvem sem emitir broadcast padrão,
-     * envia imediatamente a atualização ao relógio.
+     * Sincronizador periódico em segundo plano (a cada 45 segundos) com a Google Tasks REST API v1
+     * (`https://tasks.googleapis.com/tasks/v1/...`). Caso alguma tarefa tenha sido criada,
+     * concluída ou modificada na nuvem do Google Tasks, atualiza imediatamente o relógio.
      */
     private fun startTasksDiffWatchdogLoop() {
         if (taskWatchdogJob?.isActive == true) return
@@ -168,7 +137,7 @@ class CalendarSyncForegroundService : Service() {
                     val prefs = SyncPreferences(applicationContext)
                     if (!prefs.isBackgroundServiceEnabled() || !prefs.isTasksSyncEnabled()) continue
                     val prevJson = lastSyncedTasksSignature.ifBlank { prefs.getTasksJson() }
-                    val latestJson = CalendarSyncEngine.buildMergedTasksJsonForWatch(
+                    val latestJson = GoogleTasksApiClient.fetchTasksFromGoogleApi(
                         applicationContext,
                         prefs,
                         System.currentTimeMillis()
@@ -177,7 +146,7 @@ class CalendarSyncForegroundService : Service() {
                         lastSyncedTasksSignature = latestJson
                         CalendarSyncEngine.performFullSyncToWatch(
                             applicationContext,
-                            "Mudança Detectada nas Tarefas (Auto-Sync)"
+                            "Mudança Detectada no Google Tasks API (Auto-Sync)"
                         )
                     }
                 } catch (_: Exception) {

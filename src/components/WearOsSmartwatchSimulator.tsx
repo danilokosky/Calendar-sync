@@ -82,14 +82,11 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 
   const tasksList: TaskItem[] = config.tasks ?? DEFAULT_TASKS_LIST;
   const resolvedTasksState = resolveTasksCanvasState(tasksList, {
-    samsungReminderSyncEnabled:
-      watchCache.samsungReminderSyncEnabled ??
-      config.samsungReminderSyncEnabled ??
-      true,
     googleTasksSyncEnabled:
-      watchCache.googleTasksSyncEnabled ??
-      config.googleTasksSyncEnabled ??
-      true,
+      (watchCache.tasksSyncEnabled ?? config.tasksSyncEnabled ?? true) &&
+      (watchCache.googleTasksSyncEnabled ??
+        config.googleTasksSyncEnabled ??
+        true),
   });
   const activeTasksForWatch = resolvedTasksState.displayTasks;
 
@@ -195,7 +192,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
         const nextPending = tasksList.find((t) => !t.completed) ?? tasksList[0];
         return nextPending
           ? `${nextPending.sourceLabel}: ${nextPending.title} (${nextPending.dueHHMM})`
-          : 'Lembrete Samsung Reminder / Google Tasks';
+          : 'Sincronização Google Tasks API';
       }
       case 'WEATHER':
         return `${formatCompactWeatherLocation(config.weatherLocationName ?? 'São Paulo, SP')} • ${
@@ -439,7 +436,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               type="button"
               data-testid="watch-simulate-task-alert"
               onClick={handleSimulateTaskReminderAlert}
-              title="Simula um lembrete disparado pelo Samsung Reminder ou Google Tasks"
+              title="Simula foco prioritário de tarefa sincronizada via Google Tasks API"
               className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 border transition-colors cursor-pointer ${
                 config.hasActiveWatchTaskAlert
                   ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
@@ -449,8 +446,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               <CheckSquare className="w-3 h-3 text-emerald-400" />
               <span>
                 {config.hasActiveWatchTaskAlert
-                  ? 'Alerta Reminder/Tasks: ATIVO'
-                  : 'Simular Lembrete Tarefa'}
+                  ? 'Foco Google Tasks: ATIVO'
+                  : 'Simular Foco Tarefa'}
               </span>
             </button>
 
@@ -1215,9 +1212,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                               className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded shrink-0 ${
                                 task.isRedOverdue
                                   ? 'bg-red-500/25 text-red-300'
-                                  : task.sourceLabel === 'Reminder'
-                                  ? 'bg-sky-500/20 text-sky-300'
-                                  : 'bg-amber-500/20 text-amber-300'
+                                  : 'bg-sky-500/20 text-sky-300'
                               }`}
                             >
                               {task.sourceLabel}

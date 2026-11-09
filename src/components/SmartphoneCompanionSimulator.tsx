@@ -36,8 +36,16 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  RefreshCw,
   Lock,
 } from 'lucide-react';
+import {
+  signInWithGoogleTasks,
+  fetchGoogleTasksFromApi,
+  completeTaskInGoogleTasksApi,
+  getInMemoryGoogleTasksEmail,
+  getInMemoryGoogleTasksToken,
+} from '../services/googleTasksService';
 
 interface SmartphoneCompanionSimulatorProps {
   calendars: CalendarSource[];
@@ -163,10 +171,11 @@ export const SmartphoneCompanionSimulator: React.FC<
   const [draggedWidgetId, setDraggedWidgetId] =
     useState<PrimaryContextMode | null>(null);
 
-  // Modais
+  // Modais e Sincronização Google Tasks API
   const [isSyncedCalendarsDialogOpen, setIsSyncedCalendarsDialogOpen] =
     useState(false);
   const [isWeatherAppsDialogOpen, setIsWeatherAppsDialogOpen] = useState(false);
+  const [isSyncingGoogleTasksApi, setIsSyncingGoogleTasksApi] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newMinutesFromNow, setNewMinutesFromNow] = useState<number>(45);
 
@@ -347,22 +356,65 @@ export const SmartphoneCompanionSimulator: React.FC<
 
   const allTasks = config.tasks ?? DEFAULT_TASKS_LIST;
   const resolvedTasksState = resolveTasksCanvasState(allTasks, {
-    samsungReminderSyncEnabled: config.samsungReminderSyncEnabled ?? true,
-    googleTasksSyncEnabled: config.googleTasksSyncEnabled ?? true,
+    googleTasksSyncEnabled:
+      (config.tasksSyncEnabled ?? true) &&
+      (config.googleTasksSyncEnabled ?? true),
   });
   const activeTodayOrTimelessTasks = resolvedTasksState.displayTasks;
 
-  const handleCompleteTaskInWidget = (taskId: string, e: React.MouseEvent) => {
+  const handleConnectAndSyncGoogleTasksApi = async (forceAccountConsent = false) => {
+    if (isSyncingGoogleTasksApi) return;
+    setIsSyncingGoogleTasksApi(true);
+    try {
+      let token = getInMemoryGoogleTasksToken();
+      if (!token || forceAccountConsent) {
+        const authRes = await signInWithGoogleTasks();
+        token = authRes.accessToken;
+      }
+      const syncResult = await fetchGoogleTasksFromApi(token, Date.now());
+      onUpdateConfig({
+        tasksSyncEnabled: true,
+        googleTasksSyncEnabled: true,
+        tasks: syncResult.tasks,
+        googleTasksConnectedEmail: syncResult.accountEmail,
+        googleTasksLastSyncHHMM: syncResult.syncedAtHHMM,
+      });
+      showToast(
+        `Google Tasks API sincronizado (${syncResult.tasks.length} tarefas ativas).`
+      );
+      refreshConnectionAndStatus(true);
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Erro ao sincronizar com a Google Tasks API.';
+      showToast(msg);
+    } finally {
+      setIsSyncingGoogleTasksApi(false);
+    }
+  };
+
+  const handleCompleteTaskInWidget = async (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (isCustomizationLocked) {
       showLockedToast();
       return;
     }
+    const targetTask = allTasks.find((t) => t.id === taskId);
+    const nextCompleted = targetTask ? !targetTask.completed : true;
     const updated = allTasks.map((t) =>
-      t.id === taskId ? { ...t, completed: !t.completed } : t
+      t.id === taskId ? { ...t, completed: nextCompleted } : t
     );
     onUpdateConfig({ tasks: updated });
     refreshConnectionAndStatus(true);
+
+    if (targetTask?.googleTaskId && getInMemoryGoogleTasksToken()) {
+      try {
+        await completeTaskInGoogleTasksApi(targetTask, nextCompleted);
+      } catch {
+        // Caso o token tenha expirado, mantém estado local até próxima sincronização
+      }
+    }
   };
 
   // Resolve qual contexto a Watchface 1:1 no topo deve desenhar (idêntico ao relógio)
@@ -1874,10 +1926,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Sincronizar Tarefas
+                    Sincronizar Quadro de Tarefas (Google Tasks API)
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Captura direta da agenda do telefone
+                    Sincroniza Hoje, Amanhã, Sem data e Atrasadas via OAuth 2.0
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -1894,92 +1946,69 @@ export const SmartphoneCompanionSimulator: React.FC<
 
               {(config.tasksSyncEnabled ?? true) && (
                 <div className="space-y-2.5 pt-2 border-t border-white/5">
-                  <div
-                    data-testid="toggle-samsung-reminder-sync"
-                    onClick={() => {
-                      if (isCustomizationLocked) {
-                        showLockedToast();
-                        return;
-                      }
-                      onUpdateConfig({
-                        samsungReminderSyncEnabled: !(
-                          config.samsungReminderSyncEnabled ?? true
-                        ),
-                      });
-                    }}
-                    className="flex items-center justify-between gap-3 cursor-pointer"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-slate-100">
-                        Ler Samsung Reminder
-                      </div>
-                      <div className="text-[10.5px] text-slate-400">
-                        Lembretes integrados ao Calendário
-                      </div>
+                  <div className="rounded-xl bg-[#0B111A] border border-[#1E293B] px-3 py-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-sky-300">
+                        Integração Oficial Google Tasks REST API v1
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        OAuth 2.0
+                      </span>
                     </div>
-                    <ModernOneUiSwitch
-                      checked={config.samsungReminderSyncEnabled ?? true}
-                      ariaLabel="Ler Samsung Reminder"
-                      disabled={isCustomizationLocked}
-                      onChange={() =>
-                        onUpdateConfig({
-                          samsungReminderSyncEnabled: !(
-                            config.samsungReminderSyncEnabled ?? true
-                          ),
-                        })
-                      }
-                    />
+                    <div className="text-[10.5px] text-slate-300">
+                      Conta:{' '}
+                      <span className="font-mono text-white">
+                        {config.googleTasksConnectedEmail ||
+                          getInMemoryGoogleTasksEmail() ||
+                          'Não conectada (usando tarefas de demonstração)'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {config.googleTasksLastSyncHHMM
+                        ? `Última sincronização com tasks.googleapis.com às ${config.googleTasksLastSyncHHMM}`
+                        : 'Sem dependência de Acessibilidade ou notificações locais'}
+                    </div>
                   </div>
 
-                  <div
-                    data-testid="toggle-google-tasks-sync"
-                    onClick={() => {
-                      if (isCustomizationLocked) {
-                        showLockedToast();
-                        return;
-                      }
-                      onUpdateConfig({
-                        googleTasksSyncEnabled: !(
-                          config.googleTasksSyncEnabled ?? true
-                        ),
-                      });
-                    }}
-                    className="flex items-center justify-between gap-3 cursor-pointer"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-slate-100">
-                        Ler Tarefas do Google (Google Tasks)
-                      </div>
-                      <div className="text-[10.5px] text-slate-400">
-                        Tarefas sincronizadas na agenda
-                      </div>
-                    </div>
-                    <ModernOneUiSwitch
-                      checked={config.googleTasksSyncEnabled ?? true}
-                      ariaLabel="Ler Tarefas do Google"
-                      disabled={isCustomizationLocked}
-                      onChange={() =>
-                        onUpdateConfig({
-                          googleTasksSyncEnabled: !(
-                            config.googleTasksSyncEnabled ?? true
-                          ),
-                        })
-                      }
-                    />
-                  </div>
-
-                  {(config.googleTasksSyncEnabled ?? true) && (
-                    <a
-                      href="https://play.google.com/store/apps/details?id=com.google.android.apps.tasks"
-                      target="_blank"
-                      rel="noreferrer"
-                      data-testid="install-google-tasks-btn"
-                      className="w-full py-2 px-3 rounded-xl border border-[#3E5245] bg-[#1E2621] hover:bg-[#27322B] text-xs font-semibold text-sky-300 flex items-center justify-center gap-1.5 cursor-pointer"
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      data-testid="connect-google-tasks-oauth-btn"
+                      disabled={isSyncingGoogleTasksApi}
+                      onClick={() => handleConnectAndSyncGoogleTasksApi(true)}
+                      className="flex-1 py-2 px-3 rounded-xl border border-[#38BDF8]/50 bg-[#0F172A] hover:bg-[#1E293B] text-xs font-semibold text-sky-200 flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-50"
                     >
-                      <span>Instalar Google Tasks</span>
-                      <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
-                    </a>
-                  )}
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 text-sky-400 ${
+                          isSyncingGoogleTasksApi ? 'animate-spin' : ''
+                        }`}
+                      />
+                      <span>
+                        {isSyncingGoogleTasksApi
+                          ? 'Sincronizando Google Tasks...'
+                          : config.googleTasksConnectedEmail
+                          ? 'Trocar Conta / Reautorizar Google Tasks'
+                          : 'Conectar Conta Google Tasks (OAuth)'}
+                      </span>
+                    </button>
+
+                    {config.googleTasksConnectedEmail && (
+                      <button
+                        type="button"
+                        data-testid="sync-google-tasks-now-btn"
+                        disabled={isSyncingGoogleTasksApi}
+                        onClick={() => handleConnectAndSyncGoogleTasksApi(false)}
+                        className="py-2 px-3 rounded-xl border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-xs font-semibold text-emerald-200 flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${
+                            isSyncingGoogleTasksApi ? 'animate-spin' : ''
+                          }`}
+                        />
+                        <span>Atualizar Agora</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

@@ -41,9 +41,11 @@ export const MAX_PAST_TASK_AGE_MS = MAX_PAST_TASK_AGE_DAYS * 24 * 60 * 60 * 1000
 
 export interface TaskItem {
   id: string;
+  googleTaskId?: string;
+  googleTaskListId?: string;
   title: string;
   dueHHMM: string;
-  sourceLabel: 'Reminder' | 'Tasks';
+  sourceLabel: 'Tasks';
   completed: boolean;
   scheduleCategory?: TaskScheduleCategory;
   isOverdue?: boolean;
@@ -72,7 +74,7 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     id: 't1',
     title: 'fazer almoço',
     dueHHMM: '12:30',
-    sourceLabel: 'Reminder',
+    sourceLabel: 'Tasks',
     completed: false,
     scheduleCategory: 'TODAY',
     isTodayOrTimeless: true,
@@ -80,8 +82,8 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
   {
     id: 't2',
     title: 'Fazer almoço',
-    dueHHMM: '13:00',
-    sourceLabel: 'Reminder',
+    dueHHMM: '18:00',
+    sourceLabel: 'Tasks',
     completed: false,
     scheduleCategory: 'TODAY',
     isTodayOrTimeless: true,
@@ -90,7 +92,7 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     id: 't3',
     title: 'Apresentar protótipo Wear OS',
     dueHHMM: '10:00',
-    sourceLabel: 'Reminder',
+    sourceLabel: 'Tasks',
     completed: false,
     scheduleCategory: 'TOMORROW',
     isTodayOrTimeless: true,
@@ -108,7 +110,7 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     id: 't5',
     title: 'Pagar fatura do cartão corporativo',
     dueHHMM: '',
-    sourceLabel: 'Reminder',
+    sourceLabel: 'Tasks',
     completed: false,
     scheduleCategory: 'OVERDUE',
     isOverdue: true,
@@ -128,7 +130,7 @@ export const DEFAULT_TASKS_LIST: TaskItem[] = [
     id: 't7',
     title: 'Tratar a água',
     dueHHMM: '09:00',
-    sourceLabel: 'Reminder',
+    sourceLabel: 'Tasks',
     completed: true,
     scheduleCategory: 'OVERDUE',
     isTodayOrTimeless: true,
@@ -167,7 +169,7 @@ export function inferTaskScheduleCategory(task: TaskItem): TaskScheduleCategory 
 }
 
 /**
- * Resolve estritamente qual grupo de tarefas NÃO concluídas deve aparecer no Canvas do relógio e do smartphone:
+ * Resolve estritamente qual grupo de tarefas NÃO concluídas do Google Tasks API deve aparecer no Canvas do relógio e do smartphone:
  * 1. Somente atividades agendadas para HOJE (com hora HH:mm e check de não feito).
  * 2. Se NÃO houver atividades agendadas para hoje, apresenta as atividades agendadas para AMANHÃ (com hora HH:mm e check de não feito).
  * 3. Se NÃO houver atividades para hoje nem para amanhã, apresenta as atividades SEM DATA DEFINIDA e as ATRASADAS (com no máximo 30 dias):
@@ -176,7 +178,6 @@ export function inferTaskScheduleCategory(task: TaskItem): TaskScheduleCategory 
  *    - Em atraso (<= 30 dias): NÃO apresenta data nem hora, apenas o check de não feito + título em VERMELHO.
  */
 export interface TasksSourceFilterOptions {
-  samsungReminderSyncEnabled?: boolean;
   googleTasksSyncEnabled?: boolean;
   referenceNowMs?: number;
 }
@@ -185,15 +186,23 @@ export function resolveTasksCanvasState(
   tasks: TaskItem[],
   sourceFilter?: TasksSourceFilterOptions
 ): ResolvedTasksCanvasState {
-  const allowReminder = sourceFilter?.samsungReminderSyncEnabled ?? true;
   const allowGoogleTasks = sourceFilter?.googleTasksSyncEnabled ?? true;
   const nowMs = sourceFilter?.referenceNowMs ?? Date.now();
   const maxPastCutoffMs = nowMs - MAX_PAST_TASK_AGE_MS;
 
+  if (!allowGoogleTasks) {
+    return {
+      headerTitle: 'Tarefas • Hoje',
+      rightBadgeText: '0 ativas',
+      bucket: 'EMPTY',
+      showTime: false,
+      displayTasks: [],
+      totalActiveCount: 0,
+    };
+  }
+
   const uncompleted = tasks.filter((t) => {
     if (t.completed || !(t.isTodayOrTimeless ?? true)) return false;
-    if (t.sourceLabel === 'Reminder' && !allowReminder) return false;
-    if (t.sourceLabel === 'Tasks' && !allowGoogleTasks) return false;
     // Regra de corte de 1 mês (30 dias): tarefas com mais de 30 dias no passado são descartadas
     if (typeof t.ageDays === 'number' && t.ageDays > MAX_PAST_TASK_AGE_DAYS) {
       return false;
@@ -383,8 +392,9 @@ export interface SyncConfiguration {
   sleepBedtimeHHMM?: string;
   sleepWakeHHMM?: string;
   tasksSyncEnabled?: boolean;
-  samsungReminderSyncEnabled?: boolean;
   googleTasksSyncEnabled?: boolean;
+  googleTasksConnectedEmail?: string;
+  googleTasksLastSyncHHMM?: string;
   tasks?: TaskItem[];
   hasActiveWatchTaskAlert?: boolean;
   autoFallbackAgendaToTasks?: boolean;
@@ -414,7 +424,6 @@ export interface WatchCacheState {
   hasActiveWatchWeatherAlert?: boolean;
   hasActiveWatchTaskAlert?: boolean;
   tasksSyncEnabled?: boolean;
-  samsungReminderSyncEnabled?: boolean;
   googleTasksSyncEnabled?: boolean;
   tasks?: TaskItem[];
   autoFallbackAgendaToTasks?: boolean;
@@ -881,8 +890,8 @@ export function evaluateWatchAutonomousState(
 
   const tasksList = cache.tasks ?? DEFAULT_TASKS_LIST;
   const pendingTasksCount = filterActiveTasksForWatch(tasksList, {
-    samsungReminderSyncEnabled: cache.samsungReminderSyncEnabled ?? true,
-    googleTasksSyncEnabled: cache.googleTasksSyncEnabled ?? true,
+    googleTasksSyncEnabled:
+      (cache.tasksSyncEnabled ?? true) && (cache.googleTasksSyncEnabled ?? true),
   }).length;
 
   const d = new Date(currentWatchTimeMs);
