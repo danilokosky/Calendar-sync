@@ -5,8 +5,7 @@
     <!-- Garante compilação estrita apenas para Wear OS (não híbrido), exigindo hardware de relógio -->
     <uses-feature
         android:name="android.hardware.type.watch"
-        android:required="true"
-        tools:replace="android:required" />
+        android:required="true" />
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />

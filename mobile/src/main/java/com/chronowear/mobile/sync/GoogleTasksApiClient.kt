@@ -42,6 +42,9 @@ object GoogleTasksApiClient {
      * Descobre automaticamente o e-mail da conta Google já usada na Agenda do aparelho
      * caso o usuário ainda não tenha selecionado manualmente uma conta para o Google Tasks.
      */
+    fun resolveDefaultAccountEmail(context: Context, prefs: SyncPreferences): String =
+        resolveDefaultGoogleAccountEmail(context, prefs)
+
     fun resolveDefaultGoogleAccountEmail(context: Context, prefs: SyncPreferences): String {
         val saved = prefs.getGoogleTasksAccountEmail().trim()
         if (saved.isNotBlank()) return saved

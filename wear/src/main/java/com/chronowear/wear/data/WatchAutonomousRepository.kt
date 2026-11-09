@@ -355,6 +355,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun getPhoneRenderedCardBase64IfFresh(nowMs: Long, maxAgeMs: Long = 90_000L): String? {
         // Desativado: o relógio sempre renderiza o Canvas dinamicamente a partir do cache local
         // para que o temporizador, a barra de progresso e a lista de compromissos avancem a cada minuto
