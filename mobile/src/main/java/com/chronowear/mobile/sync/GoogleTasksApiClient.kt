@@ -39,12 +39,18 @@ object GoogleTasksApiClient {
 
     const val SCOPE_TASKS = "https://www.googleapis.com/auth/tasks"
     const val SCOPE_TASKS_READONLY = "https://www.googleapis.com/auth/tasks.readonly"
-    const val OAUTH_SCOPE_STRING = "oauth2:$SCOPE_TASKS $SCOPE_TASKS_READONLY"
+    const val OAUTH_SCOPE_STRING = "oauth2:$SCOPE_TASKS_READONLY"
     const val WEB_OAUTH_CLIENT_ID = "65152854911-1gc862g8m5f7905c3q54n365cecuthha.apps.googleusercontent.com"
-    const val DEFAULT_FIXED_DEBUG_SHA1 = "EC:66:EE:98:17:74:F1:C2:B2:10:D7:1D:19:0E:02:8D:F3:98:4D:71"
-    const val DEFAULT_FIXED_DEBUG_SHA1_COMPACT = "EC66EE981774F1C2B210D71D190E028DF3984D71"
+    const val WEB_OAUTH_BRIDGE_URL = "https://ais-pre-oqjqgoy2qz5dddeptmpix4-891503228385.us-east1.run.app/?android_oauth=1"
+    const val DEFAULT_FIXED_DEBUG_SHA1 = "36:5A:73:0F:FE:B0:A3:01:74:3F:E5:77:FE:A8:D3:42:2B:6E:E4:B6"
+    const val DEFAULT_FIXED_DEBUG_SHA1_COMPACT = "365A730FFEB0A301743FE577FEA8D3422B6EE4B6"
     const val ANDROID_PACKAGE_NAME = "com.chronowear.sync"
     const val CLOUD_CONSOLE_PROJECT_ID = "gen-lang-client-0127839135"
+
+    private val authLock = Any()
+
+    @Volatile
+    var isInteractiveConsentInProgress: Boolean = false
 
     @Volatile
     var pendingConsentIntent: Intent? = null
@@ -124,19 +130,56 @@ object GoogleTasksApiClient {
 
     /**
      * Obtém um Access Token OAuth 2.0 válido para a API do Google Tasks.
+     * Importante: chamadas em 2º plano (`allowInteractivePrompt = false`) NUNCA invocam
+     * `GoogleAuthUtil.getToken` enquanto uma janela de consentimento está aberta ou antes da
+     * autorização inicial do usuário, evitando travamento (deadlock) do Google Play Services.
      */
     fun acquireAccessToken(
         context: Context,
         prefs: SyncPreferences,
-        explicitEmail: String? = null
+        explicitEmail: String? = null,
+        allowInteractivePrompt: Boolean = false
     ): GoogleTasksAuthResult {
         val email = (explicitEmail ?: resolveDefaultGoogleAccountEmail(context, prefs)).trim()
-        if (email.isNotBlank()) {
+        val cachedToken = prefs.getGoogleTasksAccessToken().trim()
+
+        // Fast-path: se já possuímos um Access Token salvo (via OAuth nativo, GIS ou ponte Chrome),
+        // retornamos imediatamente sem abrir IPC concorrente no Google Play Services.
+        if (cachedToken.isNotBlank()) {
+            return GoogleTasksAuthResult.Authorized(
+                cachedToken,
+                email.ifBlank { "Conta Google" }
+            )
+        }
+
+        // Se uma janela de login do Google Play Services já está aberta ou se esta chamada
+        // veio de um serviço em 2º plano sem token prévio, não dispare GoogleAuthUtil.getToken!
+        if (isInteractiveConsentInProgress || !allowInteractivePrompt) {
+            return GoogleTasksAuthResult.Error(
+                if (isInteractiveConsentInProgress) {
+                    "Conclua a autorização na janela do Google ou use 'Autenticar via Chrome'"
+                } else {
+                    "Toque em 'Conectar Conta Google Tasks' ou 'Autenticar via Chrome'"
+                }
+            )
+        }
+
+        if (email.isBlank()) {
+            return GoogleTasksAuthResult.Error("Nenhuma conta Google selecionada para o Google Tasks")
+        }
+
+        synchronized(authLock) {
+            val recheckCached = prefs.getGoogleTasksAccessToken().trim()
+            if (recheckCached.isNotBlank()) {
+                return GoogleTasksAuthResult.Authorized(recheckCached, email)
+            }
+
             try {
                 val account = Account(email, "com.google")
                 val token = GoogleAuthUtil.getToken(context, account, OAUTH_SCOPE_STRING)
                 if (!token.isNullOrBlank()) {
                     pendingConsentIntent = null
+                    isInteractiveConsentInProgress = false
                     prefs.setGoogleTasksAccountEmail(email)
                     prefs.setGoogleTasksAccessToken(token)
                     return GoogleTasksAuthResult.Authorized(token, email)
@@ -150,10 +193,6 @@ object GoogleTasksApiClient {
                     return GoogleTasksAuthResult.NeedsUserConsent(intent, email)
                 }
             } catch (e: Exception) {
-                val cachedToken = prefs.getGoogleTasksAccessToken()
-                if (cachedToken.isNotBlank()) {
-                    return GoogleTasksAuthResult.Authorized(cachedToken, email)
-                }
                 val rawMsg = (e.message ?: e.localizedMessage ?: "").trim()
                 if (
                     rawMsg.contains("UnregisteredOnApiConsole", ignoreCase = true) ||
@@ -178,11 +217,6 @@ object GoogleTasksApiClient {
             }
         }
 
-        val cachedToken = prefs.getGoogleTasksAccessToken()
-        if (cachedToken.isNotBlank()) {
-            return GoogleTasksAuthResult.Authorized(cachedToken, email.ifBlank { "Conta Google" })
-        }
-
         return GoogleTasksAuthResult.Error("Nenhuma conta Google conectada ao Google Tasks")
     }
 
@@ -203,11 +237,19 @@ object GoogleTasksApiClient {
             return "[]"
         }
 
-        val authResult = acquireAccessToken(context, prefs)
+        if (isInteractiveConsentInProgress) {
+            return prefs.getTasksJson()
+        }
+
+        val authResult = acquireAccessToken(
+            context = context,
+            prefs = prefs,
+            allowInteractivePrompt = false
+        )
         val (initialToken, accountEmail) = when (authResult) {
             is GoogleTasksAuthResult.Authorized -> authResult.accessToken to authResult.accountEmail
             is GoogleTasksAuthResult.NeedsUserConsent -> {
-                prefs.setGoogleTasksSyncStatus("Toque em 'Autorizar Google Tasks' para liberar acesso à API")
+                prefs.setGoogleTasksSyncStatus("Toque em 'Conectar Conta Google Tasks' para liberar acesso")
                 return prefs.getTasksJson()
             }
             is GoogleTasksAuthResult.UnregisteredOnConsole -> {
@@ -224,34 +266,47 @@ object GoogleTasksApiClient {
 
         var activeToken = initialToken
         var listsResponse = executeGetRequest(
+            context,
             "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=20",
             activeToken
         )
 
-        // Se o token expirou (HTTP 401), limpa o token em cache no Google Play Services e renova 1 vez
-        if (listsResponse.first == 401 && accountEmail.contains("@")) {
-            try {
-                GoogleAuthUtil.clearToken(context, activeToken)
-                val refreshed = GoogleAuthUtil.getToken(
-                    context,
-                    Account(accountEmail, "com.google"),
-                    OAUTH_SCOPE_STRING
-                )
-                if (!refreshed.isNullOrBlank()) {
-                    activeToken = refreshed
-                    prefs.setGoogleTasksAccessToken(activeToken)
-                    listsResponse = executeGetRequest(
-                        "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=20",
-                        activeToken
-                    )
+        // Se o token expirou (HTTP 401), limpa o token em cache e tenta renovar silenciosamente 1 vez
+        if (listsResponse.first == 401) {
+            prefs.setGoogleTasksAccessToken("")
+            if (!isInteractiveConsentInProgress && accountEmail.contains("@")) {
+                try {
+                    GoogleAuthUtil.clearToken(context, activeToken)
+                    val refreshed = synchronized(authLock) {
+                        GoogleAuthUtil.getToken(
+                            context,
+                            Account(accountEmail, "com.google"),
+                            OAUTH_SCOPE_STRING
+                        )
+                    }
+                    if (!refreshed.isNullOrBlank()) {
+                        activeToken = refreshed
+                        prefs.setGoogleTasksAccessToken(activeToken)
+                        listsResponse = executeGetRequest(
+                            context,
+                            "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=20",
+                            activeToken
+                        )
+                    }
+                } catch (_: Exception) {
                 }
-            } catch (_: Exception) {
             }
         }
 
         val (statusCode, listsBody) = listsResponse
         if (statusCode != 200 || listsBody.isBlank()) {
-            prefs.setGoogleTasksSyncStatus("Erro HTTP $statusCode ao consultar Google Tasks API")
+            prefs.setGoogleTasksSyncStatus(
+                if (statusCode == 401) {
+                    "Sessão expirada — toque em 'Conectar Conta Google Tasks' ou 'Autenticar via Chrome'"
+                } else {
+                    "Erro HTTP $statusCode ao consultar Google Tasks API"
+                }
+            )
             return prefs.getTasksJson()
         }
 
@@ -277,7 +332,7 @@ object GoogleTasksApiClient {
                 val encodedListId = URLEncoder.encode(listId, "UTF-8")
                 val tasksUrl = "https://tasks.googleapis.com/tasks/v1/lists/$encodedListId/tasks" +
                     "?showCompleted=false&showHidden=false&showDeleted=false&maxResults=100"
-                val (tCode, tBody) = executeGetRequest(tasksUrl, activeToken)
+                val (tCode, tBody) = executeGetRequest(context, tasksUrl, activeToken)
                 if (tCode != 200 || tBody.isBlank()) continue
 
                 val tasksRoot = JSONObject(tBody)
@@ -435,17 +490,24 @@ object GoogleTasksApiClient {
         }
     }
 
-    private fun executeGetRequest(urlStr: String, accessToken: String): Pair<Int, String> {
+    private fun executeGetRequest(
+        context: Context,
+        urlStr: String,
+        accessToken: String
+    ): Pair<Int, String> {
         var conn: HttpURLConnection? = null
         return try {
+            val liveSha1Compact = getAppSignatureSha1(context).replace(":", "").ifBlank {
+                DEFAULT_FIXED_DEBUG_SHA1_COMPACT
+            }
             conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 6000
                 readTimeout = 6000
                 setRequestProperty("Authorization", "Bearer $accessToken")
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("X-Android-Package", ANDROID_PACKAGE_NAME)
-                setRequestProperty("X-Android-Cert", DEFAULT_FIXED_DEBUG_SHA1_COMPACT)
+                setRequestProperty("X-Android-Package", context.packageName)
+                setRequestProperty("X-Android-Cert", liveSha1Compact)
             }
             val code = conn.responseCode
             val body = if (code in 200..299) {

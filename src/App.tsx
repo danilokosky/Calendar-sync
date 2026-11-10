@@ -16,7 +16,8 @@ import { SmartphoneCompanionSimulator } from './components/SmartphoneCompanionSi
 import { WearOsSmartwatchSimulator } from './components/WearOsSmartwatchSimulator';
 import { AndroidCodeRepositoryExplorer } from './components/AndroidCodeRepositoryExplorer';
 import { downloadAndroidRepoZip } from './utils/exportProjectZip';
-import { Download } from 'lucide-react';
+import { signInWithGoogleTasks } from './services/googleTasksService';
+import { Download, KeyRound, Copy, Check, ExternalLink } from 'lucide-react';
 
 // Base simulated reference time: 09:00 local time
 const INITIAL_BASE_TIME_MS = new Date(2026, 10, 5, 9, 0, 0).getTime();
@@ -344,6 +345,50 @@ export default function App() {
     downloadAndroidRepoZip(config, calendars);
   };
 
+  const [bridgeToken, setBridgeToken] = useState<string>('');
+  const [bridgeEmail, setBridgeEmail] = useState<string>('');
+  const [bridgeLoading, setBridgeLoading] = useState<boolean>(false);
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [bridgeCopied, setBridgeCopied] = useState<boolean>(false);
+
+  const handleAuthenticateAndroidBridge = async () => {
+    setBridgeLoading(true);
+    setBridgeError(null);
+    try {
+      const { accessToken, user } = await signInWithGoogleTasks();
+      const email = user.email || '';
+      setBridgeToken(accessToken);
+      setBridgeEmail(email);
+
+      // Se foi aberto com ?android_oauth=1 pelo app Android, dispara automaticamente o deep link de retorno
+      if (window.location.search.includes('android_oauth=1')) {
+        const deepLink = `chronowear://oauth2redirect?access_token=${encodeURIComponent(
+          accessToken
+        )}&email=${encodeURIComponent(email)}`;
+        window.location.href = deepLink;
+      }
+    } catch (err) {
+      setBridgeError(
+        err instanceof Error
+          ? err.message
+          : 'Erro ao autenticar no Google Tasks pelo navegador.'
+      );
+    } finally {
+      setBridgeLoading(false);
+    }
+  };
+
+  const handleCopyBridgeToken = async () => {
+    if (!bridgeToken) return;
+    try {
+      await navigator.clipboard.writeText(bridgeToken);
+      setBridgeCopied(true);
+      setTimeout(() => setBridgeCopied(false), 2500);
+    } catch {
+      // Fallback
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col">
       {/* Top Bar Contract: 3 zones separated by gap-8 */}
@@ -395,6 +440,84 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl w-full mx-auto px-6 py-5 space-y-8 flex-1">
+        {/* Ponte OAuth 2.0 Chrome -> App Android ChronoWear */}
+        <section className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                <KeyRound className="w-4 h-4" />
+                <span>
+                  PONTE OAUTH 2.0 CHROME → APP ANDROID (CONTORNO DE TRAVAMENTO DO PLAY SERVICES / APROVAÇÃO DA FAMÍLIA)
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Se a janela interna do Google Play Services (<em>&quot;Aprovação da família&quot;</em>) parar de responder no Android, autentique aqui pelo Chrome. Você pode enviar direto para o app Android ou copiar o Access Token (<code className="text-amber-300">ya29...</code>) e colar no botão <strong>&quot;Configurar SHA-1 / Credencial Android&quot;</strong> do app já instalado no celular.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAuthenticateAndroidBridge}
+              disabled={bridgeLoading}
+              className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              {bridgeLoading
+                ? 'Autenticando no Google...'
+                : 'Gerar Token OAuth 2.0 para o App Android'}
+            </button>
+          </div>
+
+          {bridgeError && (
+            <div className="text-xs text-rose-300 bg-rose-950/50 border border-rose-500/30 rounded-lg px-3 py-2">
+              {bridgeError}
+            </div>
+          )}
+
+          {bridgeToken && (
+            <div className="bg-slate-950/90 border border-emerald-500/40 rounded-lg p-3 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-emerald-300 font-medium">
+                  Token gerado para: <strong>{bridgeEmail || 'Conta Google'}</strong>
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyBridgeToken}
+                    className="px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {bridgeCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Token Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>1. Copiar Access Token (ya29...)</span>
+                      </>
+                    )}
+                  </button>
+                  <a
+                    href={`chronowear://oauth2redirect?access_token=${encodeURIComponent(
+                      bridgeToken
+                    )}&email=${encodeURIComponent(bridgeEmail)}`}
+                    className="px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Abrir Direto no App Android</span>
+                  </a>
+                </div>
+              </div>
+              <input
+                type="text"
+                readOnly
+                value={bridgeToken}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-[11px] font-mono text-amber-300"
+              />
+            </div>
+          )}
+        </section>
+
         {/* Intro & Architectural Summary */}
         <section className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
           <div className="max-w-3xl space-y-1">

@@ -1,6 +1,7 @@
 package com.chronowear.mobile.ui
 
 import android.Manifest
+import android.accounts.Account
 import android.accounts.AccountManager
 import android.animation.ValueAnimator
 import android.app.Activity
@@ -60,7 +61,10 @@ import com.chronowear.mobile.sync.SyncPreferences
 import com.chronowear.mobile.sync.WearConnectionReport
 import com.chronowear.mobile.sync.WearConnectionState
 import com.chronowear.mobile.sync.WeatherTriggerAppOption
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.AccountPicker
+import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -197,7 +201,33 @@ class MobileSyncConfigActivity : Activity() {
         }
 
         ensureDefaultCalendarsSelectedIfPermitted()
+        handleIncomingOAuthDeepLink(intent)
         refreshUiState(checkRemoteConnection = true)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingOAuthDeepLink(intent)
+    }
+
+    private fun handleIncomingOAuthDeepLink(incomingIntent: Intent?) {
+        val uri = incomingIntent?.data ?: return
+        if (uri.scheme == "chronowear" && uri.host == "oauth2redirect") {
+            GoogleTasksApiClient.isInteractiveConsentInProgress = false
+            val token = uri.getQueryParameter("access_token")?.trim().orEmpty()
+            val email = uri.getQueryParameter("email")?.trim().orEmpty()
+            if (token.isNotBlank()) {
+                if (email.isNotBlank()) {
+                    prefs.setGoogleTasksAccountEmail(email)
+                }
+                prefs.setGoogleTasksAccessToken(token)
+                prefs.setTasksSyncEnabled(true)
+                prefs.setGoogleTasksSyncStatus("Conectado via Google Chrome • sincronizando tarefas...")
+                completeAuthorizedTasksSync()
+                incomingIntent.data = null
+            }
+        }
     }
 
     override fun onResume() {
@@ -205,13 +235,15 @@ class MobileSyncConfigActivity : Activity() {
         clockHandler.removeCallbacks(liveClockRunnable)
         clockHandler.post(liveClockRunnable)
         ensureDefaultCalendarsSelectedIfPermitted()
-        refreshUiState(checkRemoteConnection = true)
+        if (!GoogleTasksApiClient.isInteractiveConsentInProgress) {
+            refreshUiState(checkRemoteConnection = true)
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            refreshUiState(checkRemoteConnection = true)
+        if (hasFocus && !GoogleTasksApiClient.isInteractiveConsentInProgress) {
+            refreshUiState(checkRemoteConnection = false)
         }
     }
 
@@ -249,20 +281,47 @@ class MobileSyncConfigActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             REQUEST_CODE_PICK_GOOGLE_ACCOUNT -> {
+                GoogleTasksApiClient.isInteractiveConsentInProgress = false
                 if (resultCode == RESULT_OK && data != null) {
                     val email = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)?.trim().orEmpty()
                     if (email.isNotBlank()) {
                         prefs.setGoogleTasksAccountEmail(email)
+                        prefs.setGoogleTasksAccessToken("")
                         authorizeAndSyncGoogleTasks(email)
                     }
                 }
             }
-            REQUEST_CODE_GOOGLE_TASKS_CONSENT -> {
+            REQUEST_CODE_GIS_AUTH -> {
+                GoogleTasksApiClient.isInteractiveConsentInProgress = false
+                try {
+                    val gisResult = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data)
+                    val token = gisResult.accessToken?.trim().orEmpty()
+                    if (token.isNotBlank()) {
+                        prefs.setGoogleTasksAccessToken(token)
+                        completeAuthorizedTasksSync()
+                        return
+                    }
+                } catch (_: Exception) {
+                }
                 if (resultCode == RESULT_OK) {
                     val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
-                    authorizeAndSyncGoogleTasks(email)
+                    fallbackLegacyGoogleAuthUtil(email)
                 } else {
-                    prefs.setGoogleTasksSyncStatus("Permissão OAuth2 do Google Tasks recusada pelo usuário")
+                    prefs.setGoogleTasksSyncStatus(
+                        "Autorização interrompida — toque em 'Autenticar via Chrome' se a janela do Google travar"
+                    )
+                    refreshUiState(checkRemoteConnection = false)
+                }
+            }
+            REQUEST_CODE_GOOGLE_TASKS_CONSENT -> {
+                GoogleTasksApiClient.isInteractiveConsentInProgress = false
+                if (resultCode == RESULT_OK) {
+                    val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+                    fallbackLegacyGoogleAuthUtil(email)
+                } else {
+                    prefs.setGoogleTasksSyncStatus(
+                        "Permissão OAuth2 pendente — se a janela do Google travar, use 'Autenticar via Chrome'"
+                    )
                     refreshUiState(checkRemoteConnection = false)
                 }
             }
@@ -271,6 +330,7 @@ class MobileSyncConfigActivity : Activity() {
 
     private fun startGoogleTasksAccountPicker() {
         try {
+            GoogleTasksApiClient.isInteractiveConsentInProgress = true
             @Suppress("DEPRECATION")
             val intent = AccountPicker.newChooseAccountIntent(
                 null,
@@ -285,6 +345,7 @@ class MobileSyncConfigActivity : Activity() {
             @Suppress("DEPRECATION")
             startActivityForResult(intent, REQUEST_CODE_PICK_GOOGLE_ACCOUNT)
         } catch (_: Exception) {
+            GoogleTasksApiClient.isInteractiveConsentInProgress = false
             val fallbackEmail = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
             if (fallbackEmail.isNotBlank()) {
                 authorizeAndSyncGoogleTasks(fallbackEmail)
@@ -294,38 +355,120 @@ class MobileSyncConfigActivity : Activity() {
         }
     }
 
-    private fun authorizeAndSyncGoogleTasks(accountEmail: String) {
+    private fun openChromeOAuthBridge() {
+        try {
+            GoogleTasksApiClient.isInteractiveConsentInProgress = false
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GoogleTasksApiClient.WEB_OAUTH_BRIDGE_URL)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            showStatusToast("Abrindo autorização Google Tasks no navegador...")
+        } catch (_: Exception) {
+            showStatusToast("Não foi possível abrir o navegador.")
+        }
+    }
+
+    private fun completeAuthorizedTasksSync() {
         uiScope.launch {
-            showStatusToast("Conectando ao Google Tasks API...")
+            withContext(Dispatchers.IO) {
+                GoogleTasksApiClient.fetchTasksFromGoogleApi(
+                    this@MobileSyncConfigActivity,
+                    prefs,
+                    System.currentTimeMillis()
+                )
+                CalendarSyncEngine.performFullSyncToWatch(
+                    this@MobileSyncConfigActivity,
+                    "Google Tasks API Conectado"
+                )
+            }
+            cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
+            refreshUiState(checkRemoteConnection = false)
+            showStatusToast("Tarefas sincronizadas via Google Tasks API (${cachedTasks.size} ativas).")
+        }
+    }
+
+    private fun authorizeAndSyncGoogleTasks(accountEmail: String) {
+        val cleanEmail = accountEmail.trim()
+        if (cleanEmail.isNotBlank()) {
+            prefs.setGoogleTasksAccountEmail(cleanEmail)
+        }
+
+        // Se já temos um token válido em cache, sincroniza direto sem reabrir janelas do Play Services
+        if (prefs.getGoogleTasksAccessToken().isNotBlank()) {
+            completeAuthorizedTasksSync()
+            return
+        }
+
+        showStatusToast("Conectando ao Google Tasks API...")
+        GoogleTasksApiClient.isInteractiveConsentInProgress = true
+
+        try {
+            val reqBuilder = AuthorizationRequest.builder()
+                .setRequestedScopes(listOf(Scope(GoogleTasksApiClient.SCOPE_TASKS_READONLY)))
+            if (cleanEmail.contains("@")) {
+                reqBuilder.setAccount(Account(cleanEmail, "com.google"))
+            }
+            Identity.getAuthorizationClient(this)
+                .authorize(reqBuilder.build())
+                .addOnSuccessListener { result ->
+                    if (result.hasResolution()) {
+                        val pendingIntent = result.pendingIntent
+                        if (pendingIntent != null) {
+                            try {
+                                @Suppress("DEPRECATION")
+                                startIntentSenderForResult(
+                                    pendingIntent.intentSender,
+                                    REQUEST_CODE_GIS_AUTH,
+                                    null,
+                                    0,
+                                    0,
+                                    0,
+                                    null
+                                )
+                                return@addOnSuccessListener
+                            } catch (_: Exception) {
+                            }
+                        }
+                    }
+                    val token = result.accessToken?.trim().orEmpty()
+                    if (token.isNotBlank()) {
+                        GoogleTasksApiClient.isInteractiveConsentInProgress = false
+                        prefs.setGoogleTasksAccessToken(token)
+                        completeAuthorizedTasksSync()
+                    } else {
+                        fallbackLegacyGoogleAuthUtil(cleanEmail)
+                    }
+                }
+                .addOnFailureListener {
+                    fallbackLegacyGoogleAuthUtil(cleanEmail)
+                }
+        } catch (_: Exception) {
+            fallbackLegacyGoogleAuthUtil(cleanEmail)
+        }
+    }
+
+    private fun fallbackLegacyGoogleAuthUtil(accountEmail: String) {
+        uiScope.launch {
+            GoogleTasksApiClient.isInteractiveConsentInProgress = false
             val authResult = withContext(Dispatchers.IO) {
                 GoogleTasksApiClient.acquireAccessToken(
                     context = this@MobileSyncConfigActivity,
                     prefs = prefs,
-                    explicitEmail = accountEmail
+                    explicitEmail = accountEmail,
+                    allowInteractivePrompt = true
                 )
             }
             when (authResult) {
                 is GoogleTasksAuthResult.Authorized -> {
-                    withContext(Dispatchers.IO) {
-                        GoogleTasksApiClient.fetchTasksFromGoogleApi(
-                            this@MobileSyncConfigActivity,
-                            prefs,
-                            System.currentTimeMillis()
-                        )
-                        CalendarSyncEngine.performFullSyncToWatch(
-                            this@MobileSyncConfigActivity,
-                            "Google Tasks API Conectado"
-                        )
-                    }
-                    cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
-                    refreshUiState(checkRemoteConnection = false)
-                    showStatusToast("Tarefas sincronizadas via Google Tasks API (${cachedTasks.size} ativas).")
+                    completeAuthorizedTasksSync()
                 }
                 is GoogleTasksAuthResult.NeedsUserConsent -> {
                     try {
+                        GoogleTasksApiClient.isInteractiveConsentInProgress = true
                         @Suppress("DEPRECATION")
                         startActivityForResult(authResult.consentIntent, REQUEST_CODE_GOOGLE_TASKS_CONSENT)
                     } catch (_: Exception) {
+                        GoogleTasksApiClient.isInteractiveConsentInProgress = false
                         showStatusToast("Não foi possível abrir a janela de autorização do Google.")
                     }
                 }
@@ -894,9 +1037,14 @@ class MobileSyncConfigActivity : Activity() {
         }
         agendaTasksCard.addView(connectGoogleTasksAccountBtn)
 
+        val chromeBridgeAuthBtn = createActionButton("Autenticar via Google Chrome (Recomendado se travar) ↗") {
+            openChromeOAuthBridge()
+        }
+        agendaTasksCard.addView(chromeBridgeAuthBtn)
+
         syncGoogleTasksNowBtn = createActionButton("Sincronizar Google Tasks Agora ↻") {
             val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
-            if (email.isBlank()) {
+            if (email.isBlank() && prefs.getGoogleTasksAccessToken().isBlank()) {
                 startGoogleTasksAccountPicker()
             } else {
                 authorizeAndSyncGoogleTasks(email)
@@ -904,7 +1052,7 @@ class MobileSyncConfigActivity : Activity() {
         }
         agendaTasksCard.addView(syncGoogleTasksNowBtn)
 
-        val oauthConsoleSetupBtn = createActionButton("Configurar SHA-1 / Credencial Android (Cloud Console)") {
+        val oauthConsoleSetupBtn = createActionButton("Configurar SHA-1 / Token Manual (Cloud Console)") {
             val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
             val sha1 = GoogleTasksApiClient.getAppSignatureSha1(this)
             showGoogleTasksOAuthSetupDialog(
@@ -3837,5 +3985,6 @@ class MobileSyncConfigActivity : Activity() {
     companion object {
         private const val REQUEST_CODE_PICK_GOOGLE_ACCOUNT = 201
         private const val REQUEST_CODE_GOOGLE_TASKS_CONSENT = 202
+        private const val REQUEST_CODE_GIS_AUTH = 203
     }
 }
