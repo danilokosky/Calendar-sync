@@ -41,7 +41,6 @@ object GoogleTasksApiClient {
     const val SCOPE_TASKS_READONLY = "https://www.googleapis.com/auth/tasks.readonly"
     const val OAUTH_SCOPE_STRING = "oauth2:$SCOPE_TASKS_READONLY"
     const val WEB_OAUTH_CLIENT_ID = "65152854911-1gc862g8m5f7905c3q54n365cecuthha.apps.googleusercontent.com"
-    const val WEB_OAUTH_BRIDGE_URL = "https://ais-pre-oqjqgoy2qz5dddeptmpix4-891503228385.us-east1.run.app/?android_oauth=1"
     const val DEFAULT_FIXED_DEBUG_SHA1 = "36:5A:73:0F:FE:B0:A3:01:74:3F:E5:77:FE:A8:D3:42:2B:6E:E4:B6"
     const val DEFAULT_FIXED_DEBUG_SHA1_COMPACT = "365A730FFEB0A301743FE577FEA8D3422B6EE4B6"
     const val ANDROID_PACKAGE_NAME = "com.chronowear.sync"
@@ -157,9 +156,9 @@ object GoogleTasksApiClient {
         if (isInteractiveConsentInProgress || !allowInteractivePrompt) {
             return GoogleTasksAuthResult.Error(
                 if (isInteractiveConsentInProgress) {
-                    "Conclua a autorização na janela do Google ou use 'Autenticar via Chrome'"
+                    "Conclua a autorização na janela do Google Play Services"
                 } else {
-                    "Toque em 'Conectar Conta Google Tasks' ou 'Autenticar via Chrome'"
+                    "Toque em 'Conectar / Trocar Conta Google Tasks' para autorizar"
                 }
             )
         }
@@ -302,7 +301,7 @@ object GoogleTasksApiClient {
         if (statusCode != 200 || listsBody.isBlank()) {
             prefs.setGoogleTasksSyncStatus(
                 if (statusCode == 401) {
-                    "Sessão expirada — toque em 'Conectar Conta Google Tasks' ou 'Autenticar via Chrome'"
+                    "Sessão expirada — toque em 'Conectar / Trocar Conta Google Tasks'"
                 } else {
                     "Erro HTTP $statusCode ao consultar Google Tasks API"
                 }
