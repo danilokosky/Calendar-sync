@@ -105,13 +105,16 @@ class PhoneDataListenerService : WearableListenerService() {
                 val sleepSyncEnabled = if (dataMap.containsKey("sleep_sync_enabled")) {
                     dataMap.getBoolean("sleep_sync_enabled", true)
                 } else null
+                val sleepShowScore = if (dataMap.containsKey("sleep_show_score")) {
+                    dataMap.getBoolean("sleep_show_score", true)
+                } else null
                 val sleepDurationMin = when {
-                    dataMap.containsKey("sleep_duration_min") -> dataMap.getInt("sleep_duration_min", 462)
-                    dataMap.containsKey("sleep_duration_minutes") -> dataMap.getInt("sleep_duration_minutes", 462)
+                    dataMap.containsKey("sleep_duration_min") -> dataMap.getInt("sleep_duration_min", 0)
+                    dataMap.containsKey("sleep_duration_minutes") -> dataMap.getInt("sleep_duration_minutes", 0)
                     else -> null
                 }
                 val sleepScore = if (dataMap.containsKey("sleep_score")) {
-                    dataMap.getInt("sleep_score", 86)
+                    dataMap.getInt("sleep_score", 0)
                 } else null
                 val sleepBedtimeHHMM = dataMap.getString("sleep_bedtime_hhmm")
                 val sleepWakeHHMM = dataMap.getString("sleep_wake_hhmm")
@@ -122,7 +125,7 @@ class PhoneDataListenerService : WearableListenerService() {
                     else -> null
                 }
                 val sleepHasDataToday = if (dataMap.containsKey("sleep_has_data_today")) {
-                    dataMap.getBoolean("sleep_has_data_today", true)
+                    dataMap.getBoolean("sleep_has_data_today", false)
                 } else null
                 val tasksSyncEnabled = if (dataMap.containsKey("tasks_sync_enabled")) {
                     dataMap.getBoolean("tasks_sync_enabled", true)
@@ -174,6 +177,7 @@ class PhoneDataListenerService : WearableListenerService() {
                     solarSunsetHHMM = solarSunsetHHMM,
                     watchStandaloneSolarEnabled = watchStandaloneSolar,
                     sleepSyncEnabled = sleepSyncEnabled,
+                    sleepShowScore = sleepShowScore,
                     sleepDurationMinutes = sleepDurationMin,
                     sleepScore = sleepScore,
                     sleepBedtimeHHMM = sleepBedtimeHHMM,
@@ -280,13 +284,16 @@ class PhoneDataListenerService : WearableListenerService() {
                     val sleepSyncEnabled = if (json.has("sleep_sync_enabled")) {
                         json.optBoolean("sleep_sync_enabled", true)
                     } else null
+                    val sleepShowScore = if (json.has("sleep_show_score")) {
+                        json.optBoolean("sleep_show_score", true)
+                    } else null
                     val sleepDurationMin = when {
-                        json.has("sleep_duration_min") -> json.optInt("sleep_duration_min", 462)
-                        json.has("sleep_duration_minutes") -> json.optInt("sleep_duration_minutes", 462)
+                        json.has("sleep_duration_min") -> json.optInt("sleep_duration_min", 0)
+                        json.has("sleep_duration_minutes") -> json.optInt("sleep_duration_minutes", 0)
                         else -> null
                     }
                     val sleepScore = if (json.has("sleep_score")) {
-                        json.optInt("sleep_score", 86)
+                        json.optInt("sleep_score", 0)
                     } else null
                     val sleepBedtimeHHMM = json.optString("sleep_bedtime_hhmm", "").takeIf { it.isNotBlank() }
                     val sleepWakeHHMM = json.optString("sleep_wake_hhmm", "").takeIf { it.isNotBlank() }
@@ -297,7 +304,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         else -> null
                     }
                     val sleepHasDataToday = if (json.has("sleep_has_data_today")) {
-                        json.optBoolean("sleep_has_data_today", true)
+                        json.optBoolean("sleep_has_data_today", false)
                     } else null
                     val tasksSyncEnabled = if (json.has("tasks_sync_enabled")) {
                         json.optBoolean("tasks_sync_enabled", true)
@@ -349,6 +356,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         solarSunsetHHMM = solarSunsetHHMM,
                         watchStandaloneSolarEnabled = watchStandaloneSolar,
                         sleepSyncEnabled = sleepSyncEnabled,
+                        sleepShowScore = sleepShowScore,
                         sleepDurationMinutes = sleepDurationMin,
                         sleepScore = sleepScore,
                         sleepBedtimeHHMM = sleepBedtimeHHMM,
@@ -402,6 +410,7 @@ class PhoneDataListenerService : WearableListenerService() {
         solarSunsetHHMM: String? = null,
         watchStandaloneSolarEnabled: Boolean? = null,
         sleepSyncEnabled: Boolean? = null,
+        sleepShowScore: Boolean? = null,
         sleepDurationMinutes: Int? = null,
         sleepScore: Int? = null,
         sleepBedtimeHHMM: String? = null,
@@ -451,6 +460,7 @@ class PhoneDataListenerService : WearableListenerService() {
                 solarSunsetHHMM = solarSunsetHHMM,
                 watchStandaloneSolarEnabled = watchStandaloneSolarEnabled,
                 sleepSyncEnabled = sleepSyncEnabled,
+                sleepShowScore = sleepShowScore,
                 sleepDurationMinutes = sleepDurationMinutes,
                 sleepScore = sleepScore,
                 sleepBedtimeHHMM = sleepBedtimeHHMM,
@@ -562,31 +572,7 @@ class WearContextNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        val isSleepNotification = (
-            pkg.contains("shealth") ||
-                pkg.contains("health") ||
-                pkg.contains("sleep") ||
-                pkg.contains("fitness")
-            ) && (
-            combined.contains("sono") ||
-                combined.contains("sleep") ||
-                combined.contains("pontuação do sono") ||
-                combined.contains("dormiu")
-            )
-
-        if (isSleepNotification && repo.isSleepSyncEnabled()) {
-            repo.recordWatchSleepNotification(nowMs = System.currentTimeMillis())
-            AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)
-            AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
-            ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
-            applicationContext.sendBroadcast(
-                Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
-                    .setPackage(applicationContext.packageName)
-            )
-            return
-        }
-
-        // 3) Captura lembretes e tarefas do Samsung Reminder ou Google Tasks diretamente no relógio
+        // Captura lembretes e tarefas do Samsung Reminder ou Google Tasks diretamente no relógio
         val isTaskReminderNotification = pkg.contains("com.samsung.android.app.reminder") ||
             pkg.contains("reminder") ||
             pkg.contains("com.google.android.apps.tasks") ||

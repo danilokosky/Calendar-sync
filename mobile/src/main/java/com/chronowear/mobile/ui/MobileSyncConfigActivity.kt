@@ -57,6 +57,7 @@ import com.chronowear.mobile.sync.CalendarSyncForegroundService
 import com.chronowear.mobile.sync.CalendarSyncWorker
 import com.chronowear.mobile.sync.GoogleTasksApiClient
 import com.chronowear.mobile.sync.GoogleTasksAuthResult
+import com.chronowear.mobile.sync.HealthConnectSleepReader
 import com.chronowear.mobile.sync.LocalCalendarEvent
 import com.chronowear.mobile.sync.LocalCalendarItem
 import com.chronowear.mobile.sync.MobileTaskItem
@@ -133,6 +134,7 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchUnifiedWeatherSolar: Switch
     private lateinit var switchWatchStandaloneWeather: Switch
     private lateinit var switchSleepSync: Switch
+    private lateinit var switchSleepShowScore: Switch
     private lateinit var switchHighFreq15Min: Switch
     private lateinit var switchUpdateOnWake: Switch
     private lateinit var switchDaemonService: Switch
@@ -304,6 +306,35 @@ class MobileSyncConfigActivity : Activity() {
                 } else {
                     prefs.setGoogleTasksSyncStatus("Autorização OAuth2 cancelada pelo usuário")
                     refreshUiState(checkRemoteConnection = false)
+                }
+            }
+            REQUEST_CODE_HEALTH_CONNECT_SLEEP -> {
+                uiScope.launch {
+                    withContext(Dispatchers.IO) {
+                        HealthConnectSleepReader.refreshPermissionAndReadTodaySleep(
+                            this@MobileSyncConfigActivity,
+                            System.currentTimeMillis()
+                        )
+                    }
+                    refreshUiState(checkRemoteConnection = true)
+                    if (countMissingPermissions() == 0) {
+                        triggerBackgroundSync("Permissão Health Connect Sono liberada")
+                    }
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun requestHealthConnectSleepPermission() {
+        try {
+            val intent = HealthConnectSleepReader.createRequestSleepPermissionIntent(this)
+            startActivityForResult(intent, REQUEST_CODE_HEALTH_CONNECT_SLEEP)
+        } catch (_: Exception) {
+            if (Build.VERSION.SDK_INT >= 34) {
+                try {
+                    requestPermissions(arrayOf(HealthConnectSleepReader.READ_SLEEP_PERMISSION), 104)
+                } catch (_: Exception) {
                 }
             }
         }
@@ -1297,13 +1328,24 @@ class MobileSyncConfigActivity : Activity() {
 
         switchSleepSync = createResponsiveSettingToggleRow(
             parent = sleepSystemCard,
-            title = "Sincronizar Sono no Relógio",
-            subtitle = "Exibe o hipnograma do dia no mostrador"
+            title = "Sincronizar Sono no Relógio (Health Connect)",
+            subtitle = "Lê os estágios reais de sono do Android Health Connect (Samsung Health, Fitbit, Google)"
         ) { checked ->
             prefs.setSleepSyncEnabled(checked)
             virtualWatchView.invalidate()
             refreshWidgetsGridInPlace()
             triggerBackgroundSync("Toggle Sono")
+        }
+
+        switchSleepShowScore = createResponsiveSettingToggleRow(
+            parent = sleepSystemCard,
+            title = "Exibir Pontuação Estimada no Visor",
+            subtitle = "Mostra ou oculta a pontuação calculada (pts) para não divergir do seu app de saúde"
+        ) { checked ->
+            prefs.setSleepScoreVisible(checked)
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Exibir Pontuação de Sono")
         }
 
         switchUpdateOnWake = createResponsiveSettingToggleRow(
@@ -1427,6 +1469,7 @@ class MobileSyncConfigActivity : Activity() {
     private fun countMissingPermissions(): Int {
         var count = 0
         if (!CalendarSyncEngine.hasCalendarPermission(this)) count++
+        if (!HealthConnectSleepReader.hasSleepPermissionSync(this)) count++
         if (!CalendarSyncEngine.hasLocationPermission(this)) count++
         if (!CalendarSyncEngine.hasNotificationPermission(this)) count++
         if (!CalendarSyncEngine.isNotificationListenerEnabled(this)) count++
@@ -1555,6 +1598,21 @@ class MobileSyncConfigActivity : Activity() {
             }
         }
 
+        if (checkRemoteConnection) {
+            uiScope.launch(Dispatchers.IO) {
+                HealthConnectSleepReader.refreshPermissionAndReadTodaySleep(
+                    this@MobileSyncConfigActivity,
+                    System.currentTimeMillis()
+                )
+                withContext(Dispatchers.Main) {
+                    refreshPermissionsBanner()
+                    refreshProtectionLockOverlays()
+                    virtualWatchView.invalidate()
+                    refreshWidgetsGridInPlace()
+                }
+            }
+        }
+
         // Atualiza Switches sem disparar listeners recursivos
         isUpdatingToggleProgrammatically = true
         try {
@@ -1566,6 +1624,7 @@ class MobileSyncConfigActivity : Activity() {
             switchUnifiedWeatherSolar.isChecked = prefs.isPhoneWeatherAutoCheckEnabled()
             switchWatchStandaloneWeather.isChecked = prefs.isWatchStandaloneWeatherEnabled()
             switchSleepSync.isChecked = prefs.isSleepSyncEnabled()
+            switchSleepShowScore.isChecked = prefs.isSleepScoreVisible()
             switchHighFreq15Min.isChecked = prefs.isHighFreq15MinRuleEnabled()
             switchUpdateOnWake.isChecked = prefs.isUpdateOnScreenWakeEnabled()
             switchDaemonService.isChecked = prefs.isBackgroundServiceEnabled()
@@ -1690,6 +1749,19 @@ class MobileSyncConfigActivity : Activity() {
             )
         }
 
+        if (!HealthConnectSleepReader.hasSleepPermissionSync(this)) {
+            missing.add(
+                MissingPermItem(
+                    title = "Conectar Saúde (Sono)",
+                    reason = "Leitura oficial dos estágios de sono via Android Health Connect.",
+                    actionLabel = "Permitir",
+                    onGrantClick = {
+                        requestHealthConnectSleepPermission()
+                    }
+                )
+            )
+        }
+
         if (!CalendarSyncEngine.hasLocationPermission(this)) {
             missing.add(
                 MissingPermItem(
@@ -1728,7 +1800,7 @@ class MobileSyncConfigActivity : Activity() {
             missing.add(
                 MissingPermItem(
                     title = "Acesso a Notificações",
-                    reason = "Detecção de alertas de clima e sono do telefone.",
+                    reason = "Detecção de alertas de clima do telefone.",
                     actionLabel = "Ativar",
                     onGrantClick = {
                         try {
@@ -3234,28 +3306,44 @@ class MobileSyncConfigActivity : Activity() {
                     textPaint.textSize = 26f
                     canvas.drawText("Verificado no Samsung Health / Health Connect", 24f, 218f, textPaint)
                 } else {
-                    val durMin = prefs.getSleepDurationMinutes()
+                    val durMin = prefs.getSleepDurationMinutes(nowMs)
                     val h = durMin / 60
                     val m = durMin % 60
-                    val score = prefs.getSleepScore()
+                    val score = prefs.getSleepScore(nowMs)
+                    val showScore = prefs.isSleepScoreVisible()
 
                     textPaint.textAlign = Paint.Align.RIGHT
                     textPaint.color = Color.WHITE
                     textPaint.textSize = 34f
-                    canvas.drawText("${h}h ${m}m • $score pts", cardW - 24f, 50f, textPaint)
+                    val topRightLabel = if (showScore && score > 0) {
+                        "${h}h ${m}m • $score pts"
+                    } else {
+                        "${h}h ${m}m"
+                    }
+                    canvas.drawText(topRightLabel, cardW - 24f, 50f, textPaint)
 
                     textPaint.textAlign = Paint.Align.LEFT
                     textPaint.color = Color.parseColor("#CBD5E1")
                     textPaint.textSize = 28f
+                    val qualityLabel = when {
+                        score >= 85 -> "Excelente"
+                        score >= 70 -> "Bom"
+                        else -> "Regular"
+                    }
+                    val subtitleLabel = if (showScore && score > 0) {
+                        "${prefs.getSleepBedtimeHHMM()} → ${prefs.getSleepWakeHHMM()} • $qualityLabel"
+                    } else {
+                        "${prefs.getSleepBedtimeHHMM()} → ${prefs.getSleepWakeHHMM()}"
+                    }
                     canvas.drawText(
-                        "${prefs.getSleepBedtimeHHMM()} → ${prefs.getSleepWakeHHMM()} • Excelente",
+                        subtitleLabel,
                         24f,
                         92f,
                         textPaint
                     )
 
                     val stages = prefs.getSleepStagesCsv().split(",").mapNotNull { it.trim().toIntOrNull() }
-                        .take(4).let { if (it.size == 4) it else listOf(18, 95, 244, 105) }
+                        .take(4).let { if (it.size == 4) it else listOf(0, 0, durMin.coerceAtLeast(1), 0) }
                     val total = stages.sum().coerceAtLeast(1).toFloat()
                     val colors = listOf("#F87171", "#38BDF8", "#818CF8", "#4F46E5")
                     val names = listOf("Acord.", "REM", "Leve", "Prof.")
@@ -3974,5 +4062,6 @@ class MobileSyncConfigActivity : Activity() {
         private const val REQUEST_CODE_PICK_GOOGLE_ACCOUNT = 201
         private const val REQUEST_CODE_GOOGLE_TASKS_CONSENT = 202
         private const val REQUEST_CODE_GOOGLE_SIGN_IN = 203
+        private const val REQUEST_CODE_HEALTH_CONNECT_SLEEP = 204
     }
 }

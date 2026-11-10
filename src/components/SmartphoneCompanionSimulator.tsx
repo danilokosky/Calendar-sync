@@ -146,6 +146,8 @@ export const SmartphoneCompanionSimulator: React.FC<
 
   // Permissões do Smartphone
   const [calendarPermGranted, setCalendarPermGranted] = useState(true);
+  const [healthConnectSleepPermGranted, setHealthConnectSleepPermGranted] =
+    useState(true);
   const [locationPermGranted, setLocationPermGranted] = useState(true);
   const [notifPermGranted, setNotifPermGranted] = useState(true);
   const [batteryOptIgnored, setBatteryOptIgnored] = useState(true);
@@ -196,6 +198,12 @@ export const SmartphoneCompanionSimulator: React.FC<
       desc: 'Leitura de compromissos.',
       onGrant: () => setCalendarPermGranted(true),
     },
+    !healthConnectSleepPermGranted && {
+      id: 'health_sleep',
+      title: 'Conectar Saúde (Sono)',
+      desc: 'Leitura oficial dos estágios de sono via Android Health Connect.',
+      onGrant: () => setHealthConnectSleepPermGranted(true),
+    },
     !locationPermGranted && {
       id: 'loc',
       title: 'Localização (Clima e Sol)',
@@ -205,7 +213,7 @@ export const SmartphoneCompanionSimulator: React.FC<
     !notifPermGranted && {
       id: 'notif',
       title: 'Notificações e Gatilhos',
-      desc: 'Alertas e sincronização.',
+      desc: 'Alertas de clima e sincronização.',
       onGrant: () => setNotifPermGranted(true),
     },
     !batteryOptIgnored && {
@@ -1028,6 +1036,7 @@ export const SmartphoneCompanionSimulator: React.FC<
 
       case 'SLEEP': {
         const hasSleepToday = config.sleepHasDataToday ?? true;
+        const showScore = config.sleepScoreVisible ?? true;
         return (
           <div className="flex flex-col justify-between h-full text-left">
             <div className="flex items-center justify-between">
@@ -1035,7 +1044,11 @@ export const SmartphoneCompanionSimulator: React.FC<
                 Sono • Hoje
               </span>
               <span className="text-[9.5px] font-mono text-[#67E8F9] leading-none">
-                {hasSleepToday ? `7h 42m • ${config.sleepScore ?? 86}p` : 'Vazio'}
+                {hasSleepToday
+                  ? showScore
+                    ? `7h 42m • ${config.sleepScore ?? 86}p`
+                    : '7h 42m'
+                  : 'Vazio'}
               </span>
             </div>
 
@@ -2144,10 +2157,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               >
                 <div>
                   <div className="text-xs font-bold text-slate-100">
-                    Sincronizar Sono
+                    Sincronizar Sono (Health Connect)
                   </div>
                   <div className="text-[10.5px] text-slate-400">
-                    Dados de sono do dia
+                    Lê os estágios reais do Android Health Connect (Samsung Health / Fitbit)
                   </div>
                 </div>
                 <ModernOneUiSwitch
@@ -2157,6 +2170,38 @@ export const SmartphoneCompanionSimulator: React.FC<
                   onChange={() =>
                     onUpdateConfig({
                       sleepSyncEnabled: !(config.sleepSyncEnabled ?? true),
+                    })
+                  }
+                />
+              </div>
+
+              <div
+                onClick={() => {
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
+                  }
+                  onUpdateConfig({
+                    sleepScoreVisible: !(config.sleepScoreVisible ?? true),
+                  });
+                }}
+                className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
+              >
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Exibir Pontuação Estimada no Visor
+                  </div>
+                  <div className="text-[10.5px] text-slate-400">
+                    Mostra ou oculta a pontuação calculada (pts) para não divergir do seu app de saúde
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.sleepScoreVisible ?? true}
+                  ariaLabel="Exibir Pontuação Estimada no Visor"
+                  disabled={isCustomizationLocked}
+                  onChange={() =>
+                    onUpdateConfig({
+                      sleepScoreVisible: !(config.sleepScoreVisible ?? true),
                     })
                   }
                 />

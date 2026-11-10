@@ -38,7 +38,23 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Health Connect rationale intent para Android 13 e anteriores -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+
+        <!-- Health Connect rationale alias obrigatório para Android 14+ (API 34+) -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".ui.MobileSyncConfigActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <service
             android:name=".sync.CalendarSyncForegroundService"
@@ -65,7 +81,7 @@
             </intent-filter>
         </service>
 
-        <!-- Observa notificações sobre Clima e Resumo de Sono no telefone -->
+        <!-- Observa notificações sobre Clima no telefone -->
         <service
             android:name=".sync.PhoneWeatherNotificationListenerService"
             android:exported="true"

@@ -772,6 +772,12 @@ object CalendarSyncEngine {
             ""
         }
 
+        // Atualiza os dados reais de sono via Android Health Connect antes de montar o pacote para o relógio
+        try {
+            HealthConnectSleepReader.refreshPermissionAndReadTodaySleep(context, nowMs)
+        } catch (_: Exception) {
+        }
+
         val contextMode = prefs.getContextWindowMode()
         val autoPrimaryContext = prefs.getAutoPrimaryContext()
         val unifiedCanvasHoldMin = prefs.getUnifiedCanvasHoldMinutes()
@@ -783,9 +789,10 @@ object CalendarSyncEngine {
         val autoSunExposureMin = prefs.getAutoSunExposureMinutes()
         val autoSleepExposureMin = prefs.getAutoSleepExposureMinutes()
         val sleepSyncEnabled = prefs.isSleepSyncEnabled()
+        val sleepShowScore = prefs.isSleepScoreVisible()
         val sleepHasDataToday = prefs.hasVerifiedSleepDataForToday(nowMs)
-        val sleepDurationMin = prefs.getSleepDurationMinutes()
-        val sleepScore = prefs.getSleepScore()
+        val sleepDurationMin = prefs.getSleepDurationMinutes(nowMs)
+        val sleepScore = prefs.getSleepScore(nowMs)
         val sleepBedtimeHHMM = prefs.getSleepBedtimeHHMM()
         val sleepWakeHHMM = prefs.getSleepWakeHHMM()
         val sleepStagesCsv = prefs.getSleepStagesCsv()
@@ -829,6 +836,7 @@ object CalendarSyncEngine {
             put("auto_sun_exposure_min", autoSunExposureMin)
             put("auto_sleep_exposure_min", autoSleepExposureMin)
             put("sleep_sync_enabled", sleepSyncEnabled)
+            put("sleep_show_score", sleepShowScore)
             put("sleep_has_data_today", sleepHasDataToday)
             put("sleep_duration_min", sleepDurationMin)
             put("sleep_score", sleepScore)
@@ -894,6 +902,7 @@ object CalendarSyncEngine {
                 dataMap.putInt("auto_sun_exposure_min", autoSunExposureMin)
                 dataMap.putInt("auto_sleep_exposure_min", autoSleepExposureMin)
                 dataMap.putBoolean("sleep_sync_enabled", sleepSyncEnabled)
+                dataMap.putBoolean("sleep_show_score", sleepShowScore)
                 dataMap.putBoolean("sleep_has_data_today", sleepHasDataToday)
                 dataMap.putInt("sleep_duration_min", sleepDurationMin)
                 dataMap.putInt("sleep_score", sleepScore)

@@ -72,7 +72,8 @@ data class SleepSnapshot(
     val bedtimeHHMM: String,
     val wakeHHMM: String,
     val stagesMinutes: List<Int>,
-    val hasDataForToday: Boolean = true
+    val hasDataForToday: Boolean = false,
+    val showScore: Boolean = true
 )
 
 data class CachedWearTask(
@@ -158,6 +159,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         solarSunsetHHMM: String? = null,
         watchStandaloneSolarEnabled: Boolean? = null,
         sleepSyncEnabled: Boolean? = null,
+        sleepShowScore: Boolean? = null,
         sleepDurationMinutes: Int? = null,
         sleepScore: Int? = null,
         sleepBedtimeHHMM: String? = null,
@@ -284,6 +286,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (sleepSyncEnabled != null) {
             editor.putBoolean("sleep_sync_enabled", sleepSyncEnabled)
+        }
+        if (sleepShowScore != null) {
+            editor.putBoolean("sleep_show_score", sleepShowScore)
         }
         if (sleepHasDataToday != null) {
             editor.putBoolean("sleep_has_data_today", sleepHasDataToday)
@@ -441,17 +446,18 @@ class WatchAutonomousRepository private constructor(context: Context) :
      * Canvas informe claramente "Não há dados de sono para hoje".
      */
     fun getSleepSnapshot(nowMs: Long = System.currentTimeMillis()): SleepSnapshot {
-        val dur = prefs.getInt("sleep_duration_minutes", 462)
-        val score = prefs.getInt("sleep_score", 86)
-        val bed = prefs.getString("sleep_bedtime_hhmm", "23:18") ?: "23:18"
-        val wake = prefs.getString("sleep_wake_hhmm", "07:00") ?: "07:00"
-        val stagesStr = prefs.getString("sleep_stages_csv", "18,95,244,105") ?: "18,95,244,105"
+        val dur = prefs.getInt("sleep_duration_minutes", 0)
+        val score = prefs.getInt("sleep_score", 0)
+        val showScore = prefs.getBoolean("sleep_show_score", true)
+        val bed = prefs.getString("sleep_bedtime_hhmm", "--:--") ?: "--:--"
+        val wake = prefs.getString("sleep_wake_hhmm", "--:--") ?: "--:--"
+        val stagesStr = prefs.getString("sleep_stages_csv", "0,0,0,0") ?: "0,0,0,0"
         val stages = stagesStr.split(",").mapNotNull { it.trim().toIntOrNull() }
-            .ifEmpty { listOf(18, 95, 244, 105) }
+            .ifEmpty { listOf(0, 0, 0, 0) }
 
         val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
-        val explicitFlag = prefs.getBoolean("sleep_has_data_today", true)
-        val verifiedForToday = explicitFlag && dur > 0 && (wakeTs <= 0L || isSameCalendarDay(nowMs, wakeTs))
+        val explicitFlag = prefs.getBoolean("sleep_has_data_today", false)
+        val verifiedForToday = explicitFlag && dur > 0 && wakeTs > 0L && isSameCalendarDay(nowMs, wakeTs)
 
         return SleepSnapshot(
             durationMinutes = if (verifiedForToday) dur else 0,
@@ -459,24 +465,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             bedtimeHHMM = bed,
             wakeHHMM = wake,
             stagesMinutes = stages,
-            hasDataForToday = verifiedForToday
+            hasDataForToday = verifiedForToday,
+            showScore = showScore
         )
-    }
-
-    fun recordWatchSleepNotification(
-        durationMinutes: Int = 462,
-        sleepScore: Int = 86,
-        nowMs: Long = System.currentTimeMillis()
-    ) {
-        prefs.edit()
-            .putInt("sleep_duration_minutes", durationMinutes.coerceIn(60, 960))
-            .putInt("sleep_score", sleepScore.coerceIn(1, 100))
-            .putBoolean("sleep_has_data_today", true)
-            .putLong("sleep_wake_timestamp_ms", nowMs)
-            // Prioridade máxima: cancela toque manual no Canvas
-            .remove("tap_override_context_mode")
-            .putLong("tap_override_timestamp_ms", 0L)
-            .apply()
     }
 
     fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getUnifiedCanvasHoldMinutes()): Boolean {
@@ -1146,12 +1137,17 @@ class WatchAutonomousRepository private constructor(context: Context) :
             return MODE_SUN to "Pôr do Sol às ${solar.sunsetHHMM} (Exposição ${unifiedHoldMin}m)"
         }
 
-        // 5. Dormir ou Acordar (Resumo de Sono — somente se houver dados de sono confirmados para hoje)
+        // 5. Dormir ou Acordar (Resumo de Sono — somente se houver dados de sono confirmados para hoje via Health Connect)
         if (hasActiveSleepWakeExposure(nowMs, unifiedHoldMin)) {
             val sleep = getSleepSnapshot(nowMs)
             val h = sleep.durationMinutes / 60
             val m = sleep.durationMinutes % 60
-            return MODE_SLEEP to "Sono ${h}h ${m}m (${sleep.sleepScore} pts) • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
+            val summaryText = if (sleep.showScore && sleep.sleepScore > 0) {
+                "Sono ${h}h ${m}m (${sleep.sleepScore} pts) • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
+            } else {
+                "Sono ${h}h ${m}m • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
+            }
+            return MODE_SLEEP to summaryText
         }
 
         return null

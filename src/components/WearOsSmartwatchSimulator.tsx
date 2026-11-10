@@ -1108,7 +1108,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       </div>
                       {(config.sleepHasDataToday ?? true) ? (
                         <span className="text-[12.5px] font-mono font-bold text-[#67E8F9]">
-                          7h 42m • {config.sleepScore ?? 86} pts
+                          {(config.sleepScoreVisible ?? true)
+                            ? `7h 42m • ${config.sleepScore ?? 86} pts`
+                            : '7h 42m'}
                         </span>
                       ) : (
                         <span className="text-[10.5px] font-mono font-bold text-slate-400">
@@ -1120,7 +1122,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                     {(config.sleepHasDataToday ?? true) ? (
                       <>
                         <div className="text-[11px] font-semibold text-slate-300 leading-none">
-                          {config.sleepBedtimeHHMM ?? '23:18'} → {config.sleepWakeHHMM ?? '07:00'} • Excelente
+                          {config.sleepBedtimeHHMM ?? '23:18'} → {config.sleepWakeHHMM ?? '07:00'}
+                          {(config.sleepScoreVisible ?? true) ? ' • Excelente' : ''}
                         </div>
 
                         {/* Barra de Estágios do Sono (Hipnograma: Acordado, REM, Leve, Profundo) */}

@@ -265,7 +265,7 @@ class SyncPreferences(context: Context) {
     }
 
     /**
-     * DADOS DE SONO DO DIA (Health Connect / Samsung Health / Monitoramento Noturno)
+     * DADOS DE SONO DO DIA (Lidos exclusivamente via Android Health Connect — Samsung Health, Fitbit/Pixel, Google Fit)
      */
     fun isSleepSyncEnabled(): Boolean {
         return prefs.getBoolean(KEY_SLEEP_SYNC_ENABLED, true)
@@ -273,6 +273,22 @@ class SyncPreferences(context: Context) {
 
     fun setSleepSyncEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_SLEEP_SYNC_ENABLED, enabled).commit()
+    }
+
+    fun isSleepScoreVisible(): Boolean {
+        return prefs.getBoolean(KEY_SLEEP_SHOW_SCORE, true)
+    }
+
+    fun setSleepScoreVisible(visible: Boolean) {
+        prefs.edit().putBoolean(KEY_SLEEP_SHOW_SCORE, visible).commit()
+    }
+
+    fun isHealthConnectSleepPermissionGranted(): Boolean {
+        return prefs.getBoolean(KEY_HEALTH_CONNECT_SLEEP_PERM_GRANTED, false)
+    }
+
+    fun setHealthConnectSleepPermissionGranted(granted: Boolean) {
+        prefs.edit().putBoolean(KEY_HEALTH_CONNECT_SLEEP_PERM_GRANTED, granted).commit()
     }
 
     private fun isSameDayEpoch(epochA: Long, epochB: Long): Boolean {
@@ -283,24 +299,35 @@ class SyncPreferences(context: Context) {
     }
 
     fun hasVerifiedSleepDataForToday(nowMs: Long = System.currentTimeMillis()): Boolean {
-        val explicitToday = prefs.getBoolean(KEY_SLEEP_HAS_DATA_TODAY, true)
+        val explicitToday = prefs.getBoolean(KEY_SLEEP_HAS_DATA_TODAY, false)
         if (!explicitToday) return false
         val wakeTs = prefs.getLong(KEY_SLEEP_WAKE_TS_MS, 0L)
-        val dur = prefs.getInt(KEY_SLEEP_DURATION_MIN, 462)
-        if (dur <= 0) return false
-        return wakeTs <= 0L || isSameDayEpoch(nowMs, wakeTs)
+        val dur = prefs.getInt(KEY_SLEEP_DURATION_MIN, 0)
+        if (dur <= 0 || wakeTs <= 0L) return false
+        return isSameDayEpoch(nowMs, wakeTs)
+    }
+
+    fun clearSleepDataForToday() {
+        prefs.edit()
+            .putBoolean(KEY_SLEEP_HAS_DATA_TODAY, false)
+            .putInt(KEY_SLEEP_DURATION_MIN, 0)
+            .putInt(KEY_SLEEP_SCORE, 0)
+            .putString(KEY_SLEEP_BEDTIME_HHMM, "--:--")
+            .putString(KEY_SLEEP_WAKE_HHMM, "--:--")
+            .putString(KEY_SLEEP_STAGES_CSV, "0,0,0,0")
+            .putLong(KEY_SLEEP_WAKE_TS_MS, 0L)
+            .commit()
     }
 
     fun setSleepHasDataForToday(hasData: Boolean, nowMs: Long = System.currentTimeMillis()) {
-        val editor = prefs.edit().putBoolean(KEY_SLEEP_HAS_DATA_TODAY, hasData)
-        if (hasData) {
-            if (prefs.getInt(KEY_SLEEP_DURATION_MIN, 0) <= 0) {
-                editor.putInt(KEY_SLEEP_DURATION_MIN, 462)
-                editor.putInt(KEY_SLEEP_SCORE, 86)
-            }
-            editor.putLong(KEY_SLEEP_WAKE_TS_MS, nowMs)
+        if (!hasData) {
+            clearSleepDataForToday()
+            return
         }
-        editor.commit()
+        prefs.edit()
+            .putBoolean(KEY_SLEEP_HAS_DATA_TODAY, true)
+            .putLong(KEY_SLEEP_WAKE_TS_MS, nowMs)
+            .commit()
     }
 
     fun saveSleepSnapshot(
@@ -325,24 +352,24 @@ class SyncPreferences(context: Context) {
 
     fun getSleepDurationMinutes(nowMs: Long = System.currentTimeMillis()): Int {
         if (!hasVerifiedSleepDataForToday(nowMs)) return 0
-        return prefs.getInt(KEY_SLEEP_DURATION_MIN, 462) // 7h 42m
+        return prefs.getInt(KEY_SLEEP_DURATION_MIN, 0)
     }
 
     fun getSleepScore(nowMs: Long = System.currentTimeMillis()): Int {
         if (!hasVerifiedSleepDataForToday(nowMs)) return 0
-        return prefs.getInt(KEY_SLEEP_SCORE, 86)
+        return prefs.getInt(KEY_SLEEP_SCORE, 0)
     }
 
     fun getSleepBedtimeHHMM(): String {
-        return prefs.getString(KEY_SLEEP_BEDTIME_HHMM, "23:18") ?: "23:18"
+        return prefs.getString(KEY_SLEEP_BEDTIME_HHMM, "--:--") ?: "--:--"
     }
 
     fun getSleepWakeHHMM(): String {
-        return prefs.getString(KEY_SLEEP_WAKE_HHMM, "07:00") ?: "07:00"
+        return prefs.getString(KEY_SLEEP_WAKE_HHMM, "--:--") ?: "--:--"
     }
 
     fun getSleepStagesCsv(): String {
-        return prefs.getString(KEY_SLEEP_STAGES_CSV, "18,110,229,105") ?: "18,110,229,105"
+        return prefs.getString(KEY_SLEEP_STAGES_CSV, "0,0,0,0") ?: "0,0,0,0"
     }
 
     fun getSleepWakeTimestampMs(): Long {
@@ -937,13 +964,15 @@ class SyncPreferences(context: Context) {
         private const val KEY_AUTO_SUN_EXPOSURE_MIN = "auto_sun_exposure_min"
         private const val KEY_AUTO_SLEEP_EXPOSURE_MIN = "auto_sleep_exposure_min"
         private const val KEY_SLEEP_SYNC_ENABLED = "sleep_sync_enabled"
-        private const val KEY_SLEEP_HAS_DATA_TODAY = "sleep_has_data_today"
-        private const val KEY_SLEEP_DURATION_MIN = "sleep_duration_min"
-        private const val KEY_SLEEP_SCORE = "sleep_score"
-        private const val KEY_SLEEP_BEDTIME_HHMM = "sleep_bedtime_hhmm"
-        private const val KEY_SLEEP_WAKE_HHMM = "sleep_wake_hhmm"
-        private const val KEY_SLEEP_STAGES_CSV = "sleep_stages_csv"
-        private const val KEY_SLEEP_WAKE_TS_MS = "sleep_wake_ts_ms"
+        private const val KEY_SLEEP_SHOW_SCORE = "sleep_show_score"
+        private const val KEY_HEALTH_CONNECT_SLEEP_PERM_GRANTED = "health_connect_sleep_perm_granted"
+        private const val KEY_SLEEP_HAS_DATA_TODAY = "sleep_has_data_today_v2"
+        private const val KEY_SLEEP_DURATION_MIN = "sleep_duration_min_v2"
+        private const val KEY_SLEEP_SCORE = "sleep_score_v2"
+        private const val KEY_SLEEP_BEDTIME_HHMM = "sleep_bedtime_hhmm_v2"
+        private const val KEY_SLEEP_WAKE_HHMM = "sleep_wake_hhmm_v2"
+        private const val KEY_SLEEP_STAGES_CSV = "sleep_stages_csv_v2"
+        private const val KEY_SLEEP_WAKE_TS_MS = "sleep_wake_ts_ms_v2"
         private const val KEY_TASKS_SYNC_ENABLED = "tasks_sync_enabled"
         private const val KEY_GOOGLE_TASKS_ACCOUNT_EMAIL = "google_tasks_account_email"
         private const val KEY_GOOGLE_TASKS_ACCESS_TOKEN = "google_tasks_access_token"

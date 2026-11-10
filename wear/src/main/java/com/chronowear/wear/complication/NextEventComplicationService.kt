@@ -807,7 +807,12 @@ object AgendaCardBitmapRenderer {
             textAlign = Paint.Align.RIGHT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText("${hours}h ${mins}m • ${sleep.sleepScore} pts", CARD_WIDTH - 24f, 50f, rightScorePaint)
+        val topRightLabel = if (sleep.showScore && sleep.sleepScore > 0) {
+            "${hours}h ${mins}m • ${sleep.sleepScore} pts"
+        } else {
+            "${hours}h ${mins}m"
+        }
+        canvas.drawText(topRightLabel, CARD_WIDTH - 24f, 50f, rightScorePaint)
 
         val subPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#CBD5E1")
@@ -819,11 +824,16 @@ object AgendaCardBitmapRenderer {
             sleep.sleepScore >= 70 -> "Bom"
             else -> "Regular"
         }
-        canvas.drawText("${sleep.bedtimeHHMM} → ${sleep.wakeHHMM} • $qualityLabel", 24f, 92f, subPaint)
+        val subtitleLabel = if (sleep.showScore && sleep.sleepScore > 0) {
+            "${sleep.bedtimeHHMM} → ${sleep.wakeHHMM} • $qualityLabel"
+        } else {
+            "${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
+        }
+        canvas.drawText(subtitleLabel, 24f, 92f, subPaint)
 
         // Barra Segmentada de Estágios do Sono (Acordado, REM, Leve, Profundo)
         val stages = sleep.stagesMinutes.take(4).let {
-            if (it.size == 4) it else listOf(18, 95, 244, 105)
+            if (it.size == 4) it else listOf(0, 0, sleep.durationMinutes.coerceAtLeast(1), 0)
         }
         val totalStageMins = stages.sum().coerceAtLeast(1).toFloat()
         val stageColors = listOf(

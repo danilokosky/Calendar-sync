@@ -386,6 +386,7 @@ export interface SyncConfiguration {
   solarSunriseHHMM?: string;
   solarSunsetHHMM?: string;
   sleepSyncEnabled?: boolean;
+  sleepScoreVisible?: boolean;
   sleepHasDataToday?: boolean;
   sleepDurationMinutes?: number;
   sleepScore?: number;

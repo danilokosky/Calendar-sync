@@ -46,13 +46,10 @@ class WearRequestListenerService : WearableListenerService() {
 }
 
 /**
- * Observador de Notificações de Clima e Resumo de Sono no Smartphone (`PhoneWeatherNotificationListenerService`):
- * 1. Detecta notificações de Apps de Clima escolhidos pelo usuário e envia atualização imediata ao relógio.
- * 2. Detecta notificações matinais de Sono do Samsung Health (`com.sec.android.app.shealth`),
- *    Health Connect (`com.google.android.apps.healthdata`), Sleep as Android ou Google Fit,
- *    extraindo o tempo dormido/pontuação e acionando a exposição do contexto de Sono ao acordar.
- *
- * (A sincronização de tarefas utiliza exclusivamente a API oficial do Google Tasks, sem depender da barra de status.)
+ * Observador de Notificações de Clima no Smartphone (`PhoneWeatherNotificationListenerService`):
+ * - Detecta notificações de Apps de Clima escolhidos pelo usuário e envia atualização imediata ao relógio.
+ * - Dados de Sono são lidos exclusivamente via API oficial do Android Health Connect (`HealthConnectSleepReader`),
+ *   e tarefas via API oficial do Google Tasks, sem depender da barra de notificações.
  */
 class PhoneWeatherNotificationListenerService : NotificationListenerService() {
 
@@ -63,6 +60,8 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
         if (sbn == null) return
 
         val prefs = SyncPreferences(applicationContext)
+        if (!prefs.isNotificationsSyncEnabled()) return
+
         val pkg = sbn.packageName.lowercase(Locale.ROOT)
         val extras = sbn.notification?.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
@@ -71,52 +70,6 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
                 ?: extras.getCharSequence(Notification.EXTRA_TEXT)
             )?.toString()?.trim().orEmpty()
         val combinedLower = "$title $text".lowercase(Locale.ROOT)
-
-        // 1) Verifica se é um relatório de Sono (Samsung Health, Health Connect, Sleep as Android, etc.)
-        val isSleepAppPkg = pkg.contains("shealth") ||
-            pkg.contains("healthdata") ||
-            pkg.contains("sleep") ||
-            pkg.contains("fitness")
-        val hasSleepKeywords = combinedLower.contains("sono") ||
-            combinedLower.contains("sleep") ||
-            combinedLower.contains("dormiu") ||
-            combinedLower.contains("pontuação do sono")
-
-        if (prefs.isSleepSyncEnabled() && isSleepAppPkg && hasSleepKeywords) {
-            val hoursRegex = Regex("(\\d{1,2})\\s*h\\s*(\\d{1,2})?\\s*m?")
-            val match = hoursRegex.find(combinedLower)
-            val parsedMins = if (match != null) {
-                val h = match.groupValues[1].toIntOrNull() ?: 7
-                val m = match.groupValues.getOrNull(2)?.toIntOrNull() ?: 42
-                (h * 60 + m).coerceIn(120, 840)
-            } else {
-                prefs.getSleepDurationMinutes()
-            }
-
-            val scoreRegex = Regex("(\\d{2,3})\\s*(pts|pontos|score)")
-            val parsedScore = scoreRegex.find(combinedLower)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: prefs.getSleepScore()
-
-            prefs.saveSleepSnapshot(
-                totalDurationMinutes = parsedMins,
-                sleepScore = parsedScore,
-                bedtimeHHMM = prefs.getSleepBedtimeHHMM(),
-                wakeHHMM = prefs.getSleepWakeHHMM(),
-                stagesMinutesCsv = prefs.getSleepStagesCsv(),
-                wakeTimestampMs = System.currentTimeMillis()
-            )
-
-            scope.launch {
-                CalendarSyncEngine.performFullSyncToWatch(
-                    context = applicationContext,
-                    triggerSource = "Resumo de Sono Detectado"
-                )
-            }
-            return
-        }
-
-        // 2) Verifica se é um gatilho de Clima escolhido pelo usuário
-        if (!prefs.isNotificationsSyncEnabled()) return
 
         val selectedPkgs = prefs.getSelectedWeatherTriggerPackages().map { it.lowercase(Locale.ROOT) }.toSet()
         val isSelectedTriggerPkg = selectedPkgs.any { sel -> pkg == sel || pkg.contains(sel) }
