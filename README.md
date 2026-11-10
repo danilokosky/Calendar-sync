@@ -15,3 +15,10 @@ Ao fazer `git push` deste projeto para o seu repositório no GitHub:
    - `chronowear-mobile-apk`
    - `chronowear-wear-apk`
    - `chronowear-watchface-wff-apk`
+
+## Credencial OAuth 2.0 Android (Google Tasks API)
+
+- **Projeto Google Cloud**: `gen-lang-client-0127839135`
+- **Nome do pacote (`applicationId`)**: `com.chronowear.sync`
+- **Impressão digital do certificado SHA-1**: `EC:66:EE:98:17:74:F1:C2:B2:10:D7:1D:19:0E:02:8D:F3:98:4D:71`
+

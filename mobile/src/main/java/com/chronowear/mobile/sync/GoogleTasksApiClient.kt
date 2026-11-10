@@ -41,7 +41,9 @@ object GoogleTasksApiClient {
     const val SCOPE_TASKS_READONLY = "https://www.googleapis.com/auth/tasks.readonly"
     const val OAUTH_SCOPE_STRING = "oauth2:$SCOPE_TASKS $SCOPE_TASKS_READONLY"
     const val WEB_OAUTH_CLIENT_ID = "65152854911-1gc862g8m5f7905c3q54n365cecuthha.apps.googleusercontent.com"
-    const val DEFAULT_FIXED_DEBUG_SHA1 = "C0:8D:D2:09:AC:42:60:FD:CB:7A:B8:C4:A3:EB:1B:D5:6B:53:23:C1"
+    const val DEFAULT_FIXED_DEBUG_SHA1 = "EC:66:EE:98:17:74:F1:C2:B2:10:D7:1D:19:0E:02:8D:F3:98:4D:71"
+    const val DEFAULT_FIXED_DEBUG_SHA1_COMPACT = "EC66EE981774F1C2B210D71D190E028DF3984D71"
+    const val ANDROID_PACKAGE_NAME = "com.chronowear.sync"
     const val CLOUD_CONSOLE_PROJECT_ID = "gen-lang-client-0127839135"
 
     @Volatile
@@ -442,6 +444,8 @@ object GoogleTasksApiClient {
                 readTimeout = 6000
                 setRequestProperty("Authorization", "Bearer $accessToken")
                 setRequestProperty("Accept", "application/json")
+                setRequestProperty("X-Android-Package", ANDROID_PACKAGE_NAME)
+                setRequestProperty("X-Android-Cert", DEFAULT_FIXED_DEBUG_SHA1_COMPACT)
             }
             val code = conn.responseCode
             val body = if (code in 200..299) {
