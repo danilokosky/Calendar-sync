@@ -5,6 +5,7 @@ import android.accounts.AccountManager
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.Dialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -38,8 +39,13 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.Window
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -308,54 +314,205 @@ class MobileSyncConfigActivity : Activity() {
     }
 
     private fun startGoogleTasksAccountPicker() {
-        try {
-            GoogleTasksApiClient.isInteractiveConsentInProgress = true
+        val currentEmail = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+        showInAppGoogleOAuthDialog(currentEmail)
+    }
+
+    /**
+     * Abre o modal OAuth 2.0 100% interno no aplicativo Android (sem abrir navegador externo e
+     * sem passar pelo popup `MinuteMaid` do Google Play Services que congela na etapa "Aprovação da família").
+     * Também não exige cadastro manual de SHA-1 no Google Cloud Console.
+     */
+    @Suppress("SetJavaScriptEnabled")
+    private fun showInAppGoogleOAuthDialog(loginHintEmail: String = "") {
+        if (isFinishing) return
+        GoogleTasksApiClient.isInteractiveConsentInProgress = true
+        clockHandler.removeCallbacks(liveClockRunnable)
+
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setOnDismissListener {
+            GoogleTasksApiClient.isInteractiveConsentInProgress = false
             clockHandler.removeCallbacks(liveClockRunnable)
-            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestEmail()
-                .requestScopes(Scope(GoogleTasksApiClient.SCOPE_TASKS_READONLY))
-                .build()
-            val signInClient = GoogleSignIn.getClient(this, gso)
-            signInClient.signOut().addOnCompleteListener {
-                try {
-                    @Suppress("DEPRECATION")
-                    startActivityForResult(signInClient.signInIntent, REQUEST_CODE_GOOGLE_SIGN_IN)
-                } catch (_: Exception) {
-                    startLegacyAccountPickerFallback()
-                }
+            clockHandler.post(liveClockRunnable)
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0B0F17"))
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#111827"))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val titleCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val titleText = TextView(this).apply {
+            text = "Conectar Google Tasks"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+        }
+        val subtitleText = TextView(this).apply {
+            text = "Autenticação OAuth 2.0 interna • Sem exigir SHA-1"
+            setTextColor(Color.parseColor("#94A3B8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        }
+        titleCol.addView(titleText)
+        titleCol.addView(subtitleText)
+        topBar.addView(titleCol)
+
+        val closeBtn = Button(this).apply {
+            text = "Fechar ✕"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = roundedRect("#1E293B", "#334155", 10)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            minHeight = dp(34)
+            minimumHeight = dp(34)
+            setOnClickListener {
+                dialog.dismiss()
+            }
+        }
+        topBar.addView(closeBtn)
+        root.addView(topBar)
+
+        var tokenCaptured = false
+        val webView = WebView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.databaseEnabled = true
+            settings.setSupportZoom(true)
+            settings.builtInZoomControls = true
+            settings.displayZoomControls = false
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+
+            // Remove "; wv" e "Version/4.0" do User-Agent para que o Google OAuth renderize
+            // a tela de login e "Aprovação da família" sem bloqueio nem congelamento.
+            val rawUa = settings.userAgentString ?: ""
+            val cleanUa = rawUa
+                .replace("; wv", "")
+                .replace("Version/4.0 ", "")
+                .trim()
+            settings.userAgentString = if (cleanUa.isNotBlank()) {
+                cleanUa
+            } else {
+                "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            }
+        }
+
+        try {
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                cookieManager.setAcceptThirdPartyCookies(webView, true)
             }
         } catch (_: Exception) {
-            startLegacyAccountPickerFallback()
         }
+
+        fun handlePotentialRedirectUrl(candidateUrl: String?): Boolean {
+            if (tokenCaptured || candidateUrl.isNullOrBlank()) return false
+            val extractedToken = GoogleTasksApiClient.extractAccessTokenFromRedirectUrl(candidateUrl)
+            if (!extractedToken.isNullOrBlank()) {
+                tokenCaptured = true
+                prefs.setGoogleTasksAccessToken(extractedToken)
+                subtitleText.text = "Token recebido! Sincronizando tarefas..."
+                try {
+                    CookieManager.getInstance().flush()
+                } catch (_: Exception) {
+                }
+                uiScope.launch {
+                    val resolvedEmail = withContext(Dispatchers.IO) {
+                        GoogleTasksApiClient.fetchUserEmailFromToken(extractedToken)
+                    }.ifBlank {
+                        loginHintEmail.ifBlank {
+                            GoogleTasksApiClient.resolveDefaultAccountEmail(this@MobileSyncConfigActivity, prefs)
+                        }
+                    }
+                    if (resolvedEmail.isNotBlank()) {
+                        prefs.setGoogleTasksAccountEmail(resolvedEmail)
+                    }
+                    try {
+                        if (dialog.isShowing) dialog.dismiss()
+                    } catch (_: Exception) {
+                    }
+                    completeAuthorizedTasksSync()
+                }
+                return true
+            }
+            return false
+        }
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val targetUrl = request?.url?.toString()
+                if (handlePotentialRedirectUrl(targetUrl)) return true
+                return false
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                if (handlePotentialRedirectUrl(url)) return true
+                return false
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                if (handlePotentialRedirectUrl(url)) {
+                    view?.stopLoading()
+                    return
+                }
+                super.onPageStarted(view, url, favicon)
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                if (handlePotentialRedirectUrl(url)) {
+                    view?.stopLoading()
+                    return
+                }
+                super.doUpdateVisitedHistory(view, url, isReload)
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                if (handlePotentialRedirectUrl(url)) return
+                super.onPageFinished(view, url)
+            }
+        }
+
+        root.addView(webView)
+        dialog.setContentView(root)
+        dialog.show()
+
+        val oauthUrl = GoogleTasksApiClient.buildInAppOAuthUrl(
+            loginHintEmail = loginHintEmail,
+            forceSelectAccount = true
+        )
+        webView.loadUrl(oauthUrl)
     }
 
     private fun startLegacyAccountPickerFallback() {
-        try {
-            GoogleTasksApiClient.isInteractiveConsentInProgress = true
-            clockHandler.removeCallbacks(liveClockRunnable)
-            @Suppress("DEPRECATION")
-            val intent = AccountPicker.newChooseAccountIntent(
-                null,
-                null,
-                arrayOf("com.google"),
-                false,
-                "Selecione a conta Google para sincronizar suas tarefas via Google Tasks API",
-                null,
-                null,
-                null
-            )
-            @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQUEST_CODE_PICK_GOOGLE_ACCOUNT)
-        } catch (_: Exception) {
-            GoogleTasksApiClient.isInteractiveConsentInProgress = false
-            clockHandler.post(liveClockRunnable)
-            val fallbackEmail = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
-            if (fallbackEmail.isNotBlank()) {
-                fetchTokenAndSyncAfterSignIn(fallbackEmail)
-            } else {
-                showStatusToast("Adicione uma conta Google nas configurações do Android.")
-            }
-        }
+        val currentEmail = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
+        showInAppGoogleOAuthDialog(currentEmail)
     }
 
     private fun completeAuthorizedTasksSync() {
@@ -386,11 +543,7 @@ class MobileSyncConfigActivity : Activity() {
             completeAuthorizedTasksSync()
             return
         }
-        if (cleanEmail.isBlank()) {
-            startGoogleTasksAccountPicker()
-        } else {
-            fetchTokenAndSyncAfterSignIn(cleanEmail)
-        }
+        showInAppGoogleOAuthDialog(cleanEmail)
     }
 
     private fun fetchTokenAndSyncAfterSignIn(accountEmail: String) {
@@ -410,29 +563,13 @@ class MobileSyncConfigActivity : Activity() {
                     completeAuthorizedTasksSync()
                 }
                 is GoogleTasksAuthResult.NeedsUserConsent -> {
-                    try {
-                        GoogleTasksApiClient.isInteractiveConsentInProgress = true
-                        clockHandler.removeCallbacks(liveClockRunnable)
-                        @Suppress("DEPRECATION")
-                        startActivityForResult(authResult.consentIntent, REQUEST_CODE_GOOGLE_TASKS_CONSENT)
-                    } catch (_: Exception) {
-                        GoogleTasksApiClient.isInteractiveConsentInProgress = false
-                        clockHandler.post(liveClockRunnable)
-                        showStatusToast("Não foi possível abrir a janela de autorização do Google.")
-                    }
+                    showInAppGoogleOAuthDialog(authResult.accountEmail)
                 }
                 is GoogleTasksAuthResult.UnregisteredOnConsole -> {
-                    refreshUiState(checkRemoteConnection = false)
-                    showGoogleTasksOAuthSetupDialog(
-                        packageName = authResult.packageName,
-                        sha1Fingerprint = authResult.sha1Fingerprint,
-                        accountEmail = authResult.accountEmail
-                    )
+                    showInAppGoogleOAuthDialog(authResult.accountEmail)
                 }
                 is GoogleTasksAuthResult.Error -> {
-                    prefs.setGoogleTasksSyncStatus(authResult.reason)
-                    refreshUiState(checkRemoteConnection = false)
-                    showStatusToast(authResult.reason)
+                    showInAppGoogleOAuthDialog(accountEmail)
                 }
             }
         }
@@ -3397,11 +3534,18 @@ class MobileSyncConfigActivity : Activity() {
     private fun refreshGoogleTasksAccountSummary() {
         if (!::googleTasksAccountStatusText.isInitialized) return
         val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
-        val status = prefs.getGoogleTasksSyncStatus()
+        val hasToken = prefs.getGoogleTasksAccessToken().isNotBlank()
+        val rawStatus = prefs.getGoogleTasksSyncStatus()
+        val status = if (!hasToken && rawStatus.contains("SHA-1", ignoreCase = true)) {
+            "Pronto para conectar no modal interno (não requer SHA-1)"
+        } else {
+            rawStatus
+        }
         val sha1 = GoogleTasksApiClient.getAppSignatureSha1(this)
         val accountLine = if (email.isNotBlank()) "Conta Google: $email" else "Conta Google: não selecionada"
+        val authModeLine = if (hasToken) "Autenticação: OAuth 2.0 Ativa ✓" else "Autenticação: Pendente (toque em Conectar)"
         googleTasksAccountStatusText.text =
-            "$accountLine\nStatus API: $status\nPacote: $packageName\nSHA-1 do APK: $sha1"
+            "$accountLine\n$authModeLine\nStatus API: $status\nSHA-1 Fixo do APK: $sha1"
     }
 
     private fun copyTextToClipboard(label: String, value: String) {

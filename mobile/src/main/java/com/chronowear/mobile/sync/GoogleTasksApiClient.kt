@@ -41,8 +41,9 @@ object GoogleTasksApiClient {
     const val SCOPE_TASKS_READONLY = "https://www.googleapis.com/auth/tasks.readonly"
     const val OAUTH_SCOPE_STRING = "oauth2:$SCOPE_TASKS_READONLY"
     const val WEB_OAUTH_CLIENT_ID = "65152854911-1gc862g8m5f7905c3q54n365cecuthha.apps.googleusercontent.com"
-    const val DEFAULT_FIXED_DEBUG_SHA1 = "36:5A:73:0F:FE:B0:A3:01:74:3F:E5:77:FE:A8:D3:42:2B:6E:E4:B6"
-    const val DEFAULT_FIXED_DEBUG_SHA1_COMPACT = "365A730FFEB0A301743FE577FEA8D3422B6EE4B6"
+    const val FIREBASE_AUTH_REDIRECT_URI = "https://gen-lang-client-0127839135.firebaseapp.com/__/auth/handler"
+    const val DEFAULT_FIXED_DEBUG_SHA1 = "8E:EB:C7:D5:9F:32:DB:05:D2:31:E9:51:8B:50:55:79:E2:FB:96:2E"
+    const val DEFAULT_FIXED_DEBUG_SHA1_COMPACT = "8EEBC7D59F32DB05D231E9518B505579E2FB962E"
     const val ANDROID_PACKAGE_NAME = "com.chronowear.sync"
     const val CLOUD_CONSOLE_PROJECT_ID = "gen-lang-client-0127839135"
 
@@ -54,6 +55,88 @@ object GoogleTasksApiClient {
     @Volatile
     var pendingConsentIntent: Intent? = null
         private set
+
+    /**
+     * Monta a URL OAuth 2.0 oficial (usando o Web Client ID e Redirect URI já autorizados no projeto
+     * `gen-lang-client-0127839135`) para autenticação 100% interna no modal do aplicativo Android,
+     * sem depender da janela `MinuteMaid` do Google Play Services (que trava na tela "Aprovação da família")
+     * e sem exigir cadastro de chave SHA-1 no Google Cloud Console.
+     */
+    fun buildInAppOAuthUrl(
+        loginHintEmail: String? = null,
+        forceSelectAccount: Boolean = true
+    ): String {
+        val encodedClientId = URLEncoder.encode(WEB_OAUTH_CLIENT_ID, "UTF-8")
+        val encodedRedirect = URLEncoder.encode(FIREBASE_AUTH_REDIRECT_URI, "UTF-8")
+        val scopes = "$SCOPE_TASKS_READONLY https://www.googleapis.com/auth/userinfo.email"
+        val encodedScope = URLEncoder.encode(scopes, "UTF-8")
+        val promptValue = if (forceSelectAccount) "select_account consent" else "none"
+        val encodedPrompt = URLEncoder.encode(promptValue, "UTF-8")
+        val hintParam = if (!loginHintEmail.isNullOrBlank() && loginHintEmail.contains("@")) {
+            "&login_hint=" + URLEncoder.encode(loginHintEmail.trim(), "UTF-8")
+        } else {
+            ""
+        }
+        return "https://accounts.google.com/o/oauth2/v2/auth" +
+            "?client_id=$encodedClientId" +
+            "&redirect_uri=$encodedRedirect" +
+            "&response_type=token" +
+            "&include_granted_scopes=true" +
+            "&scope=$encodedScope" +
+            "&prompt=$encodedPrompt" +
+            hintParam
+    }
+
+    /**
+     * Extrai o `access_token` quando o modal interno redireciona para
+     * `https://gen-lang-client-0127839135.firebaseapp.com/__/auth/handler#access_token=...`
+     */
+    fun extractAccessTokenFromRedirectUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (!url.startsWith(FIREBASE_AUTH_REDIRECT_URI, ignoreCase = true)) return null
+        val fragment = url.substringAfter("#", "")
+        val query = url.substringAfter("?", "").substringBefore("#")
+        val combined = listOf(fragment, query).filter { it.isNotBlank() }.joinToString("&")
+        if (combined.isBlank()) return null
+        for (pair in combined.split("&")) {
+            val parts = pair.split("=", limit = 2)
+            if (parts.size == 2 && parts[0].trim() == "access_token") {
+                val decoded = try {
+                    java.net.URLDecoder.decode(parts[1].trim(), "UTF-8")
+                } catch (_: Exception) {
+                    parts[1].trim()
+                }
+                if (decoded.isNotBlank()) return decoded
+            }
+        }
+        return null
+    }
+
+    /**
+     * Consulta o e-mail da conta autenticada a partir do Access Token OAuth 2.0.
+     */
+    fun fetchUserEmailFromToken(accessToken: String): String {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL("https://www.googleapis.com/oauth2/v2/userinfo").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 5000
+                readTimeout = 5000
+                setRequestProperty("Authorization", "Bearer $accessToken")
+                setRequestProperty("Accept", "application/json")
+            }
+            if (conn.responseCode in 200..299) {
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                JSONObject(body).optString("email", "").trim()
+            } else {
+                ""
+            }
+        } catch (_: Exception) {
+            ""
+        } finally {
+            conn?.disconnect()
+        }
+    }
 
     /**
      * Lê a impressão digital SHA-1 real do certificado que assinou o APK instalado no aparelho.
@@ -490,23 +573,18 @@ object GoogleTasksApiClient {
     }
 
     private fun executeGetRequest(
-        context: Context,
+        @Suppress("UNUSED_PARAMETER") context: Context,
         urlStr: String,
         accessToken: String
     ): Pair<Int, String> {
         var conn: HttpURLConnection? = null
         return try {
-            val liveSha1Compact = getAppSignatureSha1(context).replace(":", "").ifBlank {
-                DEFAULT_FIXED_DEBUG_SHA1_COMPACT
-            }
             conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 6000
                 readTimeout = 6000
                 setRequestProperty("Authorization", "Bearer $accessToken")
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("X-Android-Package", context.packageName)
-                setRequestProperty("X-Android-Cert", liveSha1Compact)
             }
             val code = conn.responseCode
             val body = if (code in 200..299) {
