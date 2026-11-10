@@ -732,16 +732,26 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                     <div className="w-full space-y-1">
                       <div className="flex items-center justify-between gap-1 text-[14.5px] leading-tight">
                         <div className="flex items-center min-w-0">
-                          <span className="w-[46px] font-mono font-bold text-white shrink-0">
-                            {ev1 ? formatTimeHHMM(ev1.startEpochMs) : '--:--'}
-                          </span>
-                          <span className="font-bold text-[#F5C438] truncate">
-                            {ev1 ? ev1.title : 'Não há eventos'}
-                          </span>
+                          {ev1 ? (
+                            <>
+                              <span className="w-[46px] font-mono font-bold text-white shrink-0">
+                                {formatTimeHHMM(ev1.startEpochMs)}
+                              </span>
+                              <span className="font-bold text-[#F5C438] truncate">
+                                {ev1.title}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-[#64748B] truncate">
+                              Sem compromissos
+                            </span>
+                          )}
                         </div>
-                        <span className="font-mono font-bold text-[12.5px] text-[#67E8F9] shrink-0 ml-1">
-                          {ev1 ? watchState.formattedCountdown : '--'}
-                        </span>
+                        {ev1 && (
+                          <span className="font-mono font-bold text-[12.5px] text-[#67E8F9] shrink-0 ml-1">
+                            {watchState.formattedCountdown}
+                          </span>
+                        )}
                       </div>
                       <div className="w-full h-[5px] bg-[#252E3A] rounded-full overflow-hidden">
                         <div
@@ -754,24 +764,36 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       </div>
                     </div>
 
-                    {/* LINHA 2: Hora Branca + Título Dourado */}
-                    <div className="w-full flex items-center text-[14.5px] leading-tight">
-                      <span className="w-[46px] font-mono font-bold text-white shrink-0">
-                        {ev2 ? formatTimeHHMM(ev2.startEpochMs) : '--:--'}
-                      </span>
-                      <span className="font-bold text-[#F5C438] truncate">
-                        {ev2 ? ev2.title : ev1 ? 'Livre' : 'Agenda livre'}
-                      </span>
+                    {/* LINHA 2: Hora Branca + Título Dourado ou Ponto Guia Ultra-Sutil */}
+                    <div className="w-full flex items-center text-[14.5px] leading-tight min-h-[18px]">
+                      {ev2 ? (
+                        <>
+                          <span className="w-[46px] font-mono font-bold text-white shrink-0">
+                            {formatTimeHHMM(ev2.startEpochMs)}
+                          </span>
+                          <span className="font-bold text-[#F5C438] truncate">
+                            {ev2.title}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-mono font-bold text-[#263344] select-none">•</span>
+                      )}
                     </div>
 
-                    {/* LINHA 3: Hora Branca + Título Dourado */}
-                    <div className="w-full flex items-center text-[14.5px] leading-tight">
-                      <span className="w-[46px] font-mono font-bold text-white shrink-0">
-                        {ev3 ? formatTimeHHMM(ev3.startEpochMs) : '--:--'}
-                      </span>
-                      <span className="font-bold text-[#F5C438] truncate">
-                        {ev3 ? ev3.title : ev1 ? 'Livre' : 'Sem compromissos'}
-                      </span>
+                    {/* LINHA 3: Hora Branca + Título Dourado ou Ponto Guia Ultra-Sutil */}
+                    <div className="w-full flex items-center text-[14.5px] leading-tight min-h-[18px]">
+                      {ev3 ? (
+                        <>
+                          <span className="w-[46px] font-mono font-bold text-white shrink-0">
+                            {formatTimeHHMM(ev3.startEpochMs)}
+                          </span>
+                          <span className="font-bold text-[#F5C438] truncate">
+                            {ev3.title}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-mono font-bold text-[#263344] select-none">•</span>
+                      )}
                     </div>
                   </>
                 )}

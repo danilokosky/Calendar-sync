@@ -2797,18 +2797,16 @@ class MobileSyncConfigActivity : Activity() {
                 textPaint.textAlign = Paint.Align.LEFT
                 canvas.drawText(dayHeader, 72f, 49f, textPaint)
 
-                val countdownLabel = if (ev0 != null) {
+                if (ev0 != null) {
                     val diffMin = TimeUnit.MILLISECONDS.toMinutes((ev0.startEpochMs - nowMs).coerceAtLeast(0L))
                     val h = diffMin / 60
                     val m = diffMin % 60
-                    if (h > 0) "em ${h}h ${m}m" else "em ${m}m"
-                } else {
-                    "Livre"
+                    val countdownLabel = if (h > 0) "em ${h}h ${m}m" else "em ${m}m"
+                    textPaint.color = Color.parseColor("#67E8F9")
+                    textPaint.textSize = 32f
+                    textPaint.textAlign = Paint.Align.RIGHT
+                    canvas.drawText(countdownLabel, cardW - 24f, 49f, textPaint)
                 }
-                textPaint.color = Color.parseColor("#67E8F9")
-                textPaint.textSize = 32f
-                textPaint.textAlign = Paint.Align.RIGHT
-                canvas.drawText(countdownLabel, cardW - 24f, 49f, textPaint)
 
                 // Linha 1 + Barra de progresso
                 textPaint.textAlign = Paint.Align.LEFT
@@ -2825,8 +2823,8 @@ class MobileSyncConfigActivity : Activity() {
                     ).toString()
                     canvas.drawText(ellipsized, 134f, 102f, textPaint)
                 } else {
-                    textPaint.color = Color.parseColor("#94A3B8")
-                    canvas.drawText("Não há compromissos", 24f, 102f, textPaint)
+                    textPaint.color = Color.parseColor("#64748B")
+                    canvas.drawText("Sem compromissos", 24f, 102f, textPaint)
                 }
 
                 // Barra 0% -> 100%
@@ -3362,9 +3360,8 @@ class MobileSyncConfigActivity : Activity() {
             ).toString()
             canvas.drawText(ellipsized, 134f, y, textPaint)
         } else {
-            textPaint.color = Color.parseColor("#64748B")
-            canvas.drawText("--:--", 24f, y, textPaint)
-            canvas.drawText("Livre", 134f, y, textPaint)
+            textPaint.color = Color.parseColor("#263344")
+            canvas.drawText("•", 24f, y, textPaint)
         }
     }
 

@@ -112,25 +112,25 @@ object AgendaCardBitmapRenderer {
 
                 val rows = if (dayFilteredEvents.isEmpty()) {
                     listOf(
-                        Triple("--:--", "Não há compromissos", "--"),
-                        Triple("--:--", "Livre", ""),
-                        Triple("--:--", "Livre", "")
+                        Triple("", "Sem compromissos", ""),
+                        Triple("", "", ""),
+                        Triple("", "", "")
                     )
                 } else {
                     listOf(
                         Triple(
-                            dayFilteredEvents.getOrNull(0)?.formatStartHHMM() ?: "--:--",
-                            dayFilteredEvents.getOrNull(0)?.title ?: "Livre",
-                            dayFilteredEvents.getOrNull(0)?.formatRemaining(nowMs) ?: "--"
+                            dayFilteredEvents.getOrNull(0)?.formatStartHHMM() ?: "",
+                            dayFilteredEvents.getOrNull(0)?.title ?: "",
+                            dayFilteredEvents.getOrNull(0)?.formatRemaining(nowMs) ?: ""
                         ),
                         Triple(
-                            dayFilteredEvents.getOrNull(1)?.formatStartHHMM() ?: "--:--",
-                            dayFilteredEvents.getOrNull(1)?.title ?: "Livre",
+                            dayFilteredEvents.getOrNull(1)?.formatStartHHMM() ?: "",
+                            dayFilteredEvents.getOrNull(1)?.title ?: "",
                             ""
                         ),
                         Triple(
-                            dayFilteredEvents.getOrNull(2)?.formatStartHHMM() ?: "--:--",
-                            dayFilteredEvents.getOrNull(2)?.title ?: "Livre",
+                            dayFilteredEvents.getOrNull(2)?.formatStartHHMM() ?: "",
+                            dayFilteredEvents.getOrNull(2)?.title ?: "",
                             ""
                         )
                     )
@@ -230,20 +230,34 @@ object AgendaCardBitmapRenderer {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        val row1 = rows.getOrNull(0) ?: Triple("--:--", "Livre", "--")
-        canvas.drawText(row1.first, 24f, 105f, timePaint)
+        val emptySlotPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#263344")
+            textSize = 36f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val emptyDayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#64748B")
+            textSize = 38f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
 
-        val row1TitleMaxWidth = if (row1.third.isNotBlank()) 290f else 420f
-        val row1Ellipsized = TextUtils.ellipsize(
-            row1.second,
-            titlePaint,
-            row1TitleMaxWidth,
-            TextUtils.TruncateAt.END
-        ).toString()
-        canvas.drawText(row1Ellipsized, 150f, 105f, titlePaint)
-
-        if (row1.third.isNotBlank()) {
-            canvas.drawText(row1.third, CARD_WIDTH - 24f, 103f, countdownPaint)
+        val row1 = rows.getOrNull(0) ?: Triple("", "Sem compromissos", "")
+        if (row1.first.isNotBlank()) {
+            canvas.drawText(row1.first, 24f, 105f, timePaint)
+            val row1TitleMaxWidth = if (row1.third.isNotBlank()) 290f else 420f
+            val row1Ellipsized = TextUtils.ellipsize(
+                row1.second,
+                titlePaint,
+                row1TitleMaxWidth,
+                TextUtils.TruncateAt.END
+            ).toString()
+            canvas.drawText(row1Ellipsized, 150f, 105f, titlePaint)
+            if (row1.third.isNotBlank()) {
+                canvas.drawText(row1.third, CARD_WIDTH - 24f, 103f, countdownPaint)
+            }
+        } else {
+            val emptyLabel = row1.second.ifBlank { "Sem compromissos" }
+            canvas.drawText(emptyLabel, 24f, 105f, emptyDayPaint)
         }
 
         val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -266,25 +280,33 @@ object AgendaCardBitmapRenderer {
             )
         }
 
-        val row2 = rows.getOrNull(1) ?: Triple("--:--", "Livre", "")
-        canvas.drawText(row2.first, 24f, 188f, timePaint)
-        val row2Ellipsized = TextUtils.ellipsize(
-            row2.second,
-            titlePaint,
-            430f,
-            TextUtils.TruncateAt.END
-        ).toString()
-        canvas.drawText(row2Ellipsized, 150f, 188f, titlePaint)
+        val row2 = rows.getOrNull(1) ?: Triple("", "", "")
+        if (row2.first.isNotBlank()) {
+            canvas.drawText(row2.first, 24f, 188f, timePaint)
+            val row2Ellipsized = TextUtils.ellipsize(
+                row2.second,
+                titlePaint,
+                430f,
+                TextUtils.TruncateAt.END
+            ).toString()
+            canvas.drawText(row2Ellipsized, 150f, 188f, titlePaint)
+        } else {
+            canvas.drawText("•", 24f, 188f, emptySlotPaint)
+        }
 
-        val row3 = rows.getOrNull(2) ?: Triple("--:--", "Livre", "")
-        canvas.drawText(row3.first, 24f, 250f, timePaint)
-        val row3Ellipsized = TextUtils.ellipsize(
-            row3.second,
-            titlePaint,
-            430f,
-            TextUtils.TruncateAt.END
-        ).toString()
-        canvas.drawText(row3Ellipsized, 150f, 250f, titlePaint)
+        val row3 = rows.getOrNull(2) ?: Triple("", "", "")
+        if (row3.first.isNotBlank()) {
+            canvas.drawText(row3.first, 24f, 250f, timePaint)
+            val row3Ellipsized = TextUtils.ellipsize(
+                row3.second,
+                titlePaint,
+                430f,
+                TextUtils.TruncateAt.END
+            ).toString()
+            canvas.drawText(row3Ellipsized, 150f, 250f, titlePaint)
+        } else {
+            canvas.drawText("•", 24f, 250f, emptySlotPaint)
+        }
 
         return bmp
     }

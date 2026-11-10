@@ -1135,11 +1135,26 @@ object CalendarSyncEngine {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
+        val emptySlotPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#263344")
+            textSize = 36f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val emptyDayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#64748B")
+            textSize = 38f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+
         val ev0 = dayEvents.getOrNull(0)
-        canvas.drawText(if (ev0 != null) sdf.format(Date(ev0.startEpochMs)) else "--:--", 24f, 105f, timePaint)
-        val t0 = TextUtils.ellipsize(ev0?.title ?: "Não há eventos", titlePaint, 290f, TextUtils.TruncateAt.END).toString()
-        canvas.drawText(t0, 150f, 105f, titlePaint)
-        canvas.drawText(if (ev0 != null) formatRemaining(ev0.startEpochMs) else "--", w - 24f, 103f, countdownPaint)
+        if (ev0 != null) {
+            canvas.drawText(sdf.format(Date(ev0.startEpochMs)), 24f, 105f, timePaint)
+            val t0 = TextUtils.ellipsize(ev0.title, titlePaint, 290f, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(t0, 150f, 105f, titlePaint)
+            canvas.drawText(formatRemaining(ev0.startEpochMs), w - 24f, 103f, countdownPaint)
+        } else {
+            canvas.drawText("Sem compromissos", 24f, 105f, emptyDayPaint)
+        }
 
         val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -1154,14 +1169,22 @@ object CalendarSyncEngine {
         }
 
         val ev1 = dayEvents.getOrNull(1)
-        canvas.drawText(if (ev1 != null) sdf.format(Date(ev1.startEpochMs)) else "--:--", 24f, 188f, timePaint)
-        val t1 = TextUtils.ellipsize(ev1?.title ?: if (ev0 != null) "Livre" else "Agenda livre", titlePaint, 430f, TextUtils.TruncateAt.END).toString()
-        canvas.drawText(t1, 150f, 188f, titlePaint)
+        if (ev1 != null) {
+            canvas.drawText(sdf.format(Date(ev1.startEpochMs)), 24f, 188f, timePaint)
+            val t1 = TextUtils.ellipsize(ev1.title, titlePaint, 430f, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(t1, 150f, 188f, titlePaint)
+        } else {
+            canvas.drawText("•", 24f, 188f, emptySlotPaint)
+        }
 
         val ev2 = dayEvents.getOrNull(2)
-        canvas.drawText(if (ev2 != null) sdf.format(Date(ev2.startEpochMs)) else "--:--", 24f, 250f, timePaint)
-        val t2 = TextUtils.ellipsize(ev2?.title ?: if (ev0 != null) "Livre" else "Sem compromissos", titlePaint, 430f, TextUtils.TruncateAt.END).toString()
-        canvas.drawText(t2, 150f, 250f, titlePaint)
+        if (ev2 != null) {
+            canvas.drawText(sdf.format(Date(ev2.startEpochMs)), 24f, 250f, timePaint)
+            val t2 = TextUtils.ellipsize(ev2.title, titlePaint, 430f, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(t2, 150f, 250f, titlePaint)
+        } else {
+            canvas.drawText("•", 24f, 250f, emptySlotPaint)
+        }
 
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.PNG, 100, out)

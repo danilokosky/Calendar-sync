@@ -811,19 +811,29 @@ export const SmartphoneCompanionSimulator: React.FC<
                   {strictAgendaHeader}
                 </span>
               </div>
-              <span className="text-[10px] font-mono font-bold text-[#67E8F9] leading-none">
-                {ev0 ? formatCountdownText(remMs) : 'Livre'}
-              </span>
+              {ev0 && (
+                <span className="text-[10px] font-mono font-bold text-[#67E8F9] leading-none">
+                  {formatCountdownText(remMs)}
+                </span>
+              )}
             </div>
 
             <div className="space-y-0.5">
               <div className="flex items-center gap-1 text-[10.5px] leading-tight">
-                <span className="font-mono font-bold text-white shrink-0">
-                  {ev0 ? formatHHMM(ev0.startEpochMs) : '--:--'}
-                </span>
-                <span className="font-bold text-[#F5C438] truncate">
-                  {ev0 ? ev0.title : 'Não há compromissos'}
-                </span>
+                {ev0 ? (
+                  <>
+                    <span className="font-mono font-bold text-white shrink-0">
+                      {formatHHMM(ev0.startEpochMs)}
+                    </span>
+                    <span className="font-bold text-[#F5C438] truncate">
+                      {ev0.title}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[#64748B] truncate">
+                    Sem compromissos
+                  </span>
+                )}
               </div>
               <div className="w-full h-[4px] bg-[#1E293B] rounded-full overflow-hidden">
                 <div
@@ -833,22 +843,34 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            <div className="flex items-center gap-1 text-[9.5px] leading-tight">
-              <span className="font-mono text-slate-300 shrink-0">
-                {ev1 ? formatHHMM(ev1.startEpochMs) : '--:--'}
-              </span>
-              <span className="font-semibold text-amber-200/90 truncate">
-                {ev1 ? ev1.title : 'Livre'}
-              </span>
+            <div className="flex items-center gap-1 text-[9.5px] leading-tight min-h-[12px]">
+              {ev1 ? (
+                <>
+                  <span className="font-mono text-slate-300 shrink-0">
+                    {formatHHMM(ev1.startEpochMs)}
+                  </span>
+                  <span className="font-semibold text-amber-200/90 truncate">
+                    {ev1.title}
+                  </span>
+                </>
+              ) : (
+                <span className="font-mono font-bold text-[#263344] select-none">•</span>
+              )}
             </div>
 
-            <div className="flex items-center gap-1 text-[9.5px] leading-tight">
-              <span className="font-mono text-slate-400 shrink-0">
-                {ev2 ? formatHHMM(ev2.startEpochMs) : '--:--'}
-              </span>
-              <span className="font-semibold text-amber-200/75 truncate">
-                {ev2 ? ev2.title : 'Livre'}
-              </span>
+            <div className="flex items-center gap-1 text-[9.5px] leading-tight min-h-[12px]">
+              {ev2 ? (
+                <>
+                  <span className="font-mono text-slate-400 shrink-0">
+                    {formatHHMM(ev2.startEpochMs)}
+                  </span>
+                  <span className="font-semibold text-amber-200/75 truncate">
+                    {ev2.title}
+                  </span>
+                </>
+              ) : (
+                <span className="font-mono font-bold text-[#263344] select-none">•</span>
+              )}
             </div>
           </div>
         );
