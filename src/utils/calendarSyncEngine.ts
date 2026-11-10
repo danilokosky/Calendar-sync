@@ -18,7 +18,7 @@ export interface CalendarEventItem {
 
 export type SyncHorizonDays = 2 | 3 | 5 | 7;
 export type ProgressWindowMinutes = 30 | 60 | 120 | 180;
-export type SyncIntervalMinutes = 15 | 30 | 60;
+export type SyncIntervalMinutes = 15 | 30 | 60 | 120;
 export type PhoneWeatherCheckIntervalMinutes = 30 | 60 | 120 | 180;
 export type AutoExposureMinutes = 5 | 15 | 30 | 45 | 60;
 export type PrimaryContextMode =

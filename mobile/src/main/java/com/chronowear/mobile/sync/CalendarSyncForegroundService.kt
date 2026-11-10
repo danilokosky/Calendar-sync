@@ -48,11 +48,13 @@ class CalendarSyncForegroundService : Service() {
         if (intent?.action == ACTION_STOP_SERVICE || !prefs.isBackgroundServiceEnabled()) {
             unregisterCalendarObserver()
             taskWatchdogJob?.cancel()
+            CalendarSyncWorker.cancelPeriodicSync(this)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
 
+        CalendarSyncWorker.schedulePeriodicSync(this, prefs.getSyncIntervalMinutes())
         refreshCalendarAndTasksObservers()
         startTasksDiffWatchdogLoop()
 
@@ -67,10 +69,16 @@ class CalendarSyncForegroundService : Service() {
             val count = CalendarSyncEngine.performFullSyncToWatch(applicationContext, reason)
             lastSyncedTasksSignature = prefs.getTasksJson()
             val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            val intervalMin = prefs.getSyncIntervalMinutes()
+            val intervalLabel = when (intervalMin) {
+                60L -> "1h"
+                120L -> "2h"
+                else -> "${intervalMin}m"
+            }
             val autoChangeLabel = if (prefs.isAutoSyncOnCalendarChangeEnabled()) {
-                "Escuta ao vivo (Agenda + Tarefas)"
+                "Tempo real + Periódico ($intervalLabel)"
             } else {
-                "Periódico (${prefs.getSyncIntervalMinutes()}m)"
+                "Periódico ($intervalLabel)"
             }
             updateNotification(
                 "$autoChangeLabel • $count eventos enviados às $timeStr"
@@ -124,31 +132,33 @@ class CalendarSyncForegroundService : Service() {
     }
 
     /**
-     * Sincronizador periódico em segundo plano (a cada 45 segundos) com a Google Tasks REST API v1
-     * (`https://tasks.googleapis.com/tasks/v1/...`). Caso alguma tarefa tenha sido criada,
-     * concluída ou modificada na nuvem do Google Tasks, atualiza imediatamente o relógio.
+     * Sincronizador periódico de segurança em segundo plano que respeita o intervalo escolhido
+     * pelo usuário (15 min, 30 min, 1 hora ou 2 horas) para economizar bateria, enquanto a Agenda
+     * local continua respondendo em tempo real via ContentObserver.
      */
     private fun startTasksDiffWatchdogLoop() {
-        if (taskWatchdogJob?.isActive == true) return
+        taskWatchdogJob?.cancel()
         taskWatchdogJob = serviceScope.launch {
             while (true) {
-                delay(45_000L)
+                val intervalMinutes = SyncPreferences(applicationContext)
+                    .getSyncIntervalMinutes()
+                    .coerceIn(15L, 120L)
+                delay(intervalMinutes * 60_000L)
                 try {
                     val prefs = SyncPreferences(applicationContext)
-                    if (!prefs.isBackgroundServiceEnabled() || !prefs.isTasksSyncEnabled()) continue
-                    val prevJson = lastSyncedTasksSignature.ifBlank { prefs.getTasksJson() }
-                    val latestJson = GoogleTasksApiClient.fetchTasksFromGoogleApi(
-                        applicationContext,
-                        prefs,
-                        System.currentTimeMillis()
-                    )
-                    if (latestJson != prevJson) {
-                        lastSyncedTasksSignature = latestJson
-                        CalendarSyncEngine.performFullSyncToWatch(
+                    if (!prefs.isBackgroundServiceEnabled()) continue
+                    if (prefs.isTasksSyncEnabled()) {
+                        GoogleTasksApiClient.fetchTasksFromGoogleApi(
                             applicationContext,
-                            "Mudança Detectada no Google Tasks API (Auto-Sync)"
+                            prefs,
+                            System.currentTimeMillis()
                         )
                     }
+                    lastSyncedTasksSignature = prefs.getTasksJson()
+                    CalendarSyncEngine.performFullSyncToWatch(
+                        applicationContext,
+                        "Atualização Periódica Geral (${intervalMinutes}m)"
+                    )
                 } catch (_: Exception) {
                 }
             }

@@ -78,11 +78,14 @@ class SyncPreferences(context: Context) {
     }
 
     fun isCalendarEventsSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_CALENDAR_EVENTS_SYNC_ENABLED, false)
+        return prefs.getBoolean(KEY_CALENDAR_EVENTS_SYNC_ENABLED_V2, true)
     }
 
     fun setCalendarEventsSyncEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_CALENDAR_EVENTS_SYNC_ENABLED, enabled).commit()
+        prefs.edit()
+            .putBoolean(KEY_CALENDAR_EVENTS_SYNC_ENABLED_V2, enabled)
+            .putBoolean(KEY_CALENDAR_EVENTS_SYNC_ENABLED, enabled)
+            .commit()
     }
 
     fun isNotificationsSyncEnabled(): Boolean {
@@ -102,11 +105,19 @@ class SyncPreferences(context: Context) {
     }
 
     fun getSyncIntervalMinutes(): Long {
-        return prefs.getLong(KEY_SYNC_INTERVAL_MIN, 15L)
+        val raw = prefs.getLong(KEY_SYNC_INTERVAL_MIN, 60L)
+        return when (raw) {
+            15L, 30L, 60L, 120L -> raw
+            else -> 60L
+        }
     }
 
     fun setSyncIntervalMinutes(minutes: Long) {
-        prefs.edit().putLong(KEY_SYNC_INTERVAL_MIN, minutes).commit()
+        val valid = when (minutes) {
+            15L, 30L, 60L, 120L -> minutes
+            else -> minutes.coerceIn(15L, 120L)
+        }
+        prefs.edit().putLong(KEY_SYNC_INTERVAL_MIN, valid).commit()
     }
 
     fun isAutoSyncOnCalendarChangeEnabled(): Boolean {
@@ -906,6 +917,7 @@ class SyncPreferences(context: Context) {
         private const val KEY_PROGRESS_WINDOW_MIN = "progress_window_minutes"
         private const val KEY_BACKGROUND_SERVICE_ENABLED = "background_service_enabled"
         private const val KEY_CALENDAR_EVENTS_SYNC_ENABLED = "calendar_events_sync_enabled"
+        private const val KEY_CALENDAR_EVENTS_SYNC_ENABLED_V2 = "calendar_events_sync_enabled_v2"
         private const val KEY_NOTIFICATIONS_SYNC_ENABLED = "notifications_sync_enabled"
         private const val KEY_MEDIA_PLAYBACK_SYNC_ENABLED = "media_playback_sync_enabled"
         private const val KEY_SYNC_INTERVAL_MIN = "sync_interval_minutes"

@@ -54,6 +54,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.chronowear.mobile.sync.CalendarSyncEngine
 import com.chronowear.mobile.sync.CalendarSyncForegroundService
+import com.chronowear.mobile.sync.CalendarSyncWorker
 import com.chronowear.mobile.sync.GoogleTasksApiClient
 import com.chronowear.mobile.sync.GoogleTasksAuthResult
 import com.chronowear.mobile.sync.LocalCalendarEvent
@@ -140,6 +141,7 @@ class MobileSyncConfigActivity : Activity() {
     private val canvasModeChipButtons = mutableMapOf<String, Button>()
     private val primaryContextChipButtons = mutableMapOf<String, Button>()
     private val holdMinutesChipButtons = mutableMapOf<Int, Button>()
+    private val syncIntervalChipButtons = mutableMapOf<Int, Button>()
     private val horizonChipButtons = mutableMapOf<Int, Button>()
     private val progressWindowChipButtons = mutableMapOf<Int, Button>()
     private val phoneWeatherIntervalChipButtons = mutableMapOf<Int, Button>()
@@ -1127,6 +1129,28 @@ class MobileSyncConfigActivity : Activity() {
         }
         agendaTasksCard.addView(syncGoogleTasksNowBtn)
 
+        agendaTasksCard.addView(createSubLabel("Atualização periódica geral (economia de bateria):"))
+        val syncIntervalOpts = listOf(15 to "15 min", 30 to "30 min", 60 to "1 hora", 120 to "2 horas")
+        agendaTasksCard.addView(
+            buildStaticChipGrid(
+                options = syncIntervalOpts,
+                buttonStore = syncIntervalChipButtons
+            ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setSyncIntervalMinutes(mins.toLong())
+                CalendarSyncWorker.schedulePeriodicSync(this, mins.toLong())
+                if (prefs.isBackgroundServiceEnabled()) {
+                    CalendarSyncForegroundService.startOrUpdate(this, "Intervalo Periódico: ${mins}m")
+                }
+                updateAllChipSelectionsInPlace()
+                triggerBackgroundSync("Intervalo Periódico: ${mins}m")
+            }
+        )
+
         agendaTasksCard.addView(createSubLabel("Horizonte de sincronização:"))
         val horizonOpts = listOf(1 to "24 horas", 2 to "2 dias", 3 to "3 dias", 7 to "7 dias")
         agendaTasksCard.addView(
@@ -1294,14 +1318,18 @@ class MobileSyncConfigActivity : Activity() {
         switchDaemonService = createResponsiveSettingToggleRow(
             parent = sleepSystemCard,
             title = "Serviço Contínuo em Segundo Plano",
-            subtitle = "Mantém observador ativo de calendário, tarefas, sono e clima"
+            subtitle = "Essencial para manter agenda, tarefas, sono e clima sincronizados com o relógio"
         ) { checked ->
             prefs.setBackgroundServiceEnabled(checked)
             if (checked) {
                 CalendarSyncForegroundService.startOrUpdate(this, "Ativado nas Configurações")
+                CalendarSyncWorker.schedulePeriodicSync(this, prefs.getSyncIntervalMinutes())
             } else {
                 CalendarSyncForegroundService.stop(this)
+                CalendarSyncWorker.cancelPeriodicSync(this)
             }
+            refreshPermissionsBanner()
+            refreshProtectionLockOverlays()
         }
 
         col.addView(sleepSystemCard)
@@ -1403,6 +1431,7 @@ class MobileSyncConfigActivity : Activity() {
         if (!CalendarSyncEngine.hasNotificationPermission(this)) count++
         if (!CalendarSyncEngine.isNotificationListenerEnabled(this)) count++
         if (!CalendarSyncEngine.isIgnoringBatteryOptimizations(this)) count++
+        if (!prefs.isBackgroundServiceEnabled()) count++
         return count
     }
 
@@ -1420,9 +1449,14 @@ class MobileSyncConfigActivity : Activity() {
         val missingPerms = countMissingPermissions()
         val report = lastConnectionReport
         val msg = when {
-            missingPerms > 0 -> "Conceda as permissões pendentes primeiro para personalizar."
-            report != null && !report.bluetoothEnabled -> "Ative o Bluetooth e conecte o relógio para personalizar."
-            else -> "Conecte o relógio com o app ChronoWear instalado para personalizar."
+            !prefs.isBackgroundServiceEnabled() && missingPerms == 1 ->
+                "Ative o Serviço em Segundo Plano na aba Início para liberar o aplicativo."
+            missingPerms > 0 ->
+                "Conceda as permissões e ative o Serviço em 2º Plano na aba Início primeiro."
+            report != null && !report.bluetoothEnabled ->
+                "Ative o Bluetooth e conecte o relógio para personalizar."
+            else ->
+                "Conecte o relógio com o app ChronoWear instalado para personalizar."
         }
         showStatusToast(msg)
     }
@@ -1720,6 +1754,32 @@ class MobileSyncConfigActivity : Activity() {
                             startActivity(intent)
                         } catch (_: Exception) {
                         }
+                    }
+                )
+            )
+        }
+
+        if (!prefs.isBackgroundServiceEnabled()) {
+            missing.add(
+                MissingPermItem(
+                    title = "Serviço em Segundo Plano",
+                    reason = "Essencial para manter agenda, tarefas e clima ativos no relógio.",
+                    actionLabel = "Ativar",
+                    onGrantClick = {
+                        prefs.setBackgroundServiceEnabled(true)
+                        CalendarSyncForegroundService.startOrUpdate(
+                            this,
+                            "Ativado no Quadro de Permissões"
+                        )
+                        CalendarSyncWorker.schedulePeriodicSync(
+                            this,
+                            prefs.getSyncIntervalMinutes()
+                        )
+                        refreshUiState(checkRemoteConnection = true)
+                        if (countMissingPermissions() == 0) {
+                            triggerBackgroundSync("Serviço em 2º plano ativado")
+                        }
+                        showStatusToast("Serviço em segundo plano ativado.")
                     }
                 )
             )
@@ -3481,6 +3541,10 @@ class MobileSyncConfigActivity : Activity() {
         val currentHold = prefs.getUnifiedCanvasHoldMinutes()
         for ((k, btn) in holdMinutesChipButtons) {
             styleChipButton(btn, k == currentHold)
+        }
+        val currentSyncInterval = prefs.getSyncIntervalMinutes().toInt()
+        for ((k, btn) in syncIntervalChipButtons) {
+            styleChipButton(btn, k == currentSyncInterval)
         }
         val currentHorizon = prefs.getHorizonDays()
         for ((k, btn) in horizonChipButtons) {

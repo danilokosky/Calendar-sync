@@ -210,9 +210,15 @@ export const SmartphoneCompanionSimulator: React.FC<
     },
     !batteryOptIgnored && {
       id: 'bat',
-      title: 'Execução em 2º Plano',
+      title: 'Bateria sem Restrição',
       desc: 'Sincronização sem restrição de bateria.',
       onGrant: () => setBatteryOptIgnored(true),
+    },
+    !bgServiceEnabled && {
+      id: 'bg_service',
+      title: 'Serviço em Segundo Plano',
+      desc: 'Essencial para manter agenda, tarefas e clima ativos no relógio.',
+      onGrant: () => setBgServiceEnabled(true),
     },
   ].filter(Boolean) as Array<{
     id: string;
@@ -2011,6 +2017,38 @@ export const SmartphoneCompanionSimulator: React.FC<
                   </div>
                 </div>
               )}
+
+              <div className="space-y-1.5 pt-2.5 border-t border-white/10">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Atualização Periódica Geral (Economia de Bateria):
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      { value: 15, label: '15 min' },
+                      { value: 30, label: '30 min' },
+                      { value: 60, label: '1 hora' },
+                      { value: 120, label: '2 horas' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() =>
+                        onUpdateConfig({ syncIntervalMinutes: opt.value })
+                      }
+                      className={`py-1.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.syncIntervalMinutes ?? 60) === opt.value
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* SEÇÃO 4: CLIMA, SOL E SONO */}
