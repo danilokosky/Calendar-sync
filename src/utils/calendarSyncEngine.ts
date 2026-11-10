@@ -27,7 +27,8 @@ export type PrimaryContextMode =
   | 'WEATHER'
   | 'STEPS'
   | 'SUN'
-  | 'SLEEP';
+  | 'SLEEP'
+  | 'BATTERY';
 export type ContextWindowMode = 'DYNAMIC' | PrimaryContextMode;
 
 export type TaskScheduleCategory =
@@ -392,6 +393,7 @@ export interface SyncConfiguration {
   sleepScore?: number;
   sleepBedtimeHHMM?: string;
   sleepWakeHHMM?: string;
+  batteryGraphWindowHours?: 6 | 12 | 24;
   tasksSyncEnabled?: boolean;
   googleTasksSyncEnabled?: boolean;
   googleTasksConnectedEmail?: string;

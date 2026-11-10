@@ -287,6 +287,134 @@ class SyncPreferences(context: Context) {
         prefs.edit().putString(KEY_AUTO_TRIGGER_WEATHER_MODE, valid).commit()
     }
 
+    fun isAutoTriggerBatteryEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_TRIGGER_BATTERY_ENABLED, true)
+    }
+
+    fun setAutoTriggerBatteryEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_TRIGGER_BATTERY_ENABLED, enabled).commit()
+    }
+
+    fun getAutoTriggerBatteryMode(): String {
+        val v = prefs.getString(KEY_AUTO_TRIGGER_BATTERY_MODE, "LOW_AND_FULL") ?: "LOW_AND_FULL"
+        return if (v in setOf("LOW_20", "LOW_15", "LOW_AND_FULL")) v else "LOW_AND_FULL"
+    }
+
+    fun setAutoTriggerBatteryMode(mode: String) {
+        val valid = if (mode in setOf("LOW_20", "LOW_15", "LOW_AND_FULL")) mode else "LOW_AND_FULL"
+        prefs.edit().putString(KEY_AUTO_TRIGGER_BATTERY_MODE, valid).commit()
+    }
+
+    fun getBatteryGraphWindowHours(): Int {
+        val v = prefs.getInt(KEY_BATTERY_GRAPH_WINDOW_HOURS, 12)
+        return if (v in setOf(6, 12, 24)) v else 12
+    }
+
+    fun setBatteryGraphWindowHours(hours: Int) {
+        val valid = if (hours in setOf(6, 12, 24)) hours else 12
+        prefs.edit().putInt(KEY_BATTERY_GRAPH_WINDOW_HOURS, valid).commit()
+    }
+
+    fun saveWatchBatteryReport(
+        pct: Int,
+        isCharging: Boolean,
+        rateLabel: String,
+        historyCsv: String,
+        labelsCsv: String,
+        levelsCsv: String
+    ) {
+        prefs.edit()
+            .putInt(KEY_WATCH_BATTERY_PCT, pct.coerceIn(0, 100))
+            .putBoolean(KEY_WATCH_BATTERY_CHARGING, isCharging)
+            .putString(KEY_WATCH_BATTERY_RATE_LABEL, rateLabel)
+            .putString(KEY_WATCH_BATTERY_HISTORY_CSV, historyCsv)
+            .putString(KEY_WATCH_BATTERY_LABELS_CSV, labelsCsv)
+            .putString(KEY_WATCH_BATTERY_LEVELS_CSV, levelsCsv)
+            .apply()
+    }
+
+    fun getWatchBatteryPct(): Int {
+        return prefs.getInt(KEY_WATCH_BATTERY_PCT, 82).coerceIn(0, 100)
+    }
+
+    fun isWatchBatteryCharging(): Boolean {
+        return prefs.getBoolean(KEY_WATCH_BATTERY_CHARGING, false)
+    }
+
+    fun getWatchBatteryRateLabel(): String {
+        val windowH = getBatteryGraphWindowHours()
+        val saved = prefs.getString(KEY_WATCH_BATTERY_RATE_LABEL, "") ?: ""
+        return if (saved.isNotBlank()) saved else "~24h • -2,1%/h (máx ${windowH}h)"
+    }
+
+    fun getWatchBatteryGraphLabelsAndLevels(nowMs: Long = System.currentTimeMillis()): Pair<List<String>, List<Int>> {
+        val windowHours = getBatteryGraphWindowHours()
+        val cutoffMs = nowMs - windowHours * 3600_000L
+        val rawHistory = prefs.getString(KEY_WATCH_BATTERY_HISTORY_CSV, "") ?: ""
+        val pts = rawHistory.split(",").mapNotNull { token ->
+            val parts = token.trim().split(":")
+            if (parts.size == 2) {
+                val ts = parts[0].toLongOrNull()
+                val lv = parts[1].toIntOrNull()
+                if (ts != null && lv != null && ts >= cutoffMs && ts <= nowMs + 60_000L) {
+                    ts to lv.coerceIn(0, 100)
+                } else null
+            } else null
+        }.sortedBy { it.first }
+
+        if (pts.size >= 2) {
+            val firstTs = pts.first().first
+            val lastTs = pts.last().first
+            val spanMs = (lastTs - firstTs).coerceAtLeast(0L)
+            val spanMin = spanMs / 60_000L
+            val sampled = if (pts.size <= 5) {
+                pts
+            } else {
+                (0 until 5).map { i ->
+                    if (i == 0) pts.first()
+                    else if (i == 4) pts.last()
+                    else {
+                        val target = firstTs + (spanMs * i) / 4
+                        pts.minByOrNull { abs(it.first - target) } ?: pts.last()
+                    }
+                }
+            }
+            val sdfHHMM = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            val sdfHour = java.text.SimpleDateFormat("HH'h'", java.util.Locale.getDefault())
+            val labels = sampled.mapIndexed { idx, p ->
+                if (idx == sampled.lastIndex) "Agora"
+                else if (spanMin >= 180) sdfHour.format(java.util.Date(p.first))
+                else sdfHHMM.format(java.util.Date(p.first))
+            }
+            val levels = sampled.map { it.second }
+            return labels to levels
+        }
+
+        val savedLabels = (prefs.getString(KEY_WATCH_BATTERY_LABELS_CSV, "") ?: "")
+            .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val savedLevels = (prefs.getString(KEY_WATCH_BATTERY_LEVELS_CSV, "") ?: "")
+            .split(",").mapNotNull { it.trim().toIntOrNull() }
+        if (savedLabels.size >= 2 && savedLabels.size == savedLevels.size) {
+            return savedLabels to savedLevels
+        }
+
+        val sdfHour = java.text.SimpleDateFormat("HH'h'", java.util.Locale.getDefault())
+        val stepMs = (windowHours * 3600_000L) / 4L
+        val fallbackLabels = (0..4).map { idx ->
+            if (idx == 4) "Agora"
+            else sdfHour.format(java.util.Date(nowMs - stepMs * (4 - idx)))
+        }
+        val cur = getWatchBatteryPct()
+        val fallbackLevels = listOf(
+            (cur + 14).coerceAtMost(100),
+            (cur + 10).coerceAtMost(100),
+            (cur + 6).coerceAtMost(100),
+            (cur + 3).coerceAtMost(100),
+            cur
+        )
+        return fallbackLabels to fallbackLevels
+    }
+
     fun hasRequestedInitialPermissionsOnce(): Boolean {
         return prefs.getBoolean(KEY_INITIAL_PERMISSIONS_REQUESTED, false)
     }
@@ -315,7 +443,7 @@ class SyncPreferences(context: Context) {
      * WIDGETS DA TELA INICIAL (ORDEM ARRASTÁVEL E EXPANSÃO DE LINHA INTEIRA)
      */
     fun getHomeWidgetsOrder(): List<String> {
-        val defaultOrder = listOf("EVENTS", "TASKS", "WEATHER", "SUN", "SLEEP", "STEPS")
+        val defaultOrder = listOf("EVENTS", "TASKS", "WEATHER", "SUN", "SLEEP", "STEPS", "BATTERY")
         val raw = prefs.getString(KEY_HOME_WIDGETS_ORDER_CSV, "") ?: ""
         if (raw.isBlank()) return defaultOrder
         val parsed = raw.split(",").map { it.trim().uppercase() }.filter { it in defaultOrder }.distinct()
@@ -1118,6 +1246,7 @@ class SyncPreferences(context: Context) {
         const val MODE_SUN = "SUN"
         const val MODE_SLEEP = "SLEEP"
         const val MODE_STEPS = "STEPS"
+        const val MODE_BATTERY = "BATTERY"
         private const val KEY_CALENDARS = "selected_calendar_ids"
         private const val KEY_HORIZON_DAYS = "horizon_days"
         private const val KEY_PROGRESS_WINDOW_MIN = "progress_window_minutes"
@@ -1145,6 +1274,15 @@ class SyncPreferences(context: Context) {
         private const val KEY_AUTO_TRIGGER_SLEEP_MODE = "auto_trigger_sleep_mode"
         private const val KEY_AUTO_TRIGGER_WEATHER_ENABLED = "auto_trigger_weather_enabled"
         private const val KEY_AUTO_TRIGGER_WEATHER_MODE = "auto_trigger_weather_mode"
+        private const val KEY_AUTO_TRIGGER_BATTERY_ENABLED = "auto_trigger_battery_enabled"
+        private const val KEY_AUTO_TRIGGER_BATTERY_MODE = "auto_trigger_battery_mode"
+        private const val KEY_BATTERY_GRAPH_WINDOW_HOURS = "battery_graph_window_hours"
+        private const val KEY_WATCH_BATTERY_PCT = "watch_battery_pct"
+        private const val KEY_WATCH_BATTERY_CHARGING = "watch_battery_charging"
+        private const val KEY_WATCH_BATTERY_RATE_LABEL = "watch_battery_rate_label"
+        private const val KEY_WATCH_BATTERY_HISTORY_CSV = "watch_battery_history_csv"
+        private const val KEY_WATCH_BATTERY_LABELS_CSV = "watch_battery_labels_csv"
+        private const val KEY_WATCH_BATTERY_LEVELS_CSV = "watch_battery_levels_csv"
         private const val KEY_INITIAL_PERMISSIONS_REQUESTED = "initial_permissions_requested"
         private const val KEY_HOME_WIDGETS_ORDER_CSV = "home_widgets_order_csv"
         private const val KEY_HOME_WIDGETS_EXPANDED_CSV = "home_widgets_expanded_csv"

@@ -67,7 +67,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
 }) => {
   const [watchScreenMode, setWatchScreenMode] = useState<'wff' | 'tile' | 'cache'>('wff');
   const [tapOverrideState, setTapOverrideState] = useState<{
-    mode: 'EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP';
+    mode: 'EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP' | 'BATTERY';
     startedAtWatchMs: number;
   } | null>(null);
   const [dismissedNotifKey, setDismissedNotifKey] = useState<string | null>(null);
@@ -157,7 +157,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     : watchState.effectiveContextMode;
 
   const contextLabels: Record<
-    'EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP',
+    'EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP' | 'BATTERY',
     string
   > = {
     EVENTS: 'Agenda',
@@ -166,6 +166,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     SUN: 'Nascer/Pôr do Sol',
     STEPS: 'Passos',
     SLEEP: 'Sono',
+    BATTERY: 'Bateria',
   };
 
   // Notificação no relógio quando uma mudança real de contexto força a troca do Canvas:
@@ -238,13 +239,22 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   };
 
   const handleTapCanvasToCycle = () => {
-    const order: ('EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP')[] = [
+    const order: (
+      | 'EVENTS'
+      | 'TASKS'
+      | 'WEATHER'
+      | 'SUN'
+      | 'STEPS'
+      | 'SLEEP'
+      | 'BATTERY'
+    )[] = [
       'EVENTS',
       'TASKS',
       'WEATHER',
       'SUN',
       'STEPS',
       'SLEEP',
+      'BATTERY',
     ];
     const currentIdx = order.indexOf(effectiveMode);
     const nextMode = order[(currentIdx + 1) % order.length];
@@ -271,6 +281,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
     { id: 'STEPS', label: 'Passos' },
     { id: 'SUN', label: 'Sol' },
     { id: 'SLEEP', label: 'Sono' },
+    { id: 'BATTERY', label: 'Bateria' },
   ];
 
   const weeklyStepsData = [
@@ -1248,6 +1259,146 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                     )}
                   </div>
                 )}
+
+                {/* MODO 7: CONSUMO DE BATERIA DO RELÓGIO (BATTERY — Apenas bateria do relógio no topo + gráfico progressivo da esquerda para a direita sem polling extra) */}
+                {effectiveMode === 'BATTERY' &&
+                  (() => {
+                    const winHours = config.batteryGraphWindowHours ?? 12;
+                    const stepMs = (winHours * 3600_000) / 4;
+                    const timeLabels = [0, 1, 2, 3, 4].map((idx) => {
+                      if (idx === 4) return 'Agora';
+                      const ptDate = new Date(
+                        currentWatchTimeMs - (4 - idx) * stepMs
+                      );
+                      return `${String(ptDate.getHours()).padStart(2, '0')}h`;
+                    });
+                    const points = [
+                      {
+                        x: 18,
+                        y: 16,
+                        pct: '96%',
+                        h: timeLabels[0],
+                        isNow: false,
+                      },
+                      {
+                        x: 74,
+                        y: 22,
+                        pct: '92%',
+                        h: timeLabels[1],
+                        isNow: false,
+                      },
+                      {
+                        x: 130,
+                        y: 28,
+                        pct: '88%',
+                        h: timeLabels[2],
+                        isNow: false,
+                      },
+                      {
+                        x: 186,
+                        y: 34,
+                        pct: '85%',
+                        h: timeLabels[3],
+                        isNow: false,
+                      },
+                      {
+                        x: 224,
+                        y: 39,
+                        pct: '82%',
+                        h: timeLabels[4],
+                        isNow: true,
+                      },
+                    ];
+                    return (
+                      <div
+                        data-testid="battery-context-canvas"
+                        className="flex flex-col justify-between h-full py-0.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-block w-3.5 h-2.5 rounded-[2px] border border-[#22C55E] bg-[#22C55E]/30 shrink-0" />
+                            <span className="text-[14.5px] font-bold text-[#F5C438] leading-none">
+                              Bateria • 82%
+                            </span>
+                          </div>
+                          <span className="text-[11.5px] font-mono font-bold text-[#67E8F9]">
+                            ~24h • -2,1%/h
+                          </span>
+                        </div>
+
+                        <div className="relative w-full h-[52px] flex items-center">
+                          <svg
+                            viewBox="0 0 240 54"
+                            className="w-full h-full overflow-visible"
+                          >
+                            <defs>
+                              <linearGradient
+                                id="watchBatteryFill"
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop
+                                  offset="0%"
+                                  stopColor="#22C55E"
+                                  stopOpacity="0.34"
+                                />
+                                <stop
+                                  offset="100%"
+                                  stopColor="#22C55E"
+                                  stopOpacity="0.0"
+                                />
+                              </linearGradient>
+                            </defs>
+                            <path
+                              d="M 18 16 C 46 16, 46 22, 74 22 C 102 22, 102 28, 130 28 C 158 28, 158 34, 186 34 C 205 34, 205 39, 224 39 L 224 51 L 18 51 Z"
+                              fill="url(#watchBatteryFill)"
+                            />
+                            <path
+                              d="M 18 16 C 46 16, 46 22, 74 22 C 102 22, 102 28, 130 28 C 158 28, 158 34, 186 34 C 205 34, 205 39, 224 39"
+                              fill="none"
+                              stroke="#22C55E"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                            />
+                            {points.map((pt, idx) => (
+                              <g key={idx}>
+                                <circle
+                                  cx={pt.x}
+                                  cy={pt.y}
+                                  r={pt.isNow ? '3.8' : '3.2'}
+                                  fill={pt.isNow ? '#F5C438' : '#22C55E'}
+                                />
+                                <text
+                                  x={pt.x}
+                                  y={pt.y - 5.5}
+                                  textAnchor="middle"
+                                  fill="#FFFFFF"
+                                  fontSize="11"
+                                  fontWeight="bold"
+                                  fontFamily="monospace"
+                                >
+                                  {pt.pct}
+                                </text>
+                              </g>
+                            ))}
+                          </svg>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10.5px] font-bold font-mono text-slate-300 px-1 leading-none">
+                          {points.map((pt, idx) => (
+                            <span
+                              key={idx}
+                              className={pt.isNow ? 'text-[#F5C438]' : ''}
+                            >
+                              {pt.h}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
               </div>
 
               {/* DOCK EM CARTUCHO ENVOLVENTE (x=84, y=268, w=282, h=92) COM APENAS 2 COMPLICATIONS MAIORES E CONTORNO FORTE */}

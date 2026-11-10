@@ -41,6 +41,25 @@ class WearRequestListenerService : WearableListenerService() {
                     )
                 }
             }
+            "/chronowear/watch_battery_report" -> {
+                try {
+                    val prefs = SyncPreferences(applicationContext)
+                    prefs.markWatchAppInstalledOnNode(messageEvent.sourceNodeId)
+                    val json = org.json.JSONObject(String(messageEvent.data, Charsets.UTF_8))
+                    prefs.saveWatchBatteryReport(
+                        pct = json.optInt("pct", 82),
+                        isCharging = json.optBoolean("isCharging", false),
+                        rateLabel = json.optString("rateLabel", ""),
+                        historyCsv = json.optString("historyCsv", ""),
+                        labelsCsv = json.optString("labelsCsv", ""),
+                        levelsCsv = json.optString("levelsCsv", "")
+                    )
+                    applicationContext.sendBroadcast(
+                        Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(applicationContext.packageName)
+                    )
+                } catch (_: Exception) {
+                }
+            }
         }
     }
 }

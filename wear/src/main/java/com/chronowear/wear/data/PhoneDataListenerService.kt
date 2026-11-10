@@ -169,6 +169,13 @@ class PhoneDataListenerService : WearableListenerService() {
                     dataMap.getBoolean("auto_trigger_weather_enabled", true)
                 } else null
                 val autoTriggerWeatherMode = dataMap.getString("auto_trigger_weather_mode")
+                val autoTriggerBatteryEnabled = if (dataMap.containsKey("auto_trigger_battery_enabled")) {
+                    dataMap.getBoolean("auto_trigger_battery_enabled", true)
+                } else null
+                val autoTriggerBatteryMode = dataMap.getString("auto_trigger_battery_mode")
+                val batteryGraphWindowHours = if (dataMap.containsKey("battery_graph_window_hours")) {
+                    dataMap.getInt("battery_graph_window_hours", 12)
+                } else null
                 val weatherLat = if (dataMap.containsKey("weather_lat")) {
                     dataMap.getDouble("weather_lat", 0.0)
                 } else null
@@ -235,6 +242,9 @@ class PhoneDataListenerService : WearableListenerService() {
                     autoTriggerSleepMode = autoTriggerSleepMode,
                     autoTriggerWeatherEnabled = autoTriggerWeatherEnabled,
                     autoTriggerWeatherMode = autoTriggerWeatherMode,
+                    autoTriggerBatteryEnabled = autoTriggerBatteryEnabled,
+                    autoTriggerBatteryMode = autoTriggerBatteryMode,
+                    batteryGraphWindowHours = batteryGraphWindowHours,
                     weatherLat = weatherLat,
                     weatherLon = weatherLon
                 )
@@ -261,6 +271,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         ).await()
                     } catch (_: Exception) {
                     }
+                    sendWatchBatteryReportToPhone(messageEvent.sourceNodeId)
                 }
             }
             "/chronowear/force_sync_payload" -> {
@@ -394,6 +405,13 @@ class PhoneDataListenerService : WearableListenerService() {
                         json.optBoolean("auto_trigger_weather_enabled", true)
                     } else null
                     val autoTriggerWeatherMode = json.optString("auto_trigger_weather_mode", "").takeIf { it.isNotBlank() }
+                    val autoTriggerBatteryEnabled = if (json.has("auto_trigger_battery_enabled")) {
+                        json.optBoolean("auto_trigger_battery_enabled", true)
+                    } else null
+                    val autoTriggerBatteryMode = json.optString("auto_trigger_battery_mode", "").takeIf { it.isNotBlank() }
+                    val batteryGraphWindowHours = if (json.has("battery_graph_window_hours")) {
+                        json.optInt("battery_graph_window_hours", 12)
+                    } else null
                     val weatherLat = if (json.has("weather_lat")) {
                         json.optDouble("weather_lat", 0.0)
                     } else null
@@ -460,8 +478,12 @@ class PhoneDataListenerService : WearableListenerService() {
                         autoTriggerSleepMode = autoTriggerSleepMode,
                         autoTriggerWeatherEnabled = autoTriggerWeatherEnabled,
                         autoTriggerWeatherMode = autoTriggerWeatherMode,
+                        autoTriggerBatteryEnabled = autoTriggerBatteryEnabled,
+                        autoTriggerBatteryMode = autoTriggerBatteryMode,
+                        batteryGraphWindowHours = batteryGraphWindowHours,
                         weatherLat = weatherLat,
-                        weatherLon = weatherLon
+                        weatherLon = weatherLon,
+                        replyNodeId = messageEvent.sourceNodeId
                     )
                 } catch (_: Exception) {
                 }
@@ -528,8 +550,12 @@ class PhoneDataListenerService : WearableListenerService() {
         autoTriggerSleepMode: String? = null,
         autoTriggerWeatherEnabled: Boolean? = null,
         autoTriggerWeatherMode: String? = null,
+        autoTriggerBatteryEnabled: Boolean? = null,
+        autoTriggerBatteryMode: String? = null,
+        batteryGraphWindowHours: Int? = null,
         weatherLat: Double? = null,
-        weatherLon: Double? = null
+        weatherLon: Double? = null,
+        replyNodeId: String? = null
     ) {
         serviceScope.launch {
             val repo = WatchAutonomousRepository.getInstance(applicationContext)
@@ -592,9 +618,14 @@ class PhoneDataListenerService : WearableListenerService() {
                 autoTriggerSleepMode = autoTriggerSleepMode,
                 autoTriggerWeatherEnabled = autoTriggerWeatherEnabled,
                 autoTriggerWeatherMode = autoTriggerWeatherMode,
+                autoTriggerBatteryEnabled = autoTriggerBatteryEnabled,
+                autoTriggerBatteryMode = autoTriggerBatteryMode,
+                batteryGraphWindowHours = batteryGraphWindowHours,
                 weatherLat = weatherLat,
                 weatherLon = weatherLon
             )
+
+            sendWatchBatteryReportToPhone(replyNodeId)
 
             AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)
             AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
@@ -607,6 +638,32 @@ class PhoneDataListenerService : WearableListenerService() {
             applicationContext.sendBroadcast(
                 Intent(ACTION_WEAR_CACHE_UPDATED).setPackage(applicationContext.packageName)
             )
+        }
+    }
+
+    private suspend fun sendWatchBatteryReportToPhone(targetNodeId: String? = null) {
+        try {
+            val repo = WatchAutonomousRepository.getInstance(applicationContext)
+            val snap = repo.getWatchBatterySnapshot(System.currentTimeMillis())
+            val payload = JSONObject().apply {
+                put("pct", snap.currentPct)
+                put("isCharging", snap.isCharging)
+                put("rateLabel", snap.rateLabel)
+                put("historyCsv", snap.historyCsv)
+                put("labelsCsv", snap.labels.joinToString(","))
+                put("levelsCsv", snap.levelsPct.joinToString(","))
+            }.toString().toByteArray(Charsets.UTF_8)
+
+            val msgClient = Wearable.getMessageClient(applicationContext)
+            if (!targetNodeId.isNullOrBlank()) {
+                msgClient.sendMessage(targetNodeId, "/chronowear/watch_battery_report", payload).await()
+            } else {
+                val nodes = Wearable.getNodeClient(applicationContext).connectedNodes.await()
+                for (node in nodes) {
+                    msgClient.sendMessage(node.id, "/chronowear/watch_battery_report", payload).await()
+                }
+            }
+        } catch (_: Exception) {
         }
     }
 

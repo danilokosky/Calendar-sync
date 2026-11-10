@@ -110,6 +110,7 @@ const DEFAULT_WIDGET_ORDER: PrimaryContextMode[] = [
   'SUN',
   'SLEEP',
   'STEPS',
+  'BATTERY',
 ];
 
 function parseMinutesHHMM(hhmm: string | undefined, fallbackMins: number): number {
@@ -189,6 +190,11 @@ export const SmartphoneCompanionSimulator: React.FC<
   const [autoTriggerWeatherMode, setAutoTriggerWeatherMode] = useState<
     'RAIN_CHANGE' | 'APP_ALERT' | 'EVERY_UPDATE'
   >('RAIN_CHANGE');
+  const [autoTriggerBatteryEnabled, setAutoTriggerBatteryEnabled] =
+    useState(true);
+  const [autoTriggerBatteryMode, setAutoTriggerBatteryMode] = useState<
+    'LOW_20' | 'LOW_15' | 'LOW_AND_FULL'
+  >('LOW_20');
   const [googleTasksRemindLaterCount, setGoogleTasksRemindLaterCount] =
     useState(0);
   const [googleTasksNeverRemind, setGoogleTasksNeverRemind] = useState(false);
@@ -510,6 +516,7 @@ export const SmartphoneCompanionSimulator: React.FC<
       'SUN',
       'SLEEP',
       'STEPS',
+      'BATTERY',
     ];
     const idx = cycle.indexOf(virtualWatchMode);
     const nextMode = cycle[(idx + 1) % cycle.length];
@@ -600,6 +607,7 @@ export const SmartphoneCompanionSimulator: React.FC<
     { id: 'STEPS', label: 'Passos' },
     { id: 'SUN', label: 'Sol' },
     { id: 'SLEEP', label: 'Sono' },
+    { id: 'BATTERY', label: 'Bateria' },
   ] as const;
 
   const autoPrimaryOptions = [
@@ -609,6 +617,7 @@ export const SmartphoneCompanionSimulator: React.FC<
     { id: 'SUN', label: 'Sol' },
     { id: 'STEPS', label: 'Passos' },
     { id: 'SLEEP', label: 'Sono' },
+    { id: 'BATTERY', label: 'Bateria' },
   ] as const;
 
   const exposureMinuteOptions = [5, 15, 30, 45, 60] as const;
@@ -1149,6 +1158,96 @@ export const SmartphoneCompanionSimulator: React.FC<
           </div>
         );
       }
+
+      case 'BATTERY': {
+        const winHours = config.batteryGraphWindowHours ?? 12;
+        const stepMs = (winHours * 3600_000) / 4;
+        const timeLabels = [0, 1, 2, 3, 4].map((idx) => {
+          if (idx === 4) return 'Agora';
+          const ptDate = new Date(referenceTimeMs - (4 - idx) * stepMs);
+          return `${String(ptDate.getHours()).padStart(2, '0')}h`;
+        });
+        const points = [
+          { x: 14, y: 8, pct: '96%', label: timeLabels[0], isNow: false },
+          { x: 52, y: 12, pct: '92%', label: timeLabels[1], isNow: false },
+          { x: 90, y: 16, pct: '88%', label: timeLabels[2], isNow: false },
+          { x: 128, y: 20, pct: '85%', label: timeLabels[3], isNow: false },
+          { x: 166, y: 23, pct: '82%', label: timeLabels[4], isNow: true },
+        ];
+        return (
+          <div
+            data-testid={
+              isInsideVirtualWatch
+                ? 'phone-watchface-battery-canvas'
+                : 'phone-tile-battery-canvas'
+            }
+            className="flex flex-col justify-between h-full text-left"
+          >
+            {/* Topo: Apenas Bateria do Relógio à esquerda e autonomia/taxa à direita */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10.5px] font-bold text-[#F5C438] leading-none">
+                Bateria • 82%
+              </span>
+              <span className="text-[9px] font-mono text-[#67E8F9] leading-none">
+                ~24h • -2,1%/h
+              </span>
+            </div>
+
+            {/* Gráfico Progressivo da Esquerda para a Direita (respeitando janela máx. 6h/12h/24h) */}
+            <svg viewBox="0 0 180 34" className="w-full h-[32px] overflow-visible">
+              <defs>
+                <linearGradient id="phoneBatFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22C55E" stopOpacity="0.32" />
+                  <stop offset="100%" stopColor="#22C55E" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M 14 8 C 33 8, 33 12, 52 12 C 71 12, 71 16, 90 16 C 109 16, 109 20, 128 20 C 147 20, 147 23, 166 23 L 166 32 L 14 32 Z"
+                fill="url(#phoneBatFill)"
+              />
+              <path
+                d="M 14 8 C 33 8, 33 12, 52 12 C 71 12, 71 16, 90 16 C 109 16, 109 20, 128 20 C 147 20, 147 23, 166 23"
+                fill="none"
+                stroke="#22C55E"
+                strokeWidth="2.3"
+                strokeLinecap="round"
+              />
+              {points.map((p, idx) => (
+                <g key={idx}>
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={p.isNow ? '2.8' : '2.2'}
+                    fill={p.isNow ? '#F5C438' : '#22C55E'}
+                  />
+                  <text
+                    x={p.x}
+                    y={p.y - 3.5}
+                    textAnchor="middle"
+                    fill="#FFFFFF"
+                    fontSize="7.5"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    {p.pct}
+                  </text>
+                </g>
+              ))}
+            </svg>
+
+            <div className="flex justify-between text-[7.5px] font-mono text-slate-400 leading-none">
+              {points.map((p, idx) => (
+                <span
+                  key={idx}
+                  className={p.isNow ? 'text-[#F5C438] font-bold' : ''}
+                >
+                  {p.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      }
     }
   };
 
@@ -1666,6 +1765,7 @@ export const SmartphoneCompanionSimulator: React.FC<
                     SUN: '☀ Sol',
                     SLEEP: '🌙 Sono',
                     STEPS: '👟 Passos',
+                    BATTERY: '🔋 Bateria',
                   };
 
                   return (
@@ -2182,6 +2282,63 @@ export const SmartphoneCompanionSimulator: React.FC<
                   ))}
                 </div>
               </div>
+
+              {/* 6. Bateria do Relógio (Sem polling extra) */}
+              <div className="space-y-2 pt-2.5 border-t border-white/10">
+                <div
+                  onClick={() => {
+                    if (isCustomizationLocked) {
+                      showLockedToast();
+                      return;
+                    }
+                    setAutoTriggerBatteryEnabled(!autoTriggerBatteryEnabled);
+                  }}
+                  className="flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-100">
+                      Gatilho Automático de Bateria do Relógio
+                    </div>
+                    <div className="text-[10.5px] text-slate-400">
+                      Exibe o gráfico de consumo quando a bateria atingir o nível crítico ou 100%
+                    </div>
+                  </div>
+                  <ModernOneUiSwitch
+                    checked={autoTriggerBatteryEnabled}
+                    ariaLabel="Gatilho Automático de Bateria do Relógio"
+                    disabled={isCustomizationLocked}
+                    onChange={() =>
+                      setAutoTriggerBatteryEnabled(!autoTriggerBatteryEnabled)
+                    }
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-300 block">
+                  Quando disparar o gatilho de bateria:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { v: 'LOW_20', l: '≤ 20% bateria' },
+                      { v: 'LOW_15', l: '≤ 15% bateria' },
+                      { v: 'LOW_AND_FULL', l: '≤ 20% e 100%' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.v}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() => setAutoTriggerBatteryMode(item.v)}
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        autoTriggerBatteryMode === item.v
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {item.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* SEÇÃO 2: NOTIFICAÇÕES NO RELÓGIO */}
@@ -2470,10 +2627,10 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             </div>
 
-            {/* SEÇÃO 4: CLIMA, SOL E SONO */}
+            {/* SEÇÃO 4: CLIMA, SOL, SONO E BATERIA */}
             <div className="rounded-[22px] bg-[#141A16] border border-[#253029] p-4 space-y-3">
               <div className="text-[11px] font-bold tracking-wider uppercase text-[#F5C438]">
-                4. Clima, Sol &amp; Sono
+                4. Clima, Sol, Sono &amp; Bateria
               </div>
 
               <div
@@ -2589,6 +2746,43 @@ export const SmartphoneCompanionSimulator: React.FC<
                     })
                   }
                 />
+              </div>
+
+              {/* Janela máxima do gráfico de bateria do relógio (6h, 12h, 24h) */}
+              <div className="space-y-2 pt-2.5 border-t border-white/10">
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Janela máxima do gráfico de bateria do relógio
+                  </div>
+                  <div className="text-[10.5px] text-slate-400">
+                    Captura os pontos apenas nas atualizações periódicas unificadas do relógio (sem serviço extra em segundo plano)
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { value: 6, label: '6 horas' },
+                      { value: 12, label: '12 horas' },
+                      { value: 24, label: '24 horas' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() =>
+                        onUpdateConfig({ batteryGraphWindowHours: opt.value })
+                      }
+                      className={`py-1.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        (config.batteryGraphWindowHours ?? 12) === opt.value
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div

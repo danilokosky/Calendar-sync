@@ -2,8 +2,11 @@ package com.chronowear.wear.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import android.os.BatteryManager
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -11,6 +14,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 data class CachedWearEvent(
     val id: String,
@@ -98,9 +102,25 @@ data class TasksSnapshot(
     val bucket: String = "TODAY"
 )
 
+data class WatchBatteryPoint(
+    val epochMs: Long,
+    val levelPct: Int
+)
+
+data class WatchBatterySnapshot(
+    val currentPct: Int,
+    val isCharging: Boolean,
+    val windowHours: Int,
+    val rateLabel: String,
+    val historyCsv: String,
+    val labels: List<String>,
+    val levelsPct: List<Int>
+)
+
 class WatchAutonomousRepository private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "chronowear_autonomous.db", null, 1) {
 
+    private val appContext = context.applicationContext
     private val prefs = context.applicationContext.getSharedPreferences(
         "chronowear_wear_prefs",
         Context.MODE_PRIVATE
@@ -185,6 +205,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         autoTriggerSleepMode: String? = null,
         autoTriggerWeatherEnabled: Boolean? = null,
         autoTriggerWeatherMode: String? = null,
+        autoTriggerBatteryEnabled: Boolean? = null,
+        autoTriggerBatteryMode: String? = null,
+        batteryGraphWindowHours: Int? = null,
         weatherLat: Double? = null,
         weatherLon: Double? = null
     ) {
@@ -415,7 +438,19 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!autoTriggerWeatherMode.isNullOrBlank() && autoTriggerWeatherMode in setOf("RAIN_CHANGE", "APP_ALERT", "EVERY_UPDATE")) {
             editor.putString("auto_trigger_weather_mode", autoTriggerWeatherMode)
         }
+        if (autoTriggerBatteryEnabled != null) {
+            editor.putBoolean("auto_trigger_battery_enabled", autoTriggerBatteryEnabled)
+        }
+        if (!autoTriggerBatteryMode.isNullOrBlank() && autoTriggerBatteryMode in setOf("LOW_20", "LOW_15", "LOW_AND_FULL")) {
+            editor.putString("auto_trigger_battery_mode", autoTriggerBatteryMode)
+        }
+        if (batteryGraphWindowHours != null && batteryGraphWindowHours in setOf(6, 12, 24)) {
+            editor.putInt("battery_graph_window_hours", batteryGraphWindowHours)
+        }
         editor.commit()
+
+        // Aproveita o ciclo unificado de sincronização para registrar amostra de bateria do relógio sem serviço extra
+        recordWatchBatterySampleOnPeriodicUpdate(syncTimestampMs)
 
         val arr = JSONArray(eventsJson)
         val db = writableDatabase
@@ -593,6 +628,226 @@ class WatchAutonomousRepository private constructor(context: Context) :
     fun getAutoTriggerWeatherMode(): String {
         val v = prefs.getString("auto_trigger_weather_mode", "RAIN_CHANGE") ?: "RAIN_CHANGE"
         return if (v in setOf("RAIN_CHANGE", "APP_ALERT", "EVERY_UPDATE")) v else "RAIN_CHANGE"
+    }
+
+    fun isAutoTriggerBatteryEnabled(): Boolean {
+        return prefs.getBoolean("auto_trigger_battery_enabled", true)
+    }
+
+    fun getAutoTriggerBatteryMode(): String {
+        val v = prefs.getString("auto_trigger_battery_mode", "LOW_AND_FULL") ?: "LOW_AND_FULL"
+        return if (v in setOf("LOW_20", "LOW_15", "LOW_AND_FULL")) v else "LOW_AND_FULL"
+    }
+
+    fun getBatteryGraphWindowHours(): Int {
+        val v = prefs.getInt("battery_graph_window_hours", 12)
+        return if (v in setOf(6, 12, 24)) v else 12
+    }
+
+    fun setBatteryGraphWindowHours(hours: Int) {
+        val valid = if (hours in setOf(6, 12, 24)) hours else 12
+        prefs.edit().putInt("battery_graph_window_hours", valid).commit()
+    }
+
+    /**
+     * Captura a porcentagem e estado da bateria do relógio EXCLUSIVAMENTE durante as atualizações
+     * periódicas unificadas já existentes (sem criar nenhum serviço em background ou timer extra).
+     */
+    fun recordWatchBatterySampleOnPeriodicUpdate(nowMs: Long = System.currentTimeMillis()) {
+        try {
+            val intent = appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+            if (level < 0) return
+            val pct = ((level * 100f) / scale).roundToInt().coerceIn(0, 100)
+            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+
+            val prevPct = prefs.getInt("watch_battery_last_pct", -1)
+            val rawCsv = prefs.getString("watch_battery_history_csv", "") ?: ""
+            val cutoff24h = nowMs - TimeUnit.HOURS.toMillis(24L)
+            val points = rawCsv.split(",")
+                .mapNotNull { token ->
+                    val parts = token.trim().split(":")
+                    if (parts.size == 2) {
+                        val ts = parts[0].toLongOrNull()
+                        val lv = parts[1].toIntOrNull()
+                        if (ts != null && lv != null && ts in cutoff24h..(nowMs + 60_000L)) {
+                            WatchBatteryPoint(ts, lv.coerceIn(0, 100))
+                        } else null
+                    } else null
+                }
+                .sortedBy { it.epochMs }
+                .toMutableList()
+
+            val lastPoint = points.lastOrNull()
+            val shouldAppend = lastPoint == null ||
+                (nowMs - lastPoint.epochMs) >= 60_000L ||
+                lastPoint.levelPct != pct
+
+            if (shouldAppend) {
+                points.add(WatchBatteryPoint(nowMs, pct))
+            }
+
+            // Mantém até 96 pontos nas últimas 24h (compactando pontos intermediários antigos se necessário)
+            val compacted = if (points.size > 96) {
+                val head = points.first()
+                val tail = points.drop(1).takeLast(95)
+                listOf(head) + tail
+            } else {
+                points
+            }
+
+            val updatedCsv = compacted.joinToString(",") { "${it.epochMs}:${it.levelPct}" }
+            val editor = prefs.edit()
+                .putInt("watch_battery_last_pct", pct)
+                .putBoolean("watch_battery_is_charging", isCharging)
+                .putLong("watch_battery_last_sample_ms", nowMs)
+                .putString("watch_battery_history_csv", updatedCsv)
+
+            // Avalia gatilho automático de bateria (<= 20%, <= 15% ou 100% carregado)
+            if (isAutoTriggerBatteryEnabled()) {
+                val mode = getAutoTriggerBatteryMode()
+                val lowThreshold = if (mode == "LOW_15") 15 else 20
+                val lastLowAlertMs = prefs.getLong("battery_low_alert_timestamp_ms", 0L)
+                val lastFullAlertMs = prefs.getLong("battery_full_alert_timestamp_ms", 0L)
+
+                if (!isCharging && pct <= lowThreshold) {
+                    val crossedThreshold = prevPct > lowThreshold || (nowMs - lastLowAlertMs) > TimeUnit.HOURS.toMillis(3L)
+                    if (crossedThreshold) {
+                        editor.putLong("battery_low_alert_timestamp_ms", nowMs)
+                        editor.putLong("battery_alert_timestamp_ms", nowMs)
+                        editor.remove("tap_override_context_mode")
+                        editor.putLong("tap_override_timestamp_ms", 0L)
+                    }
+                } else if (isCharging && pct >= 100 && mode == "LOW_AND_FULL") {
+                    val crossedFull = prevPct in 1..99 || (nowMs - lastFullAlertMs) > TimeUnit.HOURS.toMillis(3L)
+                    if (crossedFull) {
+                        editor.putLong("battery_full_alert_timestamp_ms", nowMs)
+                        editor.putLong("battery_alert_timestamp_ms", nowMs)
+                        editor.remove("tap_override_context_mode")
+                        editor.putLong("tap_override_timestamp_ms", 0L)
+                    }
+                }
+            }
+
+            editor.apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Constrói o snapshot progressivo da bateria do relógio da esquerda para a direita:
+     * - Respeita a janela máxima configurada pelo usuário (6h, 12h ou 24h; padrão 12h).
+     * - Se o histórico tiver apenas 5 min, 10 min ou poucas horas, mostra desde o primeiro registro
+     *   na esquerda até "Agora" na direita, exibindo os horários/frações nominais reais no eixo inferior.
+     */
+    fun getWatchBatterySnapshot(nowMs: Long = System.currentTimeMillis()): WatchBatterySnapshot {
+        if (prefs.getInt("watch_battery_last_pct", -1) < 0) {
+            recordWatchBatterySampleOnPeriodicUpdate(nowMs)
+        }
+        val currentPct = prefs.getInt("watch_battery_last_pct", 82).coerceIn(0, 100)
+        val isCharging = prefs.getBoolean("watch_battery_is_charging", false)
+        val windowHours = getBatteryGraphWindowHours()
+        val cutoffMs = nowMs - TimeUnit.HOURS.toMillis(windowHours.toLong())
+
+        val rawCsv = prefs.getString("watch_battery_history_csv", "") ?: ""
+        val windowPoints = rawCsv.split(",")
+            .mapNotNull { token ->
+                val parts = token.trim().split(":")
+                if (parts.size == 2) {
+                    val ts = parts[0].toLongOrNull()
+                    val lv = parts[1].toIntOrNull()
+                    if (ts != null && lv != null && ts >= cutoffMs && ts <= nowMs + 60_000L) {
+                        WatchBatteryPoint(ts, lv.coerceIn(0, 100))
+                    } else null
+                } else null
+            }
+            .sortedBy { it.epochMs }
+            .toMutableList()
+
+        if (windowPoints.isEmpty()) {
+            windowPoints.add(WatchBatteryPoint(nowMs, currentPct))
+        } else {
+            val last = windowPoints.last()
+            if ((nowMs - last.epochMs) >= 30_000L || last.levelPct != currentPct) {
+                windowPoints.add(WatchBatteryPoint(nowMs, currentPct))
+            }
+        }
+
+        val firstPt = windowPoints.first()
+        val lastPt = windowPoints.last()
+        val spanMs = (lastPt.epochMs - firstPt.epochMs).coerceAtLeast(0L)
+        val spanMinutes = TimeUnit.MILLISECONDS.toMinutes(spanMs)
+
+        // Seleciona de 2 a 5 pontos da esquerda (início da coleta na janela) para a direita (Agora)
+        val sampledPoints: List<WatchBatteryPoint> = when {
+            windowPoints.size == 1 -> {
+                listOf(windowPoints[0], WatchBatteryPoint(nowMs, currentPct))
+            }
+            windowPoints.size <= 5 -> windowPoints
+            else -> {
+                val n = 5
+                (0 until n).map { i ->
+                    if (i == 0) windowPoints.first()
+                    else if (i == n - 1) windowPoints.last()
+                    else {
+                        val targetTs = firstPt.epochMs + (spanMs * i) / (n - 1)
+                        windowPoints.minByOrNull { abs(it.epochMs - targetTs) } ?: windowPoints.last()
+                    }
+                }
+            }
+        }
+
+        val sdfHHMM = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val sdfHour = SimpleDateFormat("HH'h'", Locale.getDefault())
+        val useHourFormat = spanMinutes >= 180 // >= 3h usa "08h", "10h"; < 3h usa "HH:mm" nominal (ex: 5 min, 10 min)
+
+        val labels = sampledPoints.mapIndexed { idx, pt ->
+            if (idx == sampledPoints.lastIndex) {
+                "Agora"
+            } else if (spanMinutes < 2 && idx == 0) {
+                sdfHHMM.format(Date(pt.epochMs))
+            } else if (useHourFormat) {
+                sdfHour.format(Date(pt.epochMs))
+            } else {
+                sdfHHMM.format(Date(pt.epochMs))
+            }
+        }
+        val levels = sampledPoints.map { it.levelPct }
+
+        // Calcula taxa de consumo ou status para o canto superior direito do Canvas
+        val rateLabel = if (isCharging) {
+            if (currentPct >= 100) "Completa ⚡" else "Carregando ⚡"
+        } else {
+            val dropPct = (firstPt.levelPct - lastPt.levelPct)
+            val elapsedHours = spanMs / 3600_000.0
+            if (dropPct > 0 && elapsedHours >= 0.15) {
+                val pctPerHour = (dropPct / elapsedHours).coerceIn(0.2, 25.0)
+                val remHours = (currentPct / pctPerHour).roundToInt().coerceIn(1, 99)
+                val rateFormatted = String.format(Locale.getDefault(), "-%.1f%%/h", pctPerHour)
+                "~${remHours}h • $rateFormatted"
+            } else {
+                val spanLabel = when {
+                    spanMinutes < 60 -> "${spanMinutes.coerceAtLeast(1)}m de uso"
+                    else -> "${(spanMinutes / 60)}h de uso"
+                }
+                "$spanLabel • máx ${windowHours}h"
+            }
+        }
+
+        val windowCsv = windowPoints.takeLast(48).joinToString(",") { "${it.epochMs}:${it.levelPct}" }
+
+        return WatchBatterySnapshot(
+            currentPct = currentPct,
+            isCharging = isCharging,
+            windowHours = windowHours,
+            rateLabel = rateLabel,
+            historyCsv = windowCsv,
+            labels = labels,
+            levelsPct = levels
+        )
     }
 
     fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getUnifiedCanvasHoldMinutes()): Boolean {
@@ -1147,7 +1402,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
             MODE_WEATHER,
             MODE_SUN,
             MODE_STEPS,
-            MODE_SLEEP
+            MODE_SLEEP,
+            MODE_BATTERY
         )
         val currentVisual = resolveEffectiveContextMode(nowMs, upcomingThree)
         val currentIdx = visualOrder.indexOf(currentVisual).takeIf { it >= 0 } ?: 0
@@ -1332,6 +1588,20 @@ class WatchAutonomousRepository private constructor(context: Context) :
             }
         }
 
+        // 6. Bateria do Relógio (Bateria baixa <= 20% / <= 15% ou Carga completa 100%)
+        if (isAutoTriggerBatteryEnabled()) {
+            val batteryAlertTs = prefs.getLong("battery_alert_timestamp_ms", 0L)
+            if (batteryAlertTs > 0L && (nowMs - batteryAlertTs) in 0..unifiedHoldMs) {
+                val batSnap = getWatchBatterySnapshot(nowMs)
+                val statusText = if (batSnap.isCharging && batSnap.currentPct >= 100) {
+                    "Bateria carregada (100%)"
+                } else {
+                    "Bateria do relógio em ${batSnap.currentPct}% (${batSnap.rateLabel})"
+                }
+                return MODE_BATTERY to statusText
+            }
+        }
+
         return null
     }
 
@@ -1363,7 +1633,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
             val sleepTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
             val tasksTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
             val stepsTs = prefs.getLong("steps_milestone_alert_timestamp_ms", 0L)
-            val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs, stepsTs)
+            val batteryTs = prefs.getLong("battery_alert_timestamp_ms", 0L)
+            val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs, stepsTs, batteryTs)
             val leadMin = getAutoTriggerAgendaTasksLeadMin().toLong()
             val isUrgentLeadEvent = priorityMode == MODE_EVENTS && upcomingThree.firstOrNull()?.let {
                 (it.startEpochMs - nowMs) in 1..TimeUnit.MINUTES.toMillis(leadMin)
@@ -1481,6 +1752,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val MODE_STEPS = "STEPS"
         const val MODE_SUN = "SUN"
         const val MODE_SLEEP = "SLEEP"
+        const val MODE_BATTERY = "BATTERY"
 
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"

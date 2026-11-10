@@ -145,6 +145,7 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchAutoTriggerSun: Switch
     private lateinit var switchAutoTriggerSleep: Switch
     private lateinit var switchAutoTriggerWeather: Switch
+    private lateinit var switchAutoTriggerBattery: Switch
 
     // Mapas de Chips (atualizados in-place sem removeAllViews para nunca travar toques)
     private val canvasModeChipButtons = mutableMapOf<String, Button>()
@@ -155,6 +156,8 @@ class MobileSyncConfigActivity : Activity() {
     private val autoTriggerSunLeadChipButtons = mutableMapOf<Int, Button>()
     private val autoTriggerSleepModeChipButtons = mutableMapOf<String, Button>()
     private val autoTriggerWeatherModeChipButtons = mutableMapOf<String, Button>()
+    private val autoTriggerBatteryModeChipButtons = mutableMapOf<String, Button>()
+    private val batteryGraphWindowChipButtons = mutableMapOf<Int, Button>()
     private val syncIntervalChipButtons = mutableMapOf<Int, Button>()
     private val horizonChipButtons = mutableMapOf<Int, Button>()
     private val progressWindowChipButtons = mutableMapOf<Int, Button>()
@@ -1008,7 +1011,8 @@ class MobileSyncConfigActivity : Activity() {
             SyncPreferences.MODE_WEATHER to "Clima",
             SyncPreferences.MODE_SUN to "Sol",
             SyncPreferences.MODE_SLEEP to "Sono",
-            SyncPreferences.MODE_STEPS to "Passos"
+            SyncPreferences.MODE_STEPS to "Passos",
+            SyncPreferences.MODE_BATTERY to "Bateria"
         )
         modeCard.addView(
             buildStaticChipGrid(
@@ -1038,7 +1042,8 @@ class MobileSyncConfigActivity : Activity() {
             SyncPreferences.MODE_WEATHER to "Clima",
             SyncPreferences.MODE_SUN to "Sol",
             SyncPreferences.MODE_SLEEP to "Sono",
-            SyncPreferences.MODE_STEPS to "Passos"
+            SyncPreferences.MODE_STEPS to "Passos",
+            SyncPreferences.MODE_BATTERY to "Bateria"
         )
         modeCard.addView(
             buildStaticChipGrid(
@@ -1262,6 +1267,38 @@ class MobileSyncConfigActivity : Activity() {
                 virtualWatchView.invalidate()
                 refreshWidgetsGridInPlace()
                 triggerBackgroundSync("Modo Gatilho Clima: $mode")
+            }
+        )
+
+        // 6. Bateria do Relógio
+        switchAutoTriggerBattery = createResponsiveSettingToggleRow(
+            parent = autoTriggersCard,
+            title = "Gatilho Automático de Bateria do Relógio",
+            subtitle = "Apresenta a curva de consumo ao atingir nível crítico ou carga completa (capturado nas atualizações periódicas)"
+        ) { checked ->
+            prefs.setAutoTriggerBatteryEnabled(checked)
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Gatilho Bateria: $checked")
+        }
+
+        autoTriggersCard.addView(createSubLabel("Quando disparar o gatilho de bateria:"))
+        val batteryTriggerModeOptions = listOf(
+            "LOW_20" to "≤ 20%",
+            "LOW_15" to "≤ 15%",
+            "LOW_AND_FULL" to "≤ 20% e 100%"
+        )
+        autoTriggersCard.addView(
+            buildStaticChipGrid(
+                options = batteryTriggerModeOptions,
+                buttonStore = autoTriggerBatteryModeChipButtons
+            ) { mode ->
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setAutoTriggerBatteryMode(mode)
+                updateAllChipSelectionsInPlace()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Modo Gatilho Bateria: $mode")
             }
         )
 
@@ -1530,10 +1567,10 @@ class MobileSyncConfigActivity : Activity() {
 
         col.addView(weatherSunCard)
 
-        // Card 5: Sono do Dia e Serviço em Segundo Plano
+        // Card 5: Sono do Dia, Bateria do Relógio e Serviço em Segundo Plano
         val sleepSystemCard = createSectionCard(
-            "SONO & SISTEMA",
-            "Sincronização de sono e serviço em segundo plano"
+            "SONO, BATERIA & SISTEMA",
+            "Sincronização de sono, janela do gráfico de bateria do relógio e serviço em segundo plano"
         )
 
         switchSleepSync = createResponsiveSettingToggleRow(
@@ -1557,6 +1594,28 @@ class MobileSyncConfigActivity : Activity() {
             refreshWidgetsGridInPlace()
             triggerBackgroundSync("Toggle Exibir Pontuação de Sono")
         }
+
+        sleepSystemCard.addView(
+            createSubLabel("Janela máxima do gráfico de bateria do relógio (capturado apenas nas atualizações periódicas):")
+        )
+        val batteryWindowOptions = listOf(
+            6 to "6 horas",
+            12 to "12 horas",
+            24 to "24 horas"
+        )
+        sleepSystemCard.addView(
+            buildStaticChipGrid(
+                options = batteryWindowOptions,
+                buttonStore = batteryGraphWindowChipButtons
+            ) { hours ->
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setBatteryGraphWindowHours(hours)
+                updateAllChipSelectionsInPlace()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Janela Gráfico Bateria: ${hours}h")
+            }
+        )
 
         switchUpdateOnWake = createResponsiveSettingToggleRow(
             parent = sleepSystemCard,
@@ -1843,6 +1902,7 @@ class MobileSyncConfigActivity : Activity() {
             switchAutoTriggerSun.isChecked = prefs.isAutoTriggerSunEnabled()
             switchAutoTriggerSleep.isChecked = prefs.isAutoTriggerSleepEnabled()
             switchAutoTriggerWeather.isChecked = prefs.isAutoTriggerWeatherEnabled()
+            switchAutoTriggerBattery.isChecked = prefs.isAutoTriggerBatteryEnabled()
         } finally {
             isUpdatingToggleProgrammatically = false
         }
@@ -2482,6 +2542,7 @@ class MobileSyncConfigActivity : Activity() {
                 SyncPreferences.MODE_SUN -> "☀ Sol"
                 SyncPreferences.MODE_SLEEP -> "🌙 Sono"
                 SyncPreferences.MODE_STEPS -> "👟 Passos"
+                SyncPreferences.MODE_BATTERY -> "🔋 Bateria"
                 else -> widgetId
             }
             setTextColor(Color.WHITE)
@@ -2825,7 +2886,8 @@ class MobileSyncConfigActivity : Activity() {
             SyncPreferences.MODE_WEATHER,
             SyncPreferences.MODE_SUN,
             SyncPreferences.MODE_SLEEP,
-            SyncPreferences.MODE_STEPS
+            SyncPreferences.MODE_STEPS,
+            SyncPreferences.MODE_BATTERY
         )
         val current = resolveEffectivePreviewMode()
         val nextIdx = (cycleOrder.indexOf(current) + 1) % cycleOrder.size
@@ -3073,6 +3135,7 @@ class MobileSyncConfigActivity : Activity() {
                 SyncPreferences.MODE_SUN -> "Sol"
                 SyncPreferences.MODE_SLEEP -> "Sono"
                 SyncPreferences.MODE_STEPS -> "Passos"
+                SyncPreferences.MODE_BATTERY -> "Bateria"
                 else -> "Agenda"
             }
             watchPreviewModeLabel.text = if (cfgMode == SyncPreferences.MODE_AUTO) {
@@ -3823,6 +3886,121 @@ class MobileSyncConfigActivity : Activity() {
                     canvas.drawText(labels.getOrNull(i) ?: "", cx, 250f, textPaint)
                 }
             }
+
+            SyncPreferences.MODE_BATTERY -> {
+                val pct = prefs.getWatchBatteryPct()
+                val isCharging = prefs.isWatchBatteryCharging()
+                val rateLabel = prefs.getWatchBatteryRateLabel()
+                val (labels, levels) = prefs.getWatchBatteryGraphLabelsAndLevels(nowMs)
+                val accentHex = when {
+                    isCharging -> "#34D399"
+                    pct <= 15 -> "#F87171"
+                    pct <= 25 -> "#FBBF24"
+                    else -> "#34D399"
+                }
+                val accentColor = Color.parseColor(accentHex)
+
+                // 1. Ícone de Bateria no Topo Esquerdo
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3.5f
+                paint.color = accentColor
+                canvas.drawRoundRect(RectF(26f, 22f, 64f, 46f), 5f, 5f, paint)
+                paint.style = Paint.Style.FILL
+                canvas.drawRoundRect(RectF(65f, 29f, 70f, 39f), 2f, 2f, paint)
+                val fillW = (30f * (pct / 100f)).coerceIn(3f, 30f)
+                canvas.drawRoundRect(RectF(30f, 26f, 30f + fillW, 42f), 2.5f, 2.5f, paint)
+
+                // 2. Cabeçalho: "Bateria • XX%" à esquerda e autonomia/taxa à direita (sem bateria do smartphone)
+                textPaint.textAlign = Paint.Align.LEFT
+                textPaint.color = accentColor
+                textPaint.textSize = 40f
+                textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                val titleStr = if (isCharging) "Bateria • ${pct}% ⚡" else "Bateria • ${pct}%"
+                canvas.drawText(titleStr, 80f, 47f, textPaint)
+
+                textPaint.textAlign = Paint.Align.RIGHT
+                textPaint.color = Color.parseColor("#CBD5E1")
+                textPaint.textSize = 27f
+                val fittedRate = TextUtils.ellipsize(rateLabel, textPaint, 235f, TextUtils.TruncateAt.END).toString()
+                canvas.drawText(fittedRate, cardW - 26f, 45f, textPaint)
+
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 1.5f
+                paint.color = Color.parseColor("#1E293B")
+                canvas.drawLine(26f, 62f, cardW - 26f, 62f, paint)
+
+                // 3. Curva Progressiva da Esquerda para a Direita (respeitando a janela de 6h, 12h ou 24h)
+                val count = minOf(labels.size, levels.size).coerceAtLeast(2)
+                val chartLeft = 48f
+                val chartRight = cardW - 48f
+                val chartTop = 108f
+                val chartBottom = 206f
+
+                val minLv = (levels.take(count).minOrNull() ?: 0).coerceIn(0, 100)
+                val maxLv = (levels.take(count).maxOrNull() ?: 100).coerceIn(0, 100)
+                val floorLv = (minLv - 8).coerceAtLeast(0)
+                val ceilLv = (maxLv + 6).coerceAtMost(100).coerceAtLeast(floorLv + 15)
+                val rangeLv = (ceilLv - floorLv).coerceAtLeast(1).toFloat()
+
+                val stepX = (chartRight - chartLeft) / (count - 1).coerceAtLeast(1).toFloat()
+                val ptsX = FloatArray(count)
+                val ptsY = FloatArray(count)
+                for (i in 0 until count) {
+                    ptsX[i] = chartLeft + i * stepX
+                    val norm = ((levels[i] - floorLv).toFloat() / rangeLv).coerceIn(0f, 1f)
+                    ptsY[i] = chartBottom - norm * (chartBottom - chartTop)
+                }
+
+                val areaPath = Path().apply {
+                    moveTo(ptsX[0], chartBottom)
+                    for (i in 0 until count) lineTo(ptsX[i], ptsY[i])
+                    lineTo(ptsX[count - 1], chartBottom)
+                    close()
+                }
+                val areaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.FILL
+                    shader = LinearGradient(
+                        0f,
+                        chartTop,
+                        0f,
+                        chartBottom,
+                        Color.argb(90, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
+                        Color.argb(8, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
+                        Shader.TileMode.CLAMP
+                    )
+                }
+                canvas.drawPath(areaPath, areaPaint)
+
+                path.reset()
+                for (i in 0 until count) {
+                    if (i == 0) path.moveTo(ptsX[i], ptsY[i]) else path.lineTo(ptsX[i], ptsY[i])
+                }
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 6.5f
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.strokeJoin = Paint.Join.ROUND
+                paint.color = accentColor
+                canvas.drawPath(path, paint)
+
+                for (i in 0 until count) {
+                    val isLast = i == count - 1
+                    paint.style = Paint.Style.FILL
+                    paint.color = accentColor
+                    canvas.drawCircle(ptsX[i], ptsY[i], if (isLast) 10.5f else 8f, paint)
+                    if (!isLast) {
+                        paint.color = Color.parseColor("#080A0E")
+                        canvas.drawCircle(ptsX[i], ptsY[i], 3.5f, paint)
+                    }
+                    textPaint.textAlign = Paint.Align.CENTER
+                    textPaint.color = Color.WHITE
+                    textPaint.textSize = 27f
+                    canvas.drawText("${levels[i]}%", ptsX[i], (ptsY[i] - 15f).coerceAtLeast(92f), textPaint)
+
+                    textPaint.color = if (isLast) accentColor else Color.parseColor("#CBD5E1")
+                    textPaint.textSize = 25f
+                    canvas.drawText(labels[i], ptsX[i], 248f, textPaint)
+                }
+            }
         }
 
         canvas.restore()
@@ -4061,6 +4239,14 @@ class MobileSyncConfigActivity : Activity() {
         val currentWeatherMode = prefs.getAutoTriggerWeatherMode()
         for ((k, btn) in autoTriggerWeatherModeChipButtons) {
             styleChipButton(btn, k == currentWeatherMode)
+        }
+        val currentBatteryMode = prefs.getAutoTriggerBatteryMode()
+        for ((k, btn) in autoTriggerBatteryModeChipButtons) {
+            styleChipButton(btn, k == currentBatteryMode)
+        }
+        val currentBatteryWin = prefs.getBatteryGraphWindowHours()
+        for ((k, btn) in batteryGraphWindowChipButtons) {
+            styleChipButton(btn, k == currentBatteryWin)
         }
         val currentSyncInterval = prefs.getSyncIntervalMinutes().toInt()
         for ((k, btn) in syncIntervalChipButtons) {

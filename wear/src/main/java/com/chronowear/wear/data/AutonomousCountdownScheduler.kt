@@ -102,6 +102,7 @@ object AutonomousCountdownScheduler {
             WatchAutonomousRepository.MODE_SUN -> "Canvas • Nascer e Pôr do Sol"
             WatchAutonomousRepository.MODE_SLEEP -> "Canvas • Sono"
             WatchAutonomousRepository.MODE_STEPS -> "Canvas • Passos"
+            WatchAutonomousRepository.MODE_BATTERY -> "Canvas • Bateria"
             else -> "Canvas Atualizado"
         }
         val holdMins = if (forcedMode == WatchAutonomousRepository.MODE_EVENTS) {
@@ -116,6 +117,7 @@ object AutonomousCountdownScheduler {
             WatchAutonomousRepository.MODE_SUN -> "Sol"
             WatchAutonomousRepository.MODE_STEPS -> "Passos"
             WatchAutonomousRepository.MODE_SLEEP -> "Sono"
+            WatchAutonomousRepository.MODE_BATTERY -> "Bateria"
             else -> "Padrão"
         }
         val bodyText = (explicitReasonOverride ?: autoReason) +
@@ -173,6 +175,7 @@ object AutonomousCountdownScheduler {
             val nowMs = System.currentTimeMillis()
 
             if (action == Intent.ACTION_TIME_TICK) {
+                repo.recordWatchBatterySampleOnPeriodicUpdate(nowMs)
                 runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
                 notifyWatchOnForcedCanvasChangeIfNeeded(context)
                 ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
@@ -520,6 +523,7 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
             return
         }
 
+        WatchAutonomousRepository.getInstance(context).recordWatchBatterySampleOnPeriodicUpdate()
         AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
         AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(context)
 

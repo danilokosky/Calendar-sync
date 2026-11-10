@@ -35,6 +35,7 @@ import com.chronowear.wear.data.SleepSnapshot
 import com.chronowear.wear.data.SolarSnapshot
 import com.chronowear.wear.data.TasksSnapshot
 import com.chronowear.wear.data.WatchAutonomousRepository
+import com.chronowear.wear.data.WatchBatterySnapshot
 import com.chronowear.wear.data.WeeklyStepsSnapshot
 import java.util.concurrent.TimeUnit
 import kotlin.math.cos
@@ -90,6 +91,9 @@ object AgendaCardBitmapRenderer {
             }
             WatchAutonomousRepository.MODE_SLEEP -> {
                 renderSleepSummaryCanvas(repo.getSleepSnapshot(nowMs))
+            }
+            WatchAutonomousRepository.MODE_BATTERY -> {
+                renderWatchBatteryCanvas(repo.getWatchBatterySnapshot(nowMs))
             }
             else -> {
                 // Regra estrita: se o título for "Hoje", exibe APENAS compromissos de hoje.
@@ -1052,6 +1056,184 @@ object AgendaCardBitmapRenderer {
 
         return bmp
     }
+
+    /**
+     * CONTEXTO 6: Consumo de Bateria do Relógio (Bateria do Relógio no Topo + Gráfico Progressivo da Esquerda para a Direita)
+     * - No topo esquerdo: Ícone de bateria + "Bateria • XX%"
+     * - No topo direito: Taxa de consumo / autonomia estimada ou status (ex: "~24h • -1,8%/h", "Carregando ⚡" ou janela de uso)
+     * - Embaixo: Curva progressiva da esquerda para a direita com os horários nominais (minutos ou horas até o limite de 6h/12h/24h)
+     */
+    private fun renderWatchBatteryCanvas(battery: WatchBatterySnapshot): Bitmap {
+        val (bmp, canvas) = createBaseCardBitmap()
+
+        val pct = battery.currentPct.coerceIn(0, 100)
+        val accentHex = when {
+            battery.isCharging -> "#34D399"
+            pct <= 15 -> "#F87171"
+            pct <= 25 -> "#FBBF24"
+            else -> "#34D399"
+        }
+        val accentColor = Color.parseColor(accentHex)
+
+        // 1. Ícone de Bateria no Topo Esquerdo
+        val batBodyStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 3.5f
+            color = accentColor
+        }
+        val batFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = accentColor
+        }
+        canvas.drawRoundRect(RectF(26f, 22f, 64f, 46f), 5f, 5f, batBodyStroke)
+        canvas.drawRoundRect(RectF(65f, 29f, 70f, 39f), 2f, 2f, batFillPaint)
+        val fillWidth = (30f * (pct / 100f)).coerceIn(3f, 30f)
+        canvas.drawRoundRect(RectF(30f, 26f, 30f + fillWidth, 42f), 2.5f, 2.5f, batFillPaint)
+
+        // 2. Cabeçalho: "Bateria • XX%" à esquerda e autonomia/taxa à direita
+        val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accentColor
+            textSize = 40f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val titleText = if (battery.isCharging) "Bateria • ${pct}% ⚡" else "Bateria • ${pct}%"
+        canvas.drawText(titleText, 80f, 47f, headerPaint)
+
+        val rightSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#CBD5E1")
+            textSize = 27f
+            textAlign = Paint.Align.RIGHT
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val fittedRate = TextUtils.ellipsize(
+            battery.rateLabel,
+            rightSubPaint,
+            235f,
+            TextUtils.TruncateAt.END
+        ).toString()
+        canvas.drawText(fittedRate, 578f, 45f, rightSubPaint)
+
+        // Linha divisória sutil abaixo do cabeçalho
+        val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            color = Color.parseColor("#1E293B")
+        }
+        canvas.drawLine(26f, 62f, 578f, 62f, dividerPaint)
+
+        // 3. Área do Gráfico Progressivo da Esquerda para a Direita
+        val levels = battery.levelsPct.ifEmpty { listOf(pct, pct) }
+        val labels = battery.labels.ifEmpty { listOf("Início", "Agora") }
+        val count = minOf(levels.size, labels.size).coerceAtLeast(2)
+
+        val chartLeft = 48f
+        val chartRight = 556f
+        val chartTop = 108f
+        val chartBottom = 206f
+
+        // Linhas horizontais de referência suaves
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            color = Color.parseColor("#162032")
+            pathEffect = DashPathEffect(floatArrayOf(6f, 6f), 0f)
+        }
+        canvas.drawLine(chartLeft, chartTop, chartRight, chartTop, gridPaint)
+        canvas.drawLine(chartLeft, (chartTop + chartBottom) * 0.5f, chartRight, (chartTop + chartBottom) * 0.5f, gridPaint)
+        canvas.drawLine(chartLeft, chartBottom, chartRight, chartBottom, gridPaint)
+
+        val minLv = (levels.take(count).minOrNull() ?: 0).coerceIn(0, 100)
+        val maxLv = (levels.take(count).maxOrNull() ?: 100).coerceIn(0, 100)
+        // Garante amplitude mínima de 15% para que pequenas variações não pareçam quedas bruscas
+        val floorLv = (minLv - 8).coerceAtLeast(0)
+        val ceilLv = (maxLv + 6).coerceAtMost(100).coerceAtLeast(floorLv + 15)
+        val rangeLv = (ceilLv - floorLv).coerceAtLeast(1).toFloat()
+
+        val stepX = (chartRight - chartLeft) / (count - 1).coerceAtLeast(1).toFloat()
+        val pointsX = FloatArray(count)
+        val pointsY = FloatArray(count)
+
+        for (i in 0 until count) {
+            pointsX[i] = chartLeft + i * stepX
+            val normalized = ((levels[i] - floorLv).toFloat() / rangeLv).coerceIn(0f, 1f)
+            pointsY[i] = chartBottom - normalized * (chartBottom - chartTop)
+        }
+
+        // Preenchimento em degradê sob a curva
+        val areaPath = Path().apply {
+            moveTo(pointsX[0], chartBottom)
+            for (i in 0 until count) {
+                lineTo(pointsX[i], pointsY[i])
+            }
+            lineTo(pointsX[count - 1], chartBottom)
+            close()
+        }
+        val fillAreaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            shader = LinearGradient(
+                0f,
+                chartTop,
+                0f,
+                chartBottom,
+                Color.argb(95, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
+                Color.argb(8, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawPath(areaPath, fillAreaPaint)
+
+        // Linha contínua da curva de consumo
+        val linePath = Path().apply {
+            for (i in 0 until count) {
+                if (i == 0) moveTo(pointsX[i], pointsY[i])
+                else lineTo(pointsX[i], pointsY[i])
+            }
+        }
+        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 6.5f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            color = accentColor
+        }
+        canvas.drawPath(linePath, linePaint)
+
+        val dotOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = accentColor
+        }
+        val dotCenterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.parseColor("#080A0E")
+        }
+        val valuePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 28f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val timeLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#CBD5E1")
+            textSize = 27f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        for (i in 0 until count) {
+            val isLast = i == count - 1
+            canvas.drawCircle(pointsX[i], pointsY[i], if (isLast) 10.5f else 8f, dotOuterPaint)
+            if (!isLast) {
+                canvas.drawCircle(pointsX[i], pointsY[i], 3.5f, dotCenterPaint)
+            }
+            val valStr = "${levels[i]}%"
+            canvas.drawText(valStr, pointsX[i], (pointsY[i] - 15f).coerceAtLeast(92f), valuePaint)
+
+            timeLabelPaint.color = if (isLast) accentColor else Color.parseColor("#CBD5E1")
+            canvas.drawText(labels[i], pointsX[i], 248f, timeLabelPaint)
+        }
+
+        return bmp
+    }
 }
 
 class NextEventComplicationService : SuspendingComplicationDataSourceService() {
@@ -1073,6 +1255,7 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 
         val repo = WatchAutonomousRepository.getInstance(applicationContext)
         val nowMs = System.currentTimeMillis()
+        repo.recordWatchBatterySampleOnPeriodicUpdate(nowMs)
         val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
         val progressWindowMinutes = repo.getProgressWindowMinutes()
 
