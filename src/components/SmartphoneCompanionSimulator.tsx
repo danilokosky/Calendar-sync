@@ -189,6 +189,11 @@ export const SmartphoneCompanionSimulator: React.FC<
   const [autoTriggerWeatherMode, setAutoTriggerWeatherMode] = useState<
     'RAIN_CHANGE' | 'APP_ALERT' | 'EVERY_UPDATE'
   >('RAIN_CHANGE');
+  const [googleTasksRemindLaterCount, setGoogleTasksRemindLaterCount] =
+    useState(0);
+  const [googleTasksNeverRemind, setGoogleTasksNeverRemind] = useState(false);
+  const [googleTasksDismissedSession, setGoogleTasksDismissedSession] =
+    useState(false);
 
   // Representação Virtual 1:1 do Relógio no Topo e Widgets 2x2
   const [virtualWatchPreviewOverride, setVirtualWatchPreviewOverride] =
@@ -1372,6 +1377,65 @@ export const SmartphoneCompanionSimulator: React.FC<
               </div>
             )}
 
+            {/* 1B. QUADRO SEPARADO DE CONVITE DE LOGIN DO GOOGLE TASKS (OCULTO QUANDO JÁ CONECTADO) */}
+            {(config.tasksSyncEnabled ?? true) &&
+              !Boolean(
+                config.googleTasksConnectedEmail ||
+                  getInMemoryGoogleTasksEmail()
+              ) &&
+              !googleTasksNeverRemind &&
+              !googleTasksDismissedSession && (
+                <div
+                  data-testid="phone-google-tasks-login-prompt-card"
+                  className="rounded-[20px] border bg-[#0D1624] border-sky-400/50 p-3.5 space-y-2 shadow-lg"
+                >
+                  <div className="text-[10.5px] font-bold tracking-wider uppercase text-sky-400">
+                    Conectar Google Tasks
+                  </div>
+                  <div className="text-xs font-bold text-white">
+                    Deseja fazer login na sua conta Google Tasks?
+                  </div>
+                  <div className="text-[10.5px] text-slate-300 leading-relaxed">
+                    A sincronização de tarefas já vem ativada por padrão. Faça login para exibir suas tarefas de Hoje e Amanhã direto no mostrador do relógio.
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleConnectAndSyncGoogleTasksApi(true)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-[#F5C438] hover:bg-[#FDE047] text-[#050507] font-bold text-[11px] cursor-pointer"
+                    >
+                      Fazer Login
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoogleTasksRemindLaterCount((c) => c + 1);
+                        setGoogleTasksDismissedSession(true);
+                        showToast('Ok, lembraremos você no próximo acesso.');
+                      }}
+                      className="flex-1 py-2 px-3 rounded-xl bg-[#131C2B] border border-[#2A3A52] hover:bg-[#1B273B] text-slate-200 font-bold text-[11px] cursor-pointer"
+                    >
+                      Me lembrar depois
+                    </button>
+                  </div>
+                  {googleTasksRemindLaterCount >= 2 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoogleTasksNeverRemind(true);
+                        setGoogleTasksDismissedSession(true);
+                        showToast(
+                          'Aviso desativado. Você pode conectar nas Configurações quando desejar.'
+                        );
+                      }}
+                      className="w-full py-1.5 px-3 rounded-xl bg-[#0B111A] border border-[#1E293B] text-slate-400 hover:text-slate-200 text-[10.5px] font-medium cursor-pointer"
+                    >
+                      Não me lembrar mais
+                    </button>
+                  )}
+                </div>
+              )}
+
             {/* 2. PRÉ-VISUALIZAÇÃO DA WATCHFACE 1:1 (SEMPRE VISÍVEL, NUNCA OCULTA) */}
             <div className="rounded-[24px] bg-[#0B100E] border border-[#24332B] p-3.5 shadow-lg flex flex-col items-center">
               <div className="relative w-full flex flex-col items-center">
@@ -2197,38 +2261,6 @@ export const SmartphoneCompanionSimulator: React.FC<
                   }
                 />
               </div>
-
-              <div
-                onClick={() => {
-                  if (isCustomizationLocked) {
-                    showLockedToast();
-                    return;
-                  }
-                  onUpdateConfig({
-                    highFreq15MinRule: !config.highFreq15MinRule,
-                  });
-                }}
-                className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
-              >
-                <div>
-                  <div className="text-xs font-bold text-slate-100">
-                    Regra Turbo 15 Minutos
-                  </div>
-                  <div className="text-[10.5px] text-slate-400">
-                    Atualiza minuto a minuto nos 15 min finais
-                  </div>
-                </div>
-                <ModernOneUiSwitch
-                  checked={config.highFreq15MinRule}
-                  ariaLabel="Regra Turbo 15 Minutos"
-                  disabled={isCustomizationLocked}
-                  onChange={() =>
-                    onUpdateConfig({
-                      highFreq15MinRule: !config.highFreq15MinRule,
-                    })
-                  }
-                />
-              </div>
             </div>
 
             {/* SEÇÃO 3: AGENDA & TAREFAS */}
@@ -2300,6 +2332,38 @@ export const SmartphoneCompanionSimulator: React.FC<
                   onChange={() =>
                     onUpdateConfig({
                       tasksSyncEnabled: !(config.tasksSyncEnabled ?? true),
+                    })
+                  }
+                />
+              </div>
+
+              <div
+                onClick={() => {
+                  if (isCustomizationLocked) {
+                    showLockedToast();
+                    return;
+                  }
+                  onUpdateConfig({
+                    highFreq15MinRule: !config.highFreq15MinRule,
+                  });
+                }}
+                className="flex items-center justify-between gap-3 pt-2.5 border-t border-white/10 cursor-pointer"
+              >
+                <div>
+                  <div className="text-xs font-bold text-slate-100">
+                    Contagem regressiva de alta precisão (≤ 15 min)
+                  </div>
+                  <div className="text-[10.5px] text-slate-400">
+                    Atualiza a barra e o contador minuto a minuto nos minutos finais de Agenda e Tarefas
+                  </div>
+                </div>
+                <ModernOneUiSwitch
+                  checked={config.highFreq15MinRule}
+                  ariaLabel="Contagem regressiva de alta precisão"
+                  disabled={isCustomizationLocked}
+                  onChange={() =>
+                    onUpdateConfig({
+                      highFreq15MinRule: !config.highFreq15MinRule,
                     })
                   }
                 />

@@ -117,6 +117,8 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var watchAppBadgeText: TextView
     private lateinit var permissionsAlertContainer: LinearLayout
     private lateinit var permissionsListContainer: LinearLayout
+    private lateinit var googleTasksLoginPromptContainer: LinearLayout
+    private var isGoogleTasksPromptDismissedForSession = false
     private lateinit var widgetsGridContainer: LinearLayout
 
     // Camada fina escura apenas sobre as configurações de personalização quando bloqueado
@@ -913,6 +915,21 @@ class MobileSyncConfigActivity : Activity() {
         permissionsAlertContainer.addView(permissionsListContainer)
         col.addView(permissionsAlertContainer)
 
+        // 2B. Quadro separado de convite de Login do Google Tasks na Tela Principal (quando ainda não conectado)
+        googleTasksLoginPromptContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedRect("#0D1624", "#38BDF8", 18)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            visibility = View.GONE
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.bottomMargin = dp(14)
+            layoutParams = lp
+        }
+        col.addView(googleTasksLoginPromptContainer)
+
         // 3. Seção dos Blocos de Status (Tiles 2x2) — Sempre visíveis normalmente
         val widgetsSectionCol = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1274,15 +1291,6 @@ class MobileSyncConfigActivity : Activity() {
             triggerBackgroundSync("Alerta 15 min Agenda")
         }
 
-        switchHighFreq15Min = createResponsiveSettingToggleRow(
-            parent = notifCard,
-            title = "Contagem regressiva de alta precisão (≤ 15 min)",
-            subtitle = "Atualiza a barra e o contador minuto a minuto nos 15 min finais"
-        ) { checked ->
-            prefs.setHighFreq15MinRuleEnabled(checked)
-            triggerBackgroundSync("Regra 15 min precisão")
-        }
-
         col.addView(notifCard)
 
         // Card 3: Sincronização de Agenda e Tarefas
@@ -1310,6 +1318,7 @@ class MobileSyncConfigActivity : Activity() {
             subtitle = "Sincroniza tarefas de Hoje, Amanhã, Sem data e Atrasadas direto da nuvem"
         ) { checked ->
             prefs.setTasksSyncEnabled(checked)
+            refreshGoogleTasksLoginPromptBanner()
             if (checked) {
                 val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
                 authorizeAndSyncGoogleTasks(email)
@@ -1320,6 +1329,15 @@ class MobileSyncConfigActivity : Activity() {
                 refreshWidgetsGridInPlace()
                 triggerBackgroundSync("Toggle Tarefas Desativado")
             }
+        }
+
+        switchHighFreq15Min = createResponsiveSettingToggleRow(
+            parent = agendaTasksCard,
+            title = "Contagem regressiva de alta precisão (≤ 15 min)",
+            subtitle = "Atualiza a barra e o contador minuto a minuto nos minutos finais de Agenda e Tarefas"
+        ) { checked ->
+            prefs.setHighFreq15MinRuleEnabled(checked)
+            triggerBackgroundSync("Regra 15 min precisão")
         }
 
         googleTasksAccountStatusText = TextView(this).apply {
@@ -1832,6 +1850,7 @@ class MobileSyncConfigActivity : Activity() {
         refreshGoogleTasksAccountSummary()
         updateAllChipSelectionsInPlace()
         refreshPermissionsBanner()
+        refreshGoogleTasksLoginPromptBanner()
         refreshCalendarsList()
         refreshWeatherTriggerAppsSummary()
         refreshWidgetsGridInPlace()
@@ -2199,6 +2218,152 @@ class MobileSyncConfigActivity : Activity() {
             }
             installRow.addView(linkBtn)
             permissionsListContainer.addView(installRow)
+        }
+    }
+
+    /**
+     * Quadro separado na Tela Inicial convidando o usuário a fazer login no Google Tasks API
+     * quando a sincronização de tarefas está ativada mas o login ainda não foi realizado:
+     * - Oculta automaticamente caso o usuário já tenha feito login.
+     * - Oferece os botões "Fazer Login" e "Me lembrar depois".
+     * - A partir da 3ª exibição (após 2 toques anteriores em "Me lembrar depois"), adiciona a opção "Não me lembrar mais".
+     */
+    private fun refreshGoogleTasksLoginPromptBanner() {
+        if (!::googleTasksLoginPromptContainer.isInitialized) return
+        googleTasksLoginPromptContainer.removeAllViews()
+
+        val isTasksEnabled = prefs.isTasksSyncEnabled()
+        val isLoggedIn = prefs.getGoogleTasksAccessToken().isNotBlank()
+        val isNeverRemind = prefs.isGoogleTasksLoginPromptNeverRemind()
+
+        if (!isTasksEnabled || isLoggedIn || isNeverRemind || isGoogleTasksPromptDismissedForSession) {
+            googleTasksLoginPromptContainer.visibility = View.GONE
+            return
+        }
+
+        val remindLaterCount = prefs.getGoogleTasksRemindLaterCount()
+        val isThirdOrMoreTime = remindLaterCount >= 2
+
+        googleTasksLoginPromptContainer.visibility = View.VISIBLE
+        googleTasksLoginPromptContainer.background = roundedRect("#0D1624", "#38BDF8", 18)
+
+        googleTasksLoginPromptContainer.addView(
+            TextView(this).apply {
+                text = "CONECTAR GOOGLE TASKS"
+                setTextColor(Color.parseColor("#38BDF8"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                letterSpacing = 0.04f
+            }
+        )
+
+        googleTasksLoginPromptContainer.addView(
+            TextView(this).apply {
+                text = "Deseja fazer login na sua conta Google Tasks?"
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = dp(4)
+                layoutParams = lp
+            }
+        )
+
+        googleTasksLoginPromptContainer.addView(
+            TextView(this).apply {
+                text = "A sincronização de tarefas já vem ativada por padrão. Faça login para exibir suas tarefas de Hoje e Amanhã direto no mostrador do relógio."
+                setTextColor(Color.parseColor("#CBD5E1"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = dp(3)
+                layoutParams = lp
+            }
+        )
+
+        val buttonsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            isBaselineAligned = false
+            gravity = Gravity.CENTER_VERTICAL
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(10)
+            layoutParams = lp
+        }
+
+        val loginBtn = Button(this).apply {
+            text = "Fazer Login"
+            isAllCaps = false
+            setTextColor(Color.parseColor("#050507"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+            typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+            background = roundedRect("#F5C438", "#FDE047", 12)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            minHeight = dp(38)
+            minimumHeight = dp(38)
+            val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            lp.rightMargin = dp(6)
+            layoutParams = lp
+            setOnClickListener {
+                startGoogleTasksAccountPicker()
+            }
+        }
+        buttonsRow.addView(loginBtn)
+
+        val remindLaterBtn = Button(this).apply {
+            text = "Me lembrar depois"
+            isAllCaps = false
+            setTextColor(Color.parseColor("#E2E8F0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+            typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+            background = roundedRect("#131C2B", "#2A3A52", 12)
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            minHeight = dp(38)
+            minimumHeight = dp(38)
+            val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = lp
+            setOnClickListener {
+                prefs.incrementGoogleTasksRemindLaterCount()
+                isGoogleTasksPromptDismissedForSession = true
+                googleTasksLoginPromptContainer.visibility = View.GONE
+                showStatusToast("Ok, lembraremos você no próximo acesso.")
+            }
+        }
+        buttonsRow.addView(remindLaterBtn)
+        googleTasksLoginPromptContainer.addView(buttonsRow)
+
+        if (isThirdOrMoreTime) {
+            val neverRemindBtn = Button(this).apply {
+                text = "Não me lembrar mais"
+                isAllCaps = false
+                setTextColor(Color.parseColor("#94A3B8"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                background = roundedRect("#0B111A", "#1E293B", 10)
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                minHeight = dp(34)
+                minimumHeight = dp(34)
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = dp(6)
+                layoutParams = lp
+                setOnClickListener {
+                    prefs.setGoogleTasksLoginPromptNeverRemind(true)
+                    isGoogleTasksPromptDismissedForSession = true
+                    googleTasksLoginPromptContainer.visibility = View.GONE
+                    showStatusToast("Aviso desativado. Você pode conectar nas Configurações quando desejar.")
+                }
+            }
+            googleTasksLoginPromptContainer.addView(neverRemindBtn)
         }
     }
 
@@ -3813,6 +3978,7 @@ class MobileSyncConfigActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
             lp.topMargin = dp(6)
+            lp.bottomMargin = dp(4)
             layoutParams = lp
         }
 
@@ -3822,6 +3988,8 @@ class MobileSyncConfigActivity : Activity() {
             if (idx % perRow == 0) {
                 currentRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
+                    isBaselineAligned = false
+                    gravity = Gravity.CENTER_VERTICAL
                     val lp = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
@@ -3836,11 +4004,14 @@ class MobileSyncConfigActivity : Activity() {
             val btn = Button(this).apply {
                 text = label
                 isAllCaps = false
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setLineSpacing(dp(1).toFloat(), 1.0f)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
                 typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-                minHeight = dp(36)
-                minimumHeight = dp(36)
-                setPadding(dp(8), dp(6), dp(8), dp(6))
+                minHeight = dp(40)
+                minimumHeight = dp(40)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
                 val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 if (idx % perRow != 0) lp.leftMargin = dp(6)
                 layoutParams = lp

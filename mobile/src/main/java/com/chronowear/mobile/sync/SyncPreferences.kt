@@ -561,7 +561,31 @@ class SyncPreferences(context: Context) {
     }
 
     fun setGoogleTasksAccessToken(token: String) {
-        prefs.edit().putString(KEY_GOOGLE_TASKS_ACCESS_TOKEN, token.trim()).commit()
+        val clean = token.trim()
+        val editor = prefs.edit().putString(KEY_GOOGLE_TASKS_ACCESS_TOKEN, clean)
+        if (clean.isNotEmpty()) {
+            editor.putInt(KEY_GOOGLE_TASKS_REMIND_LATER_COUNT, 0)
+            editor.putBoolean(KEY_GOOGLE_TASKS_NEVER_REMIND, false)
+        }
+        editor.commit()
+    }
+
+    fun getGoogleTasksRemindLaterCount(): Int {
+        return prefs.getInt(KEY_GOOGLE_TASKS_REMIND_LATER_COUNT, 0).coerceAtLeast(0)
+    }
+
+    fun incrementGoogleTasksRemindLaterCount(): Int {
+        val next = getGoogleTasksRemindLaterCount() + 1
+        prefs.edit().putInt(KEY_GOOGLE_TASKS_REMIND_LATER_COUNT, next).commit()
+        return next
+    }
+
+    fun isGoogleTasksLoginPromptNeverRemind(): Boolean {
+        return prefs.getBoolean(KEY_GOOGLE_TASKS_NEVER_REMIND, false)
+    }
+
+    fun setGoogleTasksLoginPromptNeverRemind(neverRemind: Boolean) {
+        prefs.edit().putBoolean(KEY_GOOGLE_TASKS_NEVER_REMIND, neverRemind).commit()
     }
 
     fun getGoogleTasksLastSyncMs(): Long {
@@ -1147,6 +1171,8 @@ class SyncPreferences(context: Context) {
         private const val KEY_TASKS_SYNC_ENABLED = "tasks_sync_enabled"
         private const val KEY_GOOGLE_TASKS_ACCOUNT_EMAIL = "google_tasks_account_email"
         private const val KEY_GOOGLE_TASKS_ACCESS_TOKEN = "google_tasks_access_token"
+        private const val KEY_GOOGLE_TASKS_REMIND_LATER_COUNT = "google_tasks_remind_later_count"
+        private const val KEY_GOOGLE_TASKS_NEVER_REMIND = "google_tasks_never_remind"
         private const val KEY_GOOGLE_TASKS_LAST_SYNC_MS = "google_tasks_last_sync_ms"
         private const val KEY_GOOGLE_TASKS_SYNC_STATUS = "google_tasks_sync_status"
         private const val KEY_TASKS_JSON = "tasks_json"
