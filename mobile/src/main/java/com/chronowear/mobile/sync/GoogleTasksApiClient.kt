@@ -3,6 +3,8 @@ package com.chronowear.mobile.sync
 import android.accounts.Account
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.UserRecoverableAuthException
 import org.json.JSONArray
@@ -10,6 +12,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -19,6 +22,11 @@ import java.util.concurrent.TimeUnit
 sealed class GoogleTasksAuthResult {
     data class Authorized(val accessToken: String, val accountEmail: String) : GoogleTasksAuthResult()
     data class NeedsUserConsent(val consentIntent: Intent, val accountEmail: String) : GoogleTasksAuthResult()
+    data class UnregisteredOnConsole(
+        val packageName: String,
+        val sha1Fingerprint: String,
+        val accountEmail: String
+    ) : GoogleTasksAuthResult()
     data class Error(val reason: String) : GoogleTasksAuthResult()
 }
 
@@ -33,10 +41,54 @@ object GoogleTasksApiClient {
     const val SCOPE_TASKS_READONLY = "https://www.googleapis.com/auth/tasks.readonly"
     const val OAUTH_SCOPE_STRING = "oauth2:$SCOPE_TASKS $SCOPE_TASKS_READONLY"
     const val WEB_OAUTH_CLIENT_ID = "65152854911-1gc862g8m5f7905c3q54n365cecuthha.apps.googleusercontent.com"
+    const val DEFAULT_FIXED_DEBUG_SHA1 = "C0:8D:D2:09:AC:42:60:FD:CB:7A:B8:C4:A3:EB:1B:D5:6B:53:23:C1"
+    const val CLOUD_CONSOLE_PROJECT_ID = "gen-lang-client-0127839135"
 
     @Volatile
     var pendingConsentIntent: Intent? = null
         private set
+
+    /**
+     * Lê a impressão digital SHA-1 real do certificado que assinou o APK instalado no aparelho.
+     * Esse SHA-1 + Package Name (`com.chronowear.sync`) são exigidos pelo Google Play Services
+     * na criação do "ID do cliente OAuth 2.0 (Tipo: Android)" no Google Cloud Console.
+     */
+    @Suppress("DEPRECATION")
+    fun getAppSignatureSha1(context: Context): String {
+        return try {
+            val pm = context.packageManager
+            val certBytes: ByteArray? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val info = pm.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                )
+                val signingInfo = info.signingInfo
+                val signers = if (signingInfo != null) {
+                    if (signingInfo.hasMultipleSigners()) {
+                        signingInfo.apkContentsSigners
+                    } else {
+                        signingInfo.signingCertificateHistory
+                    }
+                } else {
+                    null
+                }
+                signers?.firstOrNull()?.toByteArray()
+            } else {
+                val info = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+                info.signatures?.firstOrNull()?.toByteArray()
+            }
+
+            if (certBytes != null && certBytes.isNotEmpty()) {
+                val md = MessageDigest.getInstance("SHA-1")
+                val digest = md.digest(certBytes)
+                digest.joinToString(":") { b -> String.format(Locale.ROOT, "%02X", b) }
+            } else {
+                DEFAULT_FIXED_DEBUG_SHA1
+            }
+        } catch (_: Exception) {
+            DEFAULT_FIXED_DEBUG_SHA1
+        }
+    }
 
     /**
      * Descobre automaticamente o e-mail da conta Google já usada na Agenda do aparelho
@@ -100,7 +152,27 @@ object GoogleTasksApiClient {
                 if (cachedToken.isNotBlank()) {
                     return GoogleTasksAuthResult.Authorized(cachedToken, email)
                 }
-                return GoogleTasksAuthResult.Error(e.localizedMessage ?: "Falha ao autenticar no Google Tasks")
+                val rawMsg = (e.message ?: e.localizedMessage ?: "").trim()
+                if (
+                    rawMsg.contains("UnregisteredOnApiConsole", ignoreCase = true) ||
+                    rawMsg.contains("UNREGISTERED_ON_API_CONSOLE", ignoreCase = true) ||
+                    rawMsg.contains("DEVELOPER_ERROR", ignoreCase = true)
+                ) {
+                    val sha1 = getAppSignatureSha1(context)
+                    val pkg = context.packageName
+                    prefs.setGoogleTasksAccountEmail(email)
+                    prefs.setGoogleTasksSyncStatus(
+                        "Requer cadastro do SHA-1 ($sha1) e pacote ($pkg) no Google Cloud Console"
+                    )
+                    return GoogleTasksAuthResult.UnregisteredOnConsole(
+                        packageName = pkg,
+                        sha1Fingerprint = sha1,
+                        accountEmail = email
+                    )
+                }
+                return GoogleTasksAuthResult.Error(
+                    rawMsg.ifBlank { "Falha ao autenticar no Google Tasks" }
+                )
             }
         }
 
@@ -134,6 +206,12 @@ object GoogleTasksApiClient {
             is GoogleTasksAuthResult.Authorized -> authResult.accessToken to authResult.accountEmail
             is GoogleTasksAuthResult.NeedsUserConsent -> {
                 prefs.setGoogleTasksSyncStatus("Toque em 'Autorizar Google Tasks' para liberar acesso à API")
+                return prefs.getTasksJson()
+            }
+            is GoogleTasksAuthResult.UnregisteredOnConsole -> {
+                prefs.setGoogleTasksSyncStatus(
+                    "Requer cadastro do SHA-1 (${authResult.sha1Fingerprint}) para ${authResult.packageName} no Cloud Console"
+                )
                 return prefs.getTasksJson()
             }
             is GoogleTasksAuthResult.Error -> {
