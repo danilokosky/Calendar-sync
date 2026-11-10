@@ -167,10 +167,24 @@ class WatchAutonomousRepository private constructor(context: Context) :
         sleepStagesCsv: String? = null,
         sleepWakeTimestampMs: Long? = null,
         sleepHasDataToday: Boolean? = null,
+        stepsToday: Int? = null,
+        stepsGoal: Int? = null,
+        stepsWeekCsv: String? = null,
+        stepsWeekLabelsCsv: String? = null,
         tasksSyncEnabled: Boolean? = null,
         tasksJson: String? = null,
         tasksAlertTimestampMs: Long? = null,
         autoFallbackAgendaToTasks: Boolean? = null,
+        autoTriggerAgendaTasksEnabled: Boolean? = null,
+        autoTriggerAgendaTasksLeadMin: Int? = null,
+        autoTriggerStepsEnabled: Boolean? = null,
+        autoTriggerStepsMilestone: String? = null,
+        autoTriggerSunEnabled: Boolean? = null,
+        autoTriggerSunLeadMin: Int? = null,
+        autoTriggerSleepEnabled: Boolean? = null,
+        autoTriggerSleepMode: String? = null,
+        autoTriggerWeatherEnabled: Boolean? = null,
+        autoTriggerWeatherMode: String? = null,
         weatherLat: Double? = null,
         weatherLon: Double? = null
     ) {
@@ -317,6 +331,42 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 editor.putLong("tap_override_timestamp_ms", 0L)
             }
         }
+        if (stepsToday != null) {
+            val cleanSteps = stepsToday.coerceAtLeast(0)
+            editor.putInt("steps_today_v2", cleanSteps)
+            val effectiveGoal = (stepsGoal ?: prefs.getInt("steps_goal_v2", 10000)).coerceAtLeast(1000)
+            val stepsTriggerOn = autoTriggerStepsEnabled ?: prefs.getBoolean("auto_trigger_steps_enabled", true)
+            val milestoneRule = autoTriggerStepsMilestone
+                ?: prefs.getString("auto_trigger_steps_milestone", "100")
+                ?: "100"
+            if (stepsTriggerOn && cleanSteps > 0) {
+                val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(syncTimestampMs))
+                val hit80 = cleanSteps >= (effectiveGoal * 0.80).toInt()
+                val hit100 = cleanSteps >= effectiveGoal
+                val prev80Date = prefs.getString("steps_80_triggered_date", "") ?: ""
+                val prev100Date = prefs.getString("steps_100_triggered_date", "") ?: ""
+                if (hit100 && milestoneRule in setOf("100", "BOTH") && prev100Date != todayIso) {
+                    editor.putString("steps_100_triggered_date", todayIso)
+                    editor.putLong("steps_milestone_alert_timestamp_ms", syncTimestampMs)
+                    editor.remove("tap_override_context_mode")
+                    editor.putLong("tap_override_timestamp_ms", 0L)
+                } else if (hit80 && milestoneRule in setOf("80", "BOTH") && prev80Date != todayIso) {
+                    editor.putString("steps_80_triggered_date", todayIso)
+                    editor.putLong("steps_milestone_alert_timestamp_ms", syncTimestampMs)
+                    editor.remove("tap_override_context_mode")
+                    editor.putLong("tap_override_timestamp_ms", 0L)
+                }
+            }
+        }
+        if (stepsGoal != null) {
+            editor.putInt("steps_goal_v2", stepsGoal.coerceAtLeast(1000))
+        }
+        if (!stepsWeekCsv.isNullOrBlank()) {
+            editor.putString("steps_week_csv_v2", stepsWeekCsv)
+        }
+        if (!stepsWeekLabelsCsv.isNullOrBlank()) {
+            editor.putString("steps_week_labels_csv_v2", stepsWeekLabelsCsv)
+        }
         if (tasksSyncEnabled != null) {
             editor.putBoolean("tasks_sync_enabled", tasksSyncEnabled)
         }
@@ -334,6 +384,36 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (autoFallbackAgendaToTasks != null) {
             editor.putBoolean("auto_fallback_agenda_to_tasks", autoFallbackAgendaToTasks)
+        }
+        if (autoTriggerAgendaTasksEnabled != null) {
+            editor.putBoolean("auto_trigger_agenda_tasks_enabled", autoTriggerAgendaTasksEnabled)
+        }
+        if (autoTriggerAgendaTasksLeadMin != null && autoTriggerAgendaTasksLeadMin in setOf(5, 10, 15)) {
+            editor.putInt("auto_trigger_agenda_tasks_lead_min", autoTriggerAgendaTasksLeadMin)
+        }
+        if (autoTriggerStepsEnabled != null) {
+            editor.putBoolean("auto_trigger_steps_enabled", autoTriggerStepsEnabled)
+        }
+        if (!autoTriggerStepsMilestone.isNullOrBlank() && autoTriggerStepsMilestone in setOf("80", "100", "BOTH")) {
+            editor.putString("auto_trigger_steps_milestone", autoTriggerStepsMilestone)
+        }
+        if (autoTriggerSunEnabled != null) {
+            editor.putBoolean("auto_trigger_sun_enabled", autoTriggerSunEnabled)
+        }
+        if (autoTriggerSunLeadMin != null && autoTriggerSunLeadMin in setOf(5, 15, 30)) {
+            editor.putInt("auto_trigger_sun_lead_min", autoTriggerSunLeadMin)
+        }
+        if (autoTriggerSleepEnabled != null) {
+            editor.putBoolean("auto_trigger_sleep_enabled", autoTriggerSleepEnabled)
+        }
+        if (!autoTriggerSleepMode.isNullOrBlank() && autoTriggerSleepMode in setOf("WAKE", "BEDTIME", "BOTH")) {
+            editor.putString("auto_trigger_sleep_mode", autoTriggerSleepMode)
+        }
+        if (autoTriggerWeatherEnabled != null) {
+            editor.putBoolean("auto_trigger_weather_enabled", autoTriggerWeatherEnabled)
+        }
+        if (!autoTriggerWeatherMode.isNullOrBlank() && autoTriggerWeatherMode in setOf("RAIN_CHANGE", "APP_ALERT", "EVERY_UPDATE")) {
+            editor.putString("auto_trigger_weather_mode", autoTriggerWeatherMode)
         }
         editor.commit()
 
@@ -470,35 +550,85 @@ class WatchAutonomousRepository private constructor(context: Context) :
         )
     }
 
+    fun isAutoTriggerAgendaTasksEnabled(): Boolean {
+        return prefs.getBoolean("auto_trigger_agenda_tasks_enabled", true)
+    }
+
+    fun getAutoTriggerAgendaTasksLeadMin(): Int {
+        val v = prefs.getInt("auto_trigger_agenda_tasks_lead_min", 15)
+        return if (v in setOf(5, 10, 15)) v else 15
+    }
+
+    fun isAutoTriggerStepsEnabled(): Boolean {
+        return prefs.getBoolean("auto_trigger_steps_enabled", true)
+    }
+
+    fun getAutoTriggerStepsMilestone(): String {
+        val v = prefs.getString("auto_trigger_steps_milestone", "100") ?: "100"
+        return if (v in setOf("80", "100", "BOTH")) v else "100"
+    }
+
+    fun isAutoTriggerSunEnabled(): Boolean {
+        return prefs.getBoolean("auto_trigger_sun_enabled", true)
+    }
+
+    fun getAutoTriggerSunLeadMin(): Int {
+        val v = prefs.getInt("auto_trigger_sun_lead_min", 15)
+        return if (v in setOf(5, 15, 30)) v else 15
+    }
+
+    fun isAutoTriggerSleepEnabled(): Boolean {
+        return prefs.getBoolean("auto_trigger_sleep_enabled", true)
+    }
+
+    fun getAutoTriggerSleepMode(): String {
+        val v = prefs.getString("auto_trigger_sleep_mode", "BOTH") ?: "BOTH"
+        return if (v in setOf("WAKE", "BEDTIME", "BOTH")) v else "BOTH"
+    }
+
+    fun isAutoTriggerWeatherEnabled(): Boolean {
+        return prefs.getBoolean("auto_trigger_weather_enabled", true)
+    }
+
+    fun getAutoTriggerWeatherMode(): String {
+        val v = prefs.getString("auto_trigger_weather_mode", "RAIN_CHANGE") ?: "RAIN_CHANGE"
+        return if (v in setOf("RAIN_CHANGE", "APP_ALERT", "EVERY_UPDATE")) v else "RAIN_CHANGE"
+    }
+
     fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getUnifiedCanvasHoldMinutes()): Boolean {
-        if (!isSleepSyncEnabled()) return false
+        if (!isSleepSyncEnabled() || !isAutoTriggerSleepEnabled()) return false
         val sleep = getSleepSnapshot(nowMs)
         if (!sleep.hasDataForToday) return false
 
-        val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
-        val windowMs = TimeUnit.MINUTES.toMillis(exposureMinutes.toLong())
-        if (wakeTs > 0L && (nowMs - wakeTs) in 0..windowMs) {
-            return true
-        }
+        val sleepMode = getAutoTriggerSleepMode()
         val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
         val curMinsOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
 
-        val wakeParts = sleep.wakeHHMM.split(":")
-        if (wakeParts.size == 2) {
-            val wh = wakeParts[0].trim().toIntOrNull() ?: 7
-            val wm = wakeParts[1].trim().toIntOrNull() ?: 0
-            val wakeMinsOfDay = wh * 60 + wm
-            if (curMinsOfDay in wakeMinsOfDay..(wakeMinsOfDay + exposureMinutes)) {
+        if (sleepMode == "WAKE" || sleepMode == "BOTH") {
+            val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
+            val windowMs = TimeUnit.MINUTES.toMillis(exposureMinutes.toLong())
+            if (wakeTs > 0L && (nowMs - wakeTs) in 0..windowMs) {
                 return true
             }
+            val wakeParts = sleep.wakeHHMM.split(":")
+            if (wakeParts.size == 2) {
+                val wh = wakeParts[0].trim().toIntOrNull() ?: 7
+                val wm = wakeParts[1].trim().toIntOrNull() ?: 0
+                val wakeMinsOfDay = wh * 60 + wm
+                if (curMinsOfDay in wakeMinsOfDay..(wakeMinsOfDay + exposureMinutes)) {
+                    return true
+                }
+            }
         }
-        val bedParts = sleep.bedtimeHHMM.split(":")
-        if (bedParts.size == 2) {
-            val bh = bedParts[0].trim().toIntOrNull() ?: 23
-            val bm = bedParts[1].trim().toIntOrNull() ?: 18
-            val bedMinsOfDay = bh * 60 + bm
-            if (curMinsOfDay in bedMinsOfDay..(bedMinsOfDay + exposureMinutes)) {
-                return true
+        if (sleepMode == "BEDTIME" || sleepMode == "BOTH") {
+            val bedParts = sleep.bedtimeHHMM.split(":")
+            if (bedParts.size == 2) {
+                val bh = bedParts[0].trim().toIntOrNull() ?: 23
+                val bm = bedParts[1].trim().toIntOrNull() ?: 18
+                val bedMinsOfDay = bh * 60 + bm
+                if (curMinsOfDay in bedMinsOfDay..(bedMinsOfDay + exposureMinutes)) {
+                    return true
+                }
             }
         }
         return false
@@ -771,16 +901,20 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun getWeeklyStepsSnapshot(): WeeklyStepsSnapshot {
-        val today = prefs.getInt("steps_today", 9567)
-        val goal = prefs.getInt("steps_goal", 10000)
-        val csv = prefs.getString("steps_week_csv", "6400,8200,7100,9500,9567,5300,4900")
-            ?: "6400,8200,7100,9500,9567,5300,4900"
+        val today = prefs.getInt("steps_today_v2", 0).coerceAtLeast(0)
+        val goal = prefs.getInt("steps_goal_v2", 10000).coerceAtLeast(1000)
+        val csv = prefs.getString("steps_week_csv_v2", "0,0,0,0,0,0,0")
+            ?: "0,0,0,0,0,0,0"
         val stepsList = csv.split(",").mapNotNull { it.trim().toIntOrNull() }
-            .ifEmpty { listOf(6400, 8200, 7100, 9500, 9567, 5300, 4900) }
+            .let { if (it.size == 7) it else listOf(0, 0, 0, 0, 0, 0, today) }
+        val labelsCsv = prefs.getString("steps_week_labels_csv_v2", "Seg,Ter,Qua,Qui,Sex,Sáb,Dom")
+            ?: "Seg,Ter,Qua,Qui,Sex,Sáb,Dom"
+        val labelsList = labelsCsv.split(",").map { it.trim().take(3) }.filter { it.isNotEmpty() }
+            .let { if (it.size == 7) it else listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom") }
         return WeeklyStepsSnapshot(
             todaySteps = today,
             dailyGoal = goal,
-            weekDaysLabels = listOf("S", "T", "Q", "Q", "S", "S", "D"),
+            weekDaysLabels = labelsList,
             weekDaysSteps = stepsList
         )
     }
@@ -1077,13 +1211,13 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Avalia se há uma mudança de contexto de PRIORIDADE MÁXIMA ativa agora:
-     * 1. Compromisso da Agenda faltando 15 minutos ou menos (<= 15m): o Canvas troca para Agenda
-     *    e (se ativado pelo usuário) gera notificação no relógio.
-     * 2. Lembrete / Tarefa ativa do Samsung Reminder ou Google Tasks: assume o Canvas pelo Tempo Fixo Unificado.
-     * 3. Mudança de Clima/Chuva: assume o Canvas pelo Tempo Fixo Unificado.
-     * 4. Nascer e Pôr do Sol: assume o Canvas na janela solar.
-     * 5. Dormir ou Acordar: assume o Canvas com o Resumo de Sono (se houver dados de sono para hoje).
+     * Avalia se há uma mudança de contexto de PRIORIDADE MÁXIMA ativa agora conforme a seção
+     * centralizada "GATILHOS DO MODO AUTOMÁTICO":
+     * 1. Agenda & Tarefas (Unificados): falta <= leadMin (5, 10 ou 15 min) para compromisso ou tarefa com hora.
+     * 2. Clima: conforme modo escolhido (Chuva/Mudança, Alerta de Apps ou Toda atualização).
+     * 3. Nascer e Pôr do Sol: inicia `sunLeadMin` (5, 15 ou 30 min) antes do evento solar e dura `unifiedHoldMin`.
+     * 4. Sono: conforme momento escolhido (Ao acordar, Hora de dormir ou Ambos) pelo `unifiedHoldMin`.
+     * 5. Passos: ao atingir 80%, 100% ou Ambos da meta diária pelo `unifiedHoldMin`.
      */
     fun evaluatePriorityContextOverride(
         nowMs: Long,
@@ -1093,51 +1227,89 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val unifiedHoldMs = TimeUnit.MINUTES.toMillis(unifiedHoldMin.toLong())
         val nextEvent = upcomingThree.firstOrNull()
 
-        // 1. Compromisso da Agenda faltando 15 minutos (<= 15m) — Troca para o Canvas de Agenda com Prioridade Máxima
-        if (nextEvent != null) {
-            val remMs = nextEvent.startEpochMs - nowMs
-            val fifteenMinMs = TimeUnit.MINUTES.toMillis(15L)
-            if (remMs in 1..fifteenMinMs) {
-                return MODE_EVENTS to "Faltam ${nextEvent.formatRemaining(nowMs)} para ${nextEvent.title} (${nextEvent.formatStartHHMM()})"
-            }
-        }
-
-        // 2. Tarefa / Lembrete acionado (Samsung Reminder ou Google Tasks) — Prioridade Máxima se recente
-        val taskAlertTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
-        if (isTasksSyncEnabled() && taskAlertTs > 0L && (nowMs - taskAlertTs) in 0..unifiedHoldMs) {
-            val tasksSnap = getTasksSnapshot(nowMs)
-            if (tasksSnap.pendingCount > 0) {
-                val firstPending = tasksSnap.tasks.firstOrNull()
-                val detail = if (firstPending != null) {
-                    val suffix = if (tasksSnap.showTime && firstPending.dueHHMM.isNotBlank()) " (${firstPending.dueHHMM})" else ""
-                    "${firstPending.sourceLabel}: ${firstPending.title}$suffix"
-                } else {
-                    "${tasksSnap.pendingCount} tarefa(s) pendente(s)"
+        // 1. Agenda & Tarefas (Unificados) — Gatilho de proximidade configurável (5 min, 10 min ou 15 min antes)
+        if (isAutoTriggerAgendaTasksEnabled()) {
+            val leadMin = getAutoTriggerAgendaTasksLeadMin()
+            val leadMs = TimeUnit.MINUTES.toMillis(leadMin.toLong())
+            if (nextEvent != null) {
+                val remMs = nextEvent.startEpochMs - nowMs
+                if (remMs in 1..leadMs) {
+                    return MODE_EVENTS to "Faltam ${nextEvent.formatRemaining(nowMs)} para ${nextEvent.title} (${nextEvent.formatStartHHMM()})"
                 }
-                return MODE_TASKS to detail
+            }
+
+            if (isTasksSyncEnabled()) {
+                val tasksSnap = getTasksSnapshot(nowMs)
+                if (tasksSnap.pendingCount > 0) {
+                    // Verifica se alguma tarefa de HOJE com horário (HH:mm) está dentro da janela de antecedência (leadMin)
+                    val calNow = Calendar.getInstance().apply { timeInMillis = nowMs }
+                    val curMinsOfDay = calNow.get(Calendar.HOUR_OF_DAY) * 60 + calNow.get(Calendar.MINUTE)
+                    val imminentTask = tasksSnap.tasks.firstOrNull { t ->
+                        if (t.scheduleCategory != "TODAY" || t.dueHHMM.length < 4) return@firstOrNull false
+                        val parts = t.dueHHMM.split(":")
+                        if (parts.size != 2) return@firstOrNull false
+                        val th = parts[0].trim().toIntOrNull() ?: return@firstOrNull false
+                        val tm = parts[1].trim().toIntOrNull() ?: return@firstOrNull false
+                        val dueMins = th * 60 + tm
+                        val diffMins = dueMins - curMinsOfDay
+                        diffMins in 0..leadMin
+                    }
+                    if (imminentTask != null) {
+                        return MODE_TASKS to "${imminentTask.sourceLabel}: ${imminentTask.title} (${imminentTask.dueHHMM})"
+                    }
+
+                    val taskAlertTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
+                    if (taskAlertTs > 0L && (nowMs - taskAlertTs) in 0..unifiedHoldMs) {
+                        val firstPending = tasksSnap.tasks.firstOrNull()
+                        val detail = if (firstPending != null) {
+                            val suffix = if (tasksSnap.showTime && firstPending.dueHHMM.isNotBlank()) " (${firstPending.dueHHMM})" else ""
+                            "${firstPending.sourceLabel}: ${firstPending.title}$suffix"
+                        } else {
+                            "${tasksSnap.pendingCount} tarefa(s) pendente(s)"
+                        }
+                        return MODE_TASKS to detail
+                    }
+                }
             }
         }
 
-        // 3. Mudança de Clima (Temperatura / Chuva / Alerta de App) — Prioridade Máxima se recente
-        val weatherAlertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
-        if (weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..unifiedHoldMs) {
+        // 2. Mudança de Clima (Chuva/Mudança, Alerta de Apps ou Toda atualização)
+        if (isAutoTriggerWeatherEnabled()) {
+            val weatherMode = getAutoTriggerWeatherMode()
+            val weatherAlertTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
             val snap = getHourlyWeatherSnapshot(nowMs)
-            return MODE_WEATHER to "${snap.weatherConditionLabel} (${snap.locationName}) • ${snap.alertHeadline}"
+            val shouldTriggerWeather = when (weatherMode) {
+                "APP_ALERT" -> weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..unifiedHoldMs &&
+                    !snap.alertSource.equals("Clima", ignoreCase = true)
+                "EVERY_UPDATE" -> {
+                    val lastFetchTs = prefs.getLong("watch_standalone_last_fetch_ms", 0L)
+                        .coerceAtLeast(weatherAlertTs)
+                    lastFetchTs > 0L && (nowMs - lastFetchTs) in 0..unifiedHoldMs
+                }
+                else -> weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..unifiedHoldMs
+            }
+            if (shouldTriggerWeather) {
+                return MODE_WEATHER to "${snap.weatherConditionLabel} (${snap.locationName}) • ${snap.alertHeadline}"
+            }
         }
 
-        // 4. Nascer e Pôr do Sol (dentro da janela unificada ao redor do evento solar)
-        val solar = getSolarSnapshot(nowMs)
-        val halfSunWindowMins = (unifiedHoldMin / 2).coerceAtLeast(5)
-        val nearSunrise = abs(solar.currentMinutesOfDay - solar.sunriseMinutesOfDay) <= halfSunWindowMins
-        val nearSunset = abs(solar.currentMinutesOfDay - solar.sunsetMinutesOfDay) <= halfSunWindowMins
-        if (nearSunrise) {
-            return MODE_SUN to "Nascer do Sol às ${solar.sunriseHHMM} (Exposição ${unifiedHoldMin}m)"
-        }
-        if (nearSunset) {
-            return MODE_SUN to "Pôr do Sol às ${solar.sunsetHHMM} (Exposição ${unifiedHoldMin}m)"
+        // 3. Nascer e Pôr do Sol (inicia `sunLeadMin` antes do evento solar e permanece por `unifiedHoldMin`)
+        if (isAutoTriggerSunEnabled()) {
+            val solar = getSolarSnapshot(nowMs)
+            val sunLeadMin = getAutoTriggerSunLeadMin()
+            val sunriseStart = solar.sunriseMinutesOfDay - sunLeadMin
+            val sunriseEnd = sunriseStart + unifiedHoldMin
+            val sunsetStart = solar.sunsetMinutesOfDay - sunLeadMin
+            val sunsetEnd = sunsetStart + unifiedHoldMin
+            if (solar.currentMinutesOfDay in sunriseStart..sunriseEnd) {
+                return MODE_SUN to "Nascer do Sol às ${solar.sunriseHHMM} (${sunLeadMin}m antes)"
+            }
+            if (solar.currentMinutesOfDay in sunsetStart..sunsetEnd) {
+                return MODE_SUN to "Pôr do Sol às ${solar.sunsetHHMM} (${sunLeadMin}m antes)"
+            }
         }
 
-        // 5. Dormir ou Acordar (Resumo de Sono — somente se houver dados de sono confirmados para hoje via Health Connect)
+        // 4. Dormir ou Acordar (Resumo de Sono — conforme modo: Ao acordar, Hora de dormir ou Ambos)
         if (hasActiveSleepWakeExposure(nowMs, unifiedHoldMin)) {
             val sleep = getSleepSnapshot(nowMs)
             val h = sleep.durationMinutes / 60
@@ -1148,6 +1320,16 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 "Sono ${h}h ${m}m • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
             }
             return MODE_SLEEP to summaryText
+        }
+
+        // 5. Meta de Passos (80%, 100% ou Ambos) — permanece pelo Tempo Unificado
+        if (isAutoTriggerStepsEnabled()) {
+            val stepsAlertTs = prefs.getLong("steps_milestone_alert_timestamp_ms", 0L)
+            if (stepsAlertTs > 0L && (nowMs - stepsAlertTs) in 0..unifiedHoldMs) {
+                val stepsSnap = getWeeklyStepsSnapshot()
+                val pct = ((stepsSnap.todaySteps * 100f) / stepsSnap.dailyGoal.coerceAtLeast(1)).toInt()
+                return MODE_STEPS to "Meta de passos (${pct}%): ${stepsSnap.todaySteps} / ${stepsSnap.dailyGoal}"
+            }
         }
 
         return null
@@ -1173,19 +1355,21 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val recentPhoneFocusChange = phoneFocusChangeTs > 0L &&
             (nowMs - phoneFocusChangeTs) in 0..TimeUnit.MINUTES.toMillis(unifiedHoldMin)
 
-        // 2. Verifica se há mudança prioritária de contexto (Clima, Agenda <=15m, Tarefas, Sol, Sono)
+        // 2. Verifica se há mudança prioritária de contexto (Agenda/Tarefas, Clima, Sol, Sono, Passos)
         val priorityPair = evaluatePriorityContextOverride(nowMs, upcomingThree)
         if (priorityPair != null) {
             val (priorityMode, _) = priorityPair
             val weatherTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
             val sleepTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
             val tasksTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
-            val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs)
-            val isUrgent15MinEvent = priorityMode == MODE_EVENTS && upcomingThree.firstOrNull()?.let {
-                (it.startEpochMs - nowMs) in 1..TimeUnit.MINUTES.toMillis(15L)
+            val stepsTs = prefs.getLong("steps_milestone_alert_timestamp_ms", 0L)
+            val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs, stepsTs)
+            val leadMin = getAutoTriggerAgendaTasksLeadMin().toLong()
+            val isUrgentLeadEvent = priorityMode == MODE_EVENTS && upcomingThree.firstOrNull()?.let {
+                (it.startEpochMs - nowMs) in 1..TimeUnit.MINUTES.toMillis(leadMin)
             } == true
 
-            if (!recentPhoneFocusChange || isUrgent15MinEvent || newestTriggerTs > phoneFocusChangeTs) {
+            if (!recentPhoneFocusChange || isUrgentLeadEvent || newestTriggerTs > phoneFocusChangeTs) {
                 if (tapOverride == null || newestTriggerTs >= tapTs) {
                     return priorityMode
                 }

@@ -167,6 +167,29 @@ export const SmartphoneCompanionSimulator: React.FC<
   const [bgServiceEnabled, setBgServiceEnabled] = useState(true);
   const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
 
+  // Estados dos Gatilhos do Modo Automático (Formato A Centralizado)
+  const [autoTriggerAgendaTasksEnabled, setAutoTriggerAgendaTasksEnabled] =
+    useState(true);
+  const [autoTriggerAgendaTasksLeadMin, setAutoTriggerAgendaTasksLeadMin] =
+    useState<5 | 10 | 15>(15);
+  const [autoTriggerStepsEnabled, setAutoTriggerStepsEnabled] = useState(true);
+  const [autoTriggerStepsMilestone, setAutoTriggerStepsMilestone] = useState<
+    '80' | '100' | 'BOTH'
+  >('100');
+  const [autoTriggerSunEnabled, setAutoTriggerSunEnabled] = useState(true);
+  const [autoTriggerSunLeadMin, setAutoTriggerSunLeadMin] = useState<
+    5 | 15 | 30
+  >(15);
+  const [autoTriggerSleepEnabled, setAutoTriggerSleepEnabled] = useState(true);
+  const [autoTriggerSleepMode, setAutoTriggerSleepMode] = useState<
+    'WAKE' | 'BEDTIME' | 'BOTH'
+  >('BOTH');
+  const [autoTriggerWeatherEnabled, setAutoTriggerWeatherEnabled] =
+    useState(true);
+  const [autoTriggerWeatherMode, setAutoTriggerWeatherMode] = useState<
+    'RAIN_CHANGE' | 'APP_ALERT' | 'EVERY_UPDATE'
+  >('RAIN_CHANGE');
+
   // Representação Virtual 1:1 do Relógio no Topo e Widgets 2x2
   const [virtualWatchPreviewOverride, setVirtualWatchPreviewOverride] =
     useState<PrimaryContextMode | null>(null);
@@ -200,8 +223,8 @@ export const SmartphoneCompanionSimulator: React.FC<
     },
     !healthConnectSleepPermGranted && {
       id: 'health_sleep',
-      title: 'Conectar Saúde (Sono)',
-      desc: 'Leitura oficial dos estágios de sono via Android Health Connect.',
+      title: 'Conectar Saúde (Sono & Passos)',
+      desc: 'Leitura oficial de sono e passos via Android Health Connect.',
       onGrant: () => setHealthConnectSleepPermGranted(true),
     },
     !locationPermGranted && {
@@ -1794,6 +1817,303 @@ export const SmartphoneCompanionSimulator: React.FC<
                       }`}
                     >
                       {mins === 60 ? '1h' : `${mins}m`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* SEÇÃO 1B: GATILHOS DO MODO AUTOMÁTICO (FORMATO A CENTRALIZADO) */}
+            <div className="rounded-[22px] bg-[#141A16] border border-[#253029] p-4 space-y-3">
+              <div>
+                <div className="text-[11px] font-bold tracking-wider uppercase text-[#F5C438]">
+                  Gatilhos do Modo Automático
+                </div>
+                <div className="text-[10.5px] text-slate-400">
+                  Personalize como e quando cada Canvas assume a tela automaticamente
+                </div>
+              </div>
+
+              {/* 1. Agenda & Tarefas (Unificados) */}
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <div
+                  onClick={() => {
+                    if (isCustomizationLocked) {
+                      showLockedToast();
+                      return;
+                    }
+                    setAutoTriggerAgendaTasksEnabled(!autoTriggerAgendaTasksEnabled);
+                  }}
+                  className="flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-100">
+                      Gatilho de Proximidade (Agenda &amp; Tarefas)
+                    </div>
+                    <div className="text-[10.5px] text-slate-400">
+                      Exibe compromissos e tarefas com horário quando estiverem próximos
+                    </div>
+                  </div>
+                  <ModernOneUiSwitch
+                    checked={autoTriggerAgendaTasksEnabled}
+                    ariaLabel="Gatilho de Proximidade Agenda e Tarefas"
+                    disabled={isCustomizationLocked}
+                    onChange={() =>
+                      setAutoTriggerAgendaTasksEnabled(!autoTriggerAgendaTasksEnabled)
+                    }
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-300 block">
+                  Quando iniciar o gatilho (Agenda &amp; Tarefas):
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { v: 5, l: '5 min antes' },
+                      { v: 10, l: '10 min antes' },
+                      { v: 15, l: '15 min antes' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.v}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() => setAutoTriggerAgendaTasksLeadMin(item.v)}
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        autoTriggerAgendaTasksLeadMin === item.v
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {item.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Passos (Meta Diária Health Connect) */}
+              <div className="space-y-2 pt-2.5 border-t border-white/10">
+                <div
+                  onClick={() => {
+                    if (isCustomizationLocked) {
+                      showLockedToast();
+                      return;
+                    }
+                    setAutoTriggerStepsEnabled(!autoTriggerStepsEnabled);
+                  }}
+                  className="flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-100">
+                      Gatilho Automático de Meta de Passos
+                    </div>
+                    <div className="text-[10.5px] text-slate-400">
+                      Apresenta o gráfico de passos ao atingir a meta do dia
+                    </div>
+                  </div>
+                  <ModernOneUiSwitch
+                    checked={autoTriggerStepsEnabled}
+                    ariaLabel="Gatilho Automático de Meta de Passos"
+                    disabled={isCustomizationLocked}
+                    onChange={() =>
+                      setAutoTriggerStepsEnabled(!autoTriggerStepsEnabled)
+                    }
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-300 block">
+                  Quando disparar o gatilho de passos:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { v: '80', l: '80% da meta' },
+                      { v: '100', l: '100% da meta' },
+                      { v: 'BOTH', l: '80% e 100%' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.v}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() => setAutoTriggerStepsMilestone(item.v)}
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        autoTriggerStepsMilestone === item.v
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {item.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Nascer e Pôr do Sol */}
+              <div className="space-y-2 pt-2.5 border-t border-white/10">
+                <div
+                  onClick={() => {
+                    if (isCustomizationLocked) {
+                      showLockedToast();
+                      return;
+                    }
+                    setAutoTriggerSunEnabled(!autoTriggerSunEnabled);
+                  }}
+                  className="flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-100">
+                      Gatilho do Nascer e Pôr do Sol
+                    </div>
+                    <div className="text-[10.5px] text-slate-400">
+                      Abre o horizonte solar automaticamente nos horários do sol
+                    </div>
+                  </div>
+                  <ModernOneUiSwitch
+                    checked={autoTriggerSunEnabled}
+                    ariaLabel="Gatilho do Nascer e Pôr do Sol"
+                    disabled={isCustomizationLocked}
+                    onChange={() =>
+                      setAutoTriggerSunEnabled(!autoTriggerSunEnabled)
+                    }
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-300 block">
+                  Quando iniciar antes do Nascer / Pôr do Sol:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { v: 5, l: '5 min antes' },
+                      { v: 15, l: '15 min antes' },
+                      { v: 30, l: '30 min antes' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.v}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() => setAutoTriggerSunLeadMin(item.v)}
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        autoTriggerSunLeadMin === item.v
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {item.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4. Resumo de Sono */}
+              <div className="space-y-2 pt-2.5 border-t border-white/10">
+                <div
+                  onClick={() => {
+                    if (isCustomizationLocked) {
+                      showLockedToast();
+                      return;
+                    }
+                    setAutoTriggerSleepEnabled(!autoTriggerSleepEnabled);
+                  }}
+                  className="flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-100">
+                      Gatilho do Resumo de Sono
+                    </div>
+                    <div className="text-[10.5px] text-slate-400">
+                      Apresenta o sono real sempre pelo tempo unificado
+                    </div>
+                  </div>
+                  <ModernOneUiSwitch
+                    checked={autoTriggerSleepEnabled}
+                    ariaLabel="Gatilho do Resumo de Sono"
+                    disabled={isCustomizationLocked}
+                    onChange={() =>
+                      setAutoTriggerSleepEnabled(!autoTriggerSleepEnabled)
+                    }
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-300 block">
+                  Como o gatilho de sono deve funcionar:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { v: 'WAKE', l: 'Ao acordar' },
+                      { v: 'BEDTIME', l: 'Hora de dormir' },
+                      { v: 'BOTH', l: 'Acordar + Dormir' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.v}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() => setAutoTriggerSleepMode(item.v)}
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        autoTriggerSleepMode === item.v
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {item.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 5. Clima & Alertas Meteorológicos */}
+              <div className="space-y-2 pt-2.5 border-t border-white/10">
+                <div
+                  onClick={() => {
+                    if (isCustomizationLocked) {
+                      showLockedToast();
+                      return;
+                    }
+                    setAutoTriggerWeatherEnabled(!autoTriggerWeatherEnabled);
+                  }}
+                  className="flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-100">
+                      Gatilho Automático de Clima
+                    </div>
+                    <div className="text-[10.5px] text-slate-400">
+                      Exibe o boletim climático automaticamente pelo tempo unificado
+                    </div>
+                  </div>
+                  <ModernOneUiSwitch
+                    checked={autoTriggerWeatherEnabled}
+                    ariaLabel="Gatilho Automático de Clima"
+                    disabled={isCustomizationLocked}
+                    onChange={() =>
+                      setAutoTriggerWeatherEnabled(!autoTriggerWeatherEnabled)
+                    }
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-300 block">
+                  Quando disparar o gatilho de clima:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { v: 'RAIN_CHANGE', l: 'Chuva / Mudança' },
+                      { v: 'APP_ALERT', l: 'Alerta de Apps' },
+                      { v: 'EVERY_UPDATE', l: 'Toda atualização' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.v}
+                      type="button"
+                      disabled={isCustomizationLocked}
+                      onClick={() => setAutoTriggerWeatherMode(item.v)}
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        autoTriggerWeatherMode === item.v
+                          ? 'bg-[#F5C438] text-[#050507] font-bold'
+                          : 'bg-[#0C100E] text-slate-200 border border-[#26332B]'
+                      }`}
+                    >
+                      {item.l}
                     </button>
                   ))}
                 </div>

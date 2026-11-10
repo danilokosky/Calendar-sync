@@ -127,6 +127,14 @@ class PhoneDataListenerService : WearableListenerService() {
                 val sleepHasDataToday = if (dataMap.containsKey("sleep_has_data_today")) {
                     dataMap.getBoolean("sleep_has_data_today", false)
                 } else null
+                val stepsToday = if (dataMap.containsKey("steps_today")) {
+                    dataMap.getInt("steps_today", 0)
+                } else null
+                val stepsGoal = if (dataMap.containsKey("steps_goal")) {
+                    dataMap.getInt("steps_goal", 10000)
+                } else null
+                val stepsWeekCsv = dataMap.getString("steps_week_csv")
+                val stepsWeekLabelsCsv = dataMap.getString("steps_week_labels_csv")
                 val tasksSyncEnabled = if (dataMap.containsKey("tasks_sync_enabled")) {
                     dataMap.getBoolean("tasks_sync_enabled", true)
                 } else null
@@ -137,6 +145,30 @@ class PhoneDataListenerService : WearableListenerService() {
                 val autoFallbackAgendaToTasks = if (dataMap.containsKey("auto_fallback_agenda_to_tasks")) {
                     dataMap.getBoolean("auto_fallback_agenda_to_tasks", true)
                 } else null
+                val autoTriggerAgendaTasksEnabled = if (dataMap.containsKey("auto_trigger_agenda_tasks_enabled")) {
+                    dataMap.getBoolean("auto_trigger_agenda_tasks_enabled", true)
+                } else null
+                val autoTriggerAgendaTasksLeadMin = if (dataMap.containsKey("auto_trigger_agenda_tasks_lead_min")) {
+                    dataMap.getInt("auto_trigger_agenda_tasks_lead_min", 15)
+                } else null
+                val autoTriggerStepsEnabled = if (dataMap.containsKey("auto_trigger_steps_enabled")) {
+                    dataMap.getBoolean("auto_trigger_steps_enabled", true)
+                } else null
+                val autoTriggerStepsMilestone = dataMap.getString("auto_trigger_steps_milestone")
+                val autoTriggerSunEnabled = if (dataMap.containsKey("auto_trigger_sun_enabled")) {
+                    dataMap.getBoolean("auto_trigger_sun_enabled", true)
+                } else null
+                val autoTriggerSunLeadMin = if (dataMap.containsKey("auto_trigger_sun_lead_min")) {
+                    dataMap.getInt("auto_trigger_sun_lead_min", 15)
+                } else null
+                val autoTriggerSleepEnabled = if (dataMap.containsKey("auto_trigger_sleep_enabled")) {
+                    dataMap.getBoolean("auto_trigger_sleep_enabled", true)
+                } else null
+                val autoTriggerSleepMode = dataMap.getString("auto_trigger_sleep_mode")
+                val autoTriggerWeatherEnabled = if (dataMap.containsKey("auto_trigger_weather_enabled")) {
+                    dataMap.getBoolean("auto_trigger_weather_enabled", true)
+                } else null
+                val autoTriggerWeatherMode = dataMap.getString("auto_trigger_weather_mode")
                 val weatherLat = if (dataMap.containsKey("weather_lat")) {
                     dataMap.getDouble("weather_lat", 0.0)
                 } else null
@@ -185,10 +217,24 @@ class PhoneDataListenerService : WearableListenerService() {
                     sleepStagesCsv = sleepStagesCsv,
                     sleepWakeTimestampMs = sleepWakeTsMs,
                     sleepHasDataToday = sleepHasDataToday,
+                    stepsToday = stepsToday,
+                    stepsGoal = stepsGoal,
+                    stepsWeekCsv = stepsWeekCsv,
+                    stepsWeekLabelsCsv = stepsWeekLabelsCsv,
                     tasksSyncEnabled = tasksSyncEnabled,
                     tasksJson = tasksJson,
                     tasksAlertTimestampMs = tasksAlertTsMs,
                     autoFallbackAgendaToTasks = autoFallbackAgendaToTasks,
+                    autoTriggerAgendaTasksEnabled = autoTriggerAgendaTasksEnabled,
+                    autoTriggerAgendaTasksLeadMin = autoTriggerAgendaTasksLeadMin,
+                    autoTriggerStepsEnabled = autoTriggerStepsEnabled,
+                    autoTriggerStepsMilestone = autoTriggerStepsMilestone,
+                    autoTriggerSunEnabled = autoTriggerSunEnabled,
+                    autoTriggerSunLeadMin = autoTriggerSunLeadMin,
+                    autoTriggerSleepEnabled = autoTriggerSleepEnabled,
+                    autoTriggerSleepMode = autoTriggerSleepMode,
+                    autoTriggerWeatherEnabled = autoTriggerWeatherEnabled,
+                    autoTriggerWeatherMode = autoTriggerWeatherMode,
                     weatherLat = weatherLat,
                     weatherLon = weatherLon
                 )
@@ -306,6 +352,14 @@ class PhoneDataListenerService : WearableListenerService() {
                     val sleepHasDataToday = if (json.has("sleep_has_data_today")) {
                         json.optBoolean("sleep_has_data_today", false)
                     } else null
+                    val stepsToday = if (json.has("steps_today")) {
+                        json.optInt("steps_today", 0)
+                    } else null
+                    val stepsGoal = if (json.has("steps_goal")) {
+                        json.optInt("steps_goal", 10000)
+                    } else null
+                    val stepsWeekCsv = json.optString("steps_week_csv", "").takeIf { it.isNotBlank() }
+                    val stepsWeekLabelsCsv = json.optString("steps_week_labels_csv", "").takeIf { it.isNotBlank() }
                     val tasksSyncEnabled = if (json.has("tasks_sync_enabled")) {
                         json.optBoolean("tasks_sync_enabled", true)
                     } else null
@@ -316,6 +370,30 @@ class PhoneDataListenerService : WearableListenerService() {
                     val autoFallbackAgendaToTasks = if (json.has("auto_fallback_agenda_to_tasks")) {
                         json.optBoolean("auto_fallback_agenda_to_tasks", true)
                     } else null
+                    val autoTriggerAgendaTasksEnabled = if (json.has("auto_trigger_agenda_tasks_enabled")) {
+                        json.optBoolean("auto_trigger_agenda_tasks_enabled", true)
+                    } else null
+                    val autoTriggerAgendaTasksLeadMin = if (json.has("auto_trigger_agenda_tasks_lead_min")) {
+                        json.optInt("auto_trigger_agenda_tasks_lead_min", 15)
+                    } else null
+                    val autoTriggerStepsEnabled = if (json.has("auto_trigger_steps_enabled")) {
+                        json.optBoolean("auto_trigger_steps_enabled", true)
+                    } else null
+                    val autoTriggerStepsMilestone = json.optString("auto_trigger_steps_milestone", "").takeIf { it.isNotBlank() }
+                    val autoTriggerSunEnabled = if (json.has("auto_trigger_sun_enabled")) {
+                        json.optBoolean("auto_trigger_sun_enabled", true)
+                    } else null
+                    val autoTriggerSunLeadMin = if (json.has("auto_trigger_sun_lead_min")) {
+                        json.optInt("auto_trigger_sun_lead_min", 15)
+                    } else null
+                    val autoTriggerSleepEnabled = if (json.has("auto_trigger_sleep_enabled")) {
+                        json.optBoolean("auto_trigger_sleep_enabled", true)
+                    } else null
+                    val autoTriggerSleepMode = json.optString("auto_trigger_sleep_mode", "").takeIf { it.isNotBlank() }
+                    val autoTriggerWeatherEnabled = if (json.has("auto_trigger_weather_enabled")) {
+                        json.optBoolean("auto_trigger_weather_enabled", true)
+                    } else null
+                    val autoTriggerWeatherMode = json.optString("auto_trigger_weather_mode", "").takeIf { it.isNotBlank() }
                     val weatherLat = if (json.has("weather_lat")) {
                         json.optDouble("weather_lat", 0.0)
                     } else null
@@ -364,10 +442,24 @@ class PhoneDataListenerService : WearableListenerService() {
                         sleepStagesCsv = sleepStagesCsv,
                         sleepWakeTimestampMs = sleepWakeTsMs,
                         sleepHasDataToday = sleepHasDataToday,
+                        stepsToday = stepsToday,
+                        stepsGoal = stepsGoal,
+                        stepsWeekCsv = stepsWeekCsv,
+                        stepsWeekLabelsCsv = stepsWeekLabelsCsv,
                         tasksSyncEnabled = tasksSyncEnabled,
                         tasksJson = tasksJson,
                         tasksAlertTimestampMs = tasksAlertTsMs,
                         autoFallbackAgendaToTasks = autoFallbackAgendaToTasks,
+                        autoTriggerAgendaTasksEnabled = autoTriggerAgendaTasksEnabled,
+                        autoTriggerAgendaTasksLeadMin = autoTriggerAgendaTasksLeadMin,
+                        autoTriggerStepsEnabled = autoTriggerStepsEnabled,
+                        autoTriggerStepsMilestone = autoTriggerStepsMilestone,
+                        autoTriggerSunEnabled = autoTriggerSunEnabled,
+                        autoTriggerSunLeadMin = autoTriggerSunLeadMin,
+                        autoTriggerSleepEnabled = autoTriggerSleepEnabled,
+                        autoTriggerSleepMode = autoTriggerSleepMode,
+                        autoTriggerWeatherEnabled = autoTriggerWeatherEnabled,
+                        autoTriggerWeatherMode = autoTriggerWeatherMode,
                         weatherLat = weatherLat,
                         weatherLon = weatherLon
                     )
@@ -418,10 +510,24 @@ class PhoneDataListenerService : WearableListenerService() {
         sleepStagesCsv: String? = null,
         sleepWakeTimestampMs: Long? = null,
         sleepHasDataToday: Boolean? = null,
+        stepsToday: Int? = null,
+        stepsGoal: Int? = null,
+        stepsWeekCsv: String? = null,
+        stepsWeekLabelsCsv: String? = null,
         tasksSyncEnabled: Boolean? = null,
         tasksJson: String? = null,
         tasksAlertTimestampMs: Long? = null,
         autoFallbackAgendaToTasks: Boolean? = null,
+        autoTriggerAgendaTasksEnabled: Boolean? = null,
+        autoTriggerAgendaTasksLeadMin: Int? = null,
+        autoTriggerStepsEnabled: Boolean? = null,
+        autoTriggerStepsMilestone: String? = null,
+        autoTriggerSunEnabled: Boolean? = null,
+        autoTriggerSunLeadMin: Int? = null,
+        autoTriggerSleepEnabled: Boolean? = null,
+        autoTriggerSleepMode: String? = null,
+        autoTriggerWeatherEnabled: Boolean? = null,
+        autoTriggerWeatherMode: String? = null,
         weatherLat: Double? = null,
         weatherLon: Double? = null
     ) {
@@ -468,10 +574,24 @@ class PhoneDataListenerService : WearableListenerService() {
                 sleepStagesCsv = sleepStagesCsv,
                 sleepWakeTimestampMs = sleepWakeTimestampMs,
                 sleepHasDataToday = sleepHasDataToday,
+                stepsToday = stepsToday,
+                stepsGoal = stepsGoal,
+                stepsWeekCsv = stepsWeekCsv,
+                stepsWeekLabelsCsv = stepsWeekLabelsCsv,
                 tasksSyncEnabled = tasksSyncEnabled,
                 tasksJson = tasksJson,
                 tasksAlertTimestampMs = tasksAlertTimestampMs,
                 autoFallbackAgendaToTasks = autoFallbackAgendaToTasks,
+                autoTriggerAgendaTasksEnabled = autoTriggerAgendaTasksEnabled,
+                autoTriggerAgendaTasksLeadMin = autoTriggerAgendaTasksLeadMin,
+                autoTriggerStepsEnabled = autoTriggerStepsEnabled,
+                autoTriggerStepsMilestone = autoTriggerStepsMilestone,
+                autoTriggerSunEnabled = autoTriggerSunEnabled,
+                autoTriggerSunLeadMin = autoTriggerSunLeadMin,
+                autoTriggerSleepEnabled = autoTriggerSleepEnabled,
+                autoTriggerSleepMode = autoTriggerSleepMode,
+                autoTriggerWeatherEnabled = autoTriggerWeatherEnabled,
+                autoTriggerWeatherMode = autoTriggerWeatherMode,
                 weatherLat = weatherLat,
                 weatherLon = weatherLon
             )

@@ -138,11 +138,21 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchHighFreq15Min: Switch
     private lateinit var switchUpdateOnWake: Switch
     private lateinit var switchDaemonService: Switch
+    private lateinit var switchAutoTriggerAgendaTasks: Switch
+    private lateinit var switchAutoTriggerSteps: Switch
+    private lateinit var switchAutoTriggerSun: Switch
+    private lateinit var switchAutoTriggerSleep: Switch
+    private lateinit var switchAutoTriggerWeather: Switch
 
     // Mapas de Chips (atualizados in-place sem removeAllViews para nunca travar toques)
     private val canvasModeChipButtons = mutableMapOf<String, Button>()
     private val primaryContextChipButtons = mutableMapOf<String, Button>()
     private val holdMinutesChipButtons = mutableMapOf<Int, Button>()
+    private val autoTriggerAgendaTasksLeadChipButtons = mutableMapOf<Int, Button>()
+    private val autoTriggerStepsMilestoneChipButtons = mutableMapOf<String, Button>()
+    private val autoTriggerSunLeadChipButtons = mutableMapOf<Int, Button>()
+    private val autoTriggerSleepModeChipButtons = mutableMapOf<String, Button>()
+    private val autoTriggerWeatherModeChipButtons = mutableMapOf<String, Button>()
     private val syncIntervalChipButtons = mutableMapOf<Int, Button>()
     private val horizonChipButtons = mutableMapOf<Int, Button>()
     private val progressWindowChipButtons = mutableMapOf<Int, Button>()
@@ -333,7 +343,13 @@ class MobileSyncConfigActivity : Activity() {
         } catch (_: Exception) {
             if (Build.VERSION.SDK_INT >= 34) {
                 try {
-                    requestPermissions(arrayOf(HealthConnectSleepReader.READ_SLEEP_PERMISSION), 104)
+                    requestPermissions(
+                        arrayOf(
+                            HealthConnectSleepReader.READ_SLEEP_PERMISSION,
+                            HealthConnectSleepReader.READ_STEPS_PERMISSION
+                        ),
+                        104
+                    )
                 } catch (_: Exception) {
                 }
             }
@@ -1058,6 +1074,182 @@ class MobileSyncConfigActivity : Activity() {
 
         col.addView(modeCard)
 
+        // Card 1B: GATILHOS DO MODO AUTOMÁTICO (Formato A — Centralizado)
+        val autoTriggersCard = createSectionCard(
+            "GATILHOS DO MODO AUTOMÁTICO",
+            "Personalize como e quando cada Canvas assume a tela automaticamente"
+        )
+
+        // 1. Agenda & Tarefas (Unificados)
+        switchAutoTriggerAgendaTasks = createResponsiveSettingToggleRow(
+            parent = autoTriggersCard,
+            title = "Gatilho de Proximidade (Agenda & Tarefas)",
+            subtitle = "Exibe automaticamente compromissos e tarefas com horário quando estiverem próximos"
+        ) { checked ->
+            prefs.setAutoTriggerAgendaTasksEnabled(checked)
+            isUpdatingToggleProgrammatically = true
+            try {
+                if (::switchNotifyAgenda15Min.isInitialized) {
+                    switchNotifyAgenda15Min.isChecked = checked
+                }
+            } finally {
+                isUpdatingToggleProgrammatically = false
+            }
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Gatilho Agenda & Tarefas: $checked")
+        }
+
+        autoTriggersCard.addView(createSubLabel("Quando iniciar o gatilho (Agenda & Tarefas):"))
+        val agendaTasksLeadOptions = listOf(
+            5 to "5 min antes",
+            10 to "10 min antes",
+            15 to "15 min antes"
+        )
+        autoTriggersCard.addView(
+            buildStaticChipGrid(
+                options = agendaTasksLeadOptions,
+                buttonStore = autoTriggerAgendaTasksLeadChipButtons
+            ) { mins ->
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setAutoTriggerAgendaTasksLeadMin(mins)
+                updateAllChipSelectionsInPlace()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Antecedência Agenda & Tarefas: ${mins}m")
+            }
+        )
+
+        // 2. Passos (Meta Diária Health Connect)
+        switchAutoTriggerSteps = createResponsiveSettingToggleRow(
+            parent = autoTriggersCard,
+            title = "Gatilho Automático de Meta de Passos",
+            subtitle = "Apresenta o gráfico de passos pelo tempo unificado ao atingir sua meta do dia"
+        ) { checked ->
+            prefs.setAutoTriggerStepsEnabled(checked)
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Gatilho Passos: $checked")
+        }
+
+        autoTriggersCard.addView(createSubLabel("Quando disparar o gatilho de passos:"))
+        val stepsMilestoneOptions = listOf(
+            "80" to "80% da meta",
+            "100" to "100% da meta",
+            "BOTH" to "80% e 100%"
+        )
+        autoTriggersCard.addView(
+            buildStaticChipGrid(
+                options = stepsMilestoneOptions,
+                buttonStore = autoTriggerStepsMilestoneChipButtons
+            ) { milestone ->
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setAutoTriggerStepsMilestone(milestone)
+                updateAllChipSelectionsInPlace()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Marco Gatilho Passos: $milestone")
+            }
+        )
+
+        // 3. Nascer e Pôr do Sol
+        switchAutoTriggerSun = createResponsiveSettingToggleRow(
+            parent = autoTriggersCard,
+            title = "Gatilho do Nascer e Pôr do Sol",
+            subtitle = "Abre o horizonte solar automaticamente nos horários astronômicos do sol"
+        ) { checked ->
+            prefs.setAutoTriggerSunEnabled(checked)
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Gatilho Sol: $checked")
+        }
+
+        autoTriggersCard.addView(createSubLabel("Quando iniciar antes do Nascer / Pôr do Sol:"))
+        val sunLeadOptions = listOf(
+            5 to "5 min antes",
+            15 to "15 min antes",
+            30 to "30 min antes"
+        )
+        autoTriggersCard.addView(
+            buildStaticChipGrid(
+                options = sunLeadOptions,
+                buttonStore = autoTriggerSunLeadChipButtons
+            ) { mins ->
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setAutoTriggerSunLeadMin(mins)
+                updateAllChipSelectionsInPlace()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Antecedência Gatilho Sol: ${mins}m")
+            }
+        )
+
+        // 4. Resumo de Sono
+        switchAutoTriggerSleep = createResponsiveSettingToggleRow(
+            parent = autoTriggersCard,
+            title = "Gatilho do Resumo de Sono",
+            subtitle = "Apresenta o sono real do Health Connect sempre pelo tempo unificado"
+        ) { checked ->
+            prefs.setAutoTriggerSleepEnabled(checked)
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Gatilho Sono: $checked")
+        }
+
+        autoTriggersCard.addView(createSubLabel("Como o gatilho de sono deve funcionar:"))
+        val sleepTriggerModeOptions = listOf(
+            "WAKE" to "Ao acordar",
+            "BEDTIME" to "Hora de dormir",
+            "BOTH" to "Acordar + Dormir"
+        )
+        autoTriggersCard.addView(
+            buildStaticChipGrid(
+                options = sleepTriggerModeOptions,
+                buttonStore = autoTriggerSleepModeChipButtons
+            ) { mode ->
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setAutoTriggerSleepMode(mode)
+                updateAllChipSelectionsInPlace()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Modo Gatilho Sono: $mode")
+            }
+        )
+
+        // 5. Clima & Alertas Meteorológicos
+        switchAutoTriggerWeather = createResponsiveSettingToggleRow(
+            parent = autoTriggersCard,
+            title = "Gatilho Automático de Clima",
+            subtitle = "Exibe o boletim climático automaticamente pelo tempo unificado"
+        ) { checked ->
+            prefs.setAutoTriggerWeatherEnabled(checked)
+            virtualWatchView.invalidate()
+            refreshWidgetsGridInPlace()
+            triggerBackgroundSync("Toggle Gatilho Clima: $checked")
+        }
+
+        autoTriggersCard.addView(createSubLabel("Quando disparar o gatilho de clima:"))
+        val weatherTriggerModeOptions = listOf(
+            "RAIN_CHANGE" to "Chuva / Mudança",
+            "APP_ALERT" to "Alerta de Apps",
+            "EVERY_UPDATE" to "Toda atualização"
+        )
+        autoTriggersCard.addView(
+            buildStaticChipGrid(
+                options = weatherTriggerModeOptions,
+                buttonStore = autoTriggerWeatherModeChipButtons
+            ) { mode ->
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setAutoTriggerWeatherMode(mode)
+                updateAllChipSelectionsInPlace()
+                virtualWatchView.invalidate()
+                refreshWidgetsGridInPlace()
+                triggerBackgroundSync("Modo Gatilho Clima: $mode")
+            }
+        )
+
+        col.addView(autoTriggersCard)
+
         // Card 2: Notificações do Relógio e Alerta de 15 Minutos
         val notifCard = createSectionCard(
             "NOTIFICAÇÕES NO RELÓGIO",
@@ -1628,6 +1820,11 @@ class MobileSyncConfigActivity : Activity() {
             switchHighFreq15Min.isChecked = prefs.isHighFreq15MinRuleEnabled()
             switchUpdateOnWake.isChecked = prefs.isUpdateOnScreenWakeEnabled()
             switchDaemonService.isChecked = prefs.isBackgroundServiceEnabled()
+            switchAutoTriggerAgendaTasks.isChecked = prefs.isAutoTriggerAgendaTasksEnabled()
+            switchAutoTriggerSteps.isChecked = prefs.isAutoTriggerStepsEnabled()
+            switchAutoTriggerSun.isChecked = prefs.isAutoTriggerSunEnabled()
+            switchAutoTriggerSleep.isChecked = prefs.isAutoTriggerSleepEnabled()
+            switchAutoTriggerWeather.isChecked = prefs.isAutoTriggerWeatherEnabled()
         } finally {
             isUpdatingToggleProgrammatically = false
         }
@@ -1752,8 +1949,8 @@ class MobileSyncConfigActivity : Activity() {
         if (!HealthConnectSleepReader.hasSleepPermissionSync(this)) {
             missing.add(
                 MissingPermItem(
-                    title = "Conectar Saúde (Sono)",
-                    reason = "Leitura oficial dos estágios de sono via Android Health Connect.",
+                    title = "Conectar Saúde (Sono & Passos)",
+                    reason = "Leitura oficial de sono e passos via Android Health Connect.",
                     actionLabel = "Permitir",
                     onGrantClick = {
                         requestHealthConnectSleepPermission()
@@ -2416,9 +2613,35 @@ class MobileSyncConfigActivity : Activity() {
         if (configuredMode != SyncPreferences.MODE_AUTO) {
             return configuredMode
         }
+        val nowMs = System.currentTimeMillis()
+        // 1. Gatilho de proximidade unificado Agenda & Tarefas (5, 10 ou 15 min antes)
+        if (prefs.isAutoTriggerAgendaTasksEnabled()) {
+            val leadMin = prefs.getAutoTriggerAgendaTasksLeadMin()
+            val leadMs = leadMin * 60_000L
+            val imminentEvent = cachedEvents.firstOrNull { ev ->
+                val rem = ev.startEpochMs - nowMs
+                rem in 1..leadMs
+            }
+            if (imminentEvent != null) {
+                return SyncPreferences.MODE_EVENTS
+            }
+            if (prefs.isTasksSyncEnabled()) {
+                val calNow = Calendar.getInstance().apply { timeInMillis = nowMs }
+                val curMins = calNow.get(Calendar.HOUR_OF_DAY) * 60 + calNow.get(Calendar.MINUTE)
+                val imminentTask = cachedTasks.firstOrNull { t ->
+                    if (t.completed || t.scheduleCategory != "TODAY" || t.dueHHMM.length < 4) return@firstOrNull false
+                    val p = t.dueHHMM.split(":")
+                    if (p.size != 2) return@firstOrNull false
+                    val dueMins = (p[0].toIntOrNull() ?: return@firstOrNull false) * 60 + (p[1].toIntOrNull() ?: return@firstOrNull false)
+                    (dueMins - curMins) in 0..leadMin
+                }
+                if (imminentTask != null) {
+                    return SyncPreferences.MODE_TASKS
+                }
+            }
+        }
         val primary = prefs.getAutoPrimaryContext()
         if (primary == SyncPreferences.MODE_EVENTS && prefs.isAutoFallbackAgendaToTasksEnabled()) {
-            val nowMs = System.currentTimeMillis()
             val todayEvents = cachedEvents.filter {
                 it.startEpochMs > nowMs - 15 * 60_000L &&
                     CalendarSyncEngine.isSameCalendarDay(nowMs, it.startEpochMs)
@@ -2723,7 +2946,8 @@ class MobileSyncConfigActivity : Activity() {
             canvas.drawText("PASSOS", 155.5f, 304f, textPaint)
             textPaint.textSize = 21f
             textPaint.color = Color.WHITE
-            canvas.drawText("8.435", 155.5f, 334f, textPaint)
+            val formattedTodaySteps = String.format(Locale("pt", "BR"), "%,d", prefs.getStepsToday())
+            canvas.drawText(formattedTodaySteps, 155.5f, 334f, textPaint)
 
             // Slot 5: Cápsula Interna Direita (x=231, y=275, w=127, h=78) -> Pôr do Sol
             rect.set(231f, 275f, 358f, 353f)
@@ -3382,6 +3606,12 @@ class MobileSyncConfigActivity : Activity() {
             }
 
             SyncPreferences.MODE_STEPS -> {
+                val todaySteps = prefs.getStepsToday()
+                val dailyGoal = prefs.getStepsDailyGoal()
+                val weekSteps = prefs.getStepsWeekList()
+                val labels = prefs.getStepsWeekLabelsList()
+                val weekTotal = weekSteps.sum()
+
                 textPaint.textAlign = Paint.Align.LEFT
                 textPaint.color = Color.parseColor("#F5C438")
                 textPaint.textSize = 40f
@@ -3391,27 +3621,41 @@ class MobileSyncConfigActivity : Activity() {
                 textPaint.textAlign = Paint.Align.RIGHT
                 textPaint.color = Color.parseColor("#67E8F9")
                 textPaint.textSize = 30f
-                canvas.drawText("8.435 hoje • 50.4k sem.", cardW - 24f, 48f, textPaint)
+                val todayStr = String.format(Locale("pt", "BR"), "%,d", todaySteps)
+                val weekStr = if (weekTotal >= 1000) {
+                    String.format(Locale.US, "%.1fk", weekTotal / 1000f)
+                } else {
+                    weekTotal.toString()
+                }
+                canvas.drawText("$todayStr hoje • $weekStr sem.", cardW - 24f, 48f, textPaint)
 
-                val bars = listOf(0.64f, 0.82f, 0.73f, 0.91f, 0.84f, 0.58f, 0.51f)
-                val labels = listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
-                val slotW = (cardW - 48f) / bars.size
+                val maxVal = (weekSteps.maxOrNull() ?: dailyGoal).coerceAtLeast(dailyGoal).coerceAtLeast(1).toFloat()
+                val slotW = (cardW - 48f) / weekSteps.size
                 val chartTop = 96f
                 val chartBottom = 216f
+                val todayIdx = weekSteps.lastIndex
 
-                for (i in bars.indices) {
+                for (i in weekSteps.indices) {
                     val cx = 24f + i * slotW + slotW / 2f
-                    val h = bars[i] * (chartBottom - chartTop)
+                    val stepVal = weekSteps[i]
+                    val frac = if (stepVal > 0) {
+                        (stepVal.toFloat() / maxVal).coerceIn(0.08f, 1f)
+                    } else {
+                        0f
+                    }
+                    val h = frac * (chartBottom - chartTop)
                     paint.style = Paint.Style.FILL
                     paint.color = Color.parseColor("#1C2632")
                     canvas.drawRoundRect(RectF(cx - 20f, chartTop, cx + 20f, chartBottom), 10f, 10f, paint)
-                    paint.color = if (i == 4) Color.parseColor("#F5C438") else Color.parseColor("#22C55E")
-                    canvas.drawRoundRect(RectF(cx - 20f, chartBottom - h, cx + 20f, chartBottom), 10f, 10f, paint)
+                    if (h > 0f) {
+                        paint.color = if (i == todayIdx) Color.parseColor("#F5C438") else Color.parseColor("#22C55E")
+                        canvas.drawRoundRect(RectF(cx - 20f, chartBottom - h, cx + 20f, chartBottom), 10f, 10f, paint)
+                    }
 
                     textPaint.textAlign = Paint.Align.CENTER
                     textPaint.textSize = 24f
-                    textPaint.color = if (i == 4) Color.parseColor("#F5C438") else Color.parseColor("#CBD5E1")
-                    canvas.drawText(labels[i], cx, 250f, textPaint)
+                    textPaint.color = if (i == todayIdx) Color.parseColor("#F5C438") else Color.parseColor("#CBD5E1")
+                    canvas.drawText(labels.getOrNull(i) ?: "", cx, 250f, textPaint)
                 }
             }
         }
@@ -3626,6 +3870,26 @@ class MobileSyncConfigActivity : Activity() {
         val currentHold = prefs.getUnifiedCanvasHoldMinutes()
         for ((k, btn) in holdMinutesChipButtons) {
             styleChipButton(btn, k == currentHold)
+        }
+        val currentAgendaTasksLead = prefs.getAutoTriggerAgendaTasksLeadMin()
+        for ((k, btn) in autoTriggerAgendaTasksLeadChipButtons) {
+            styleChipButton(btn, k == currentAgendaTasksLead)
+        }
+        val currentStepsMilestone = prefs.getAutoTriggerStepsMilestone()
+        for ((k, btn) in autoTriggerStepsMilestoneChipButtons) {
+            styleChipButton(btn, k == currentStepsMilestone)
+        }
+        val currentSunLead = prefs.getAutoTriggerSunLeadMin()
+        for ((k, btn) in autoTriggerSunLeadChipButtons) {
+            styleChipButton(btn, k == currentSunLead)
+        }
+        val currentSleepMode = prefs.getAutoTriggerSleepMode()
+        for ((k, btn) in autoTriggerSleepModeChipButtons) {
+            styleChipButton(btn, k == currentSleepMode)
+        }
+        val currentWeatherMode = prefs.getAutoTriggerWeatherMode()
+        for ((k, btn) in autoTriggerWeatherModeChipButtons) {
+            styleChipButton(btn, k == currentWeatherMode)
         }
         val currentSyncInterval = prefs.getSyncIntervalMinutes().toInt()
         for ((k, btn) in syncIntervalChipButtons) {

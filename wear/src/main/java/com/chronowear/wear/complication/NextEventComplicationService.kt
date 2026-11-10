@@ -462,7 +462,9 @@ object AgendaCardBitmapRenderer {
             textAlign = Paint.Align.RIGHT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText("${steps.todaySteps} / ${steps.dailyGoal}", CARD_WIDTH - 24f, 50f, rightCountPaint)
+        val todayFormatted = String.format(java.util.Locale("pt", "BR"), "%,d", steps.todaySteps)
+        val goalFormatted = String.format(java.util.Locale("pt", "BR"), "%,d", steps.dailyGoal)
+        canvas.drawText("$todayFormatted / $goalFormatted", CARD_WIDTH - 24f, 50f, rightCountPaint)
 
         val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -471,17 +473,20 @@ object AgendaCardBitmapRenderer {
         val barLeft = 24f
         val barRight = CARD_WIDTH - 24f
         canvas.drawRoundRect(RectF(barLeft, 66f, barRight, 79f), 6.5f, 6.5f, trackPaint)
-        val ratio = (steps.todaySteps.toFloat() / steps.dailyGoal.coerceAtLeast(1).toFloat()).coerceIn(0.05f, 1f)
-        canvas.drawRoundRect(
-            RectF(barLeft, 66f, barLeft + (barRight - barLeft) * ratio, 79f),
-            6.5f,
-            6.5f,
-            greenPaint
-        )
+        if (steps.todaySteps > 0) {
+            val ratio = (steps.todaySteps.toFloat() / steps.dailyGoal.coerceAtLeast(1).toFloat()).coerceIn(0.04f, 1f)
+            canvas.drawRoundRect(
+                RectF(barLeft, 66f, barLeft + (barRight - barLeft) * ratio, 79f),
+                6.5f,
+                6.5f,
+                greenPaint
+            )
+        }
 
         val values = steps.weekDaysSteps.take(7)
         val labels = steps.weekDaysLabels.take(7)
-        val maxVal = (values.maxOrNull() ?: 10000).coerceAtLeast(steps.dailyGoal).toFloat()
+        val maxVal = (values.maxOrNull() ?: steps.dailyGoal).coerceAtLeast(steps.dailyGoal).coerceAtLeast(1).toFloat()
+        val todayIdx = values.lastIndex
 
         val chartLeft = 42f
         val chartRight = CARD_WIDTH - 42f
@@ -491,18 +496,21 @@ object AgendaCardBitmapRenderer {
 
         val dayLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#E2E8F0")
-            textSize = 30f
+            textSize = 26f
             textAlign = Paint.Align.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
         values.forEachIndexed { idx, v ->
             val cx = chartLeft + idx * colSpacing + colSpacing / 2f
-            val h = ((v.toFloat() / maxVal) * (chartBottom - chartTop)).coerceAtLeast(14f)
-            val barRect = RectF(cx - 20f, chartBottom - h, cx + 20f, chartBottom)
             canvas.drawRoundRect(RectF(cx - 20f, chartTop, cx + 20f, chartBottom), 10f, 10f, trackPaint)
-            canvas.drawRoundRect(barRect, 10f, 10f, if (idx == 4) goldPaint else greenPaint)
-            canvas.drawText(labels.getOrNull(idx) ?: "", cx, 252f, dayLabelPaint)
+            if (v > 0) {
+                val h = ((v.toFloat() / maxVal) * (chartBottom - chartTop)).coerceAtLeast(12f)
+                val barRect = RectF(cx - 20f, chartBottom - h, cx + 20f, chartBottom)
+                canvas.drawRoundRect(barRect, 10f, 10f, if (idx == todayIdx) goldPaint else greenPaint)
+            }
+            dayLabelPaint.color = if (idx == todayIdx) Color.parseColor("#F5C438") else Color.parseColor("#E2E8F0")
+            canvas.drawText(labels.getOrNull(idx) ?: "", cx, 250f, dayLabelPaint)
         }
 
         return bmp

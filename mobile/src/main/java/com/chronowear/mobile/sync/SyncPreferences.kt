@@ -191,6 +191,102 @@ class SyncPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_FALLBACK_AGENDA_TO_TASKS, enabled).commit()
     }
 
+    /**
+     * GATILHOS DO MODO AUTOMÁTICO (Centralizados — Agenda & Tarefas, Passos, Sol, Sono, Clima)
+     */
+    fun isAutoTriggerAgendaTasksEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_TRIGGER_AGENDA_TASKS_ENABLED, true)
+    }
+
+    fun setAutoTriggerAgendaTasksEnabled(enabled: Boolean) {
+        prefs.edit()
+            .putBoolean(KEY_AUTO_TRIGGER_AGENDA_TASKS_ENABLED, enabled)
+            .putBoolean(KEY_NOTIFY_AGENDA_15MIN, enabled)
+            .commit()
+    }
+
+    fun getAutoTriggerAgendaTasksLeadMin(): Int {
+        val v = prefs.getInt(KEY_AUTO_TRIGGER_AGENDA_TASKS_LEAD_MIN, 15)
+        return if (v in setOf(5, 10, 15)) v else 15
+    }
+
+    fun setAutoTriggerAgendaTasksLeadMin(minutes: Int) {
+        val valid = if (minutes in setOf(5, 10, 15)) minutes else 15
+        prefs.edit().putInt(KEY_AUTO_TRIGGER_AGENDA_TASKS_LEAD_MIN, valid).commit()
+    }
+
+    fun isAutoTriggerStepsEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_TRIGGER_STEPS_ENABLED, true)
+    }
+
+    fun setAutoTriggerStepsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_TRIGGER_STEPS_ENABLED, enabled).commit()
+    }
+
+    fun getAutoTriggerStepsMilestone(): String {
+        val v = prefs.getString(KEY_AUTO_TRIGGER_STEPS_MILESTONE, "100") ?: "100"
+        return if (v in setOf("80", "100", "BOTH")) v else "100"
+    }
+
+    fun setAutoTriggerStepsMilestone(milestone: String) {
+        val valid = if (milestone in setOf("80", "100", "BOTH")) milestone else "100"
+        prefs.edit().putString(KEY_AUTO_TRIGGER_STEPS_MILESTONE, valid).commit()
+    }
+
+    fun isAutoTriggerSunEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_TRIGGER_SUN_ENABLED, true)
+    }
+
+    fun setAutoTriggerSunEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_TRIGGER_SUN_ENABLED, enabled).commit()
+    }
+
+    fun getAutoTriggerSunLeadMin(): Int {
+        val v = prefs.getInt(KEY_AUTO_TRIGGER_SUN_LEAD_MIN, 15)
+        return if (v in setOf(5, 15, 30)) v else 15
+    }
+
+    fun setAutoTriggerSunLeadMin(minutes: Int) {
+        val valid = if (minutes in setOf(5, 15, 30)) minutes else 15
+        prefs.edit().putInt(KEY_AUTO_TRIGGER_SUN_LEAD_MIN, valid).commit()
+    }
+
+    fun isAutoTriggerSleepEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_TRIGGER_SLEEP_ENABLED, true)
+    }
+
+    fun setAutoTriggerSleepEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_TRIGGER_SLEEP_ENABLED, enabled).commit()
+    }
+
+    fun getAutoTriggerSleepMode(): String {
+        val v = prefs.getString(KEY_AUTO_TRIGGER_SLEEP_MODE, "BOTH") ?: "BOTH"
+        return if (v in setOf("WAKE", "BEDTIME", "BOTH")) v else "BOTH"
+    }
+
+    fun setAutoTriggerSleepMode(mode: String) {
+        val valid = if (mode in setOf("WAKE", "BEDTIME", "BOTH")) mode else "BOTH"
+        prefs.edit().putString(KEY_AUTO_TRIGGER_SLEEP_MODE, valid).commit()
+    }
+
+    fun isAutoTriggerWeatherEnabled(): Boolean {
+        return prefs.getBoolean(KEY_AUTO_TRIGGER_WEATHER_ENABLED, true)
+    }
+
+    fun setAutoTriggerWeatherEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_TRIGGER_WEATHER_ENABLED, enabled).commit()
+    }
+
+    fun getAutoTriggerWeatherMode(): String {
+        val v = prefs.getString(KEY_AUTO_TRIGGER_WEATHER_MODE, "RAIN_CHANGE") ?: "RAIN_CHANGE"
+        return if (v in setOf("RAIN_CHANGE", "APP_ALERT", "EVERY_UPDATE")) v else "RAIN_CHANGE"
+    }
+
+    fun setAutoTriggerWeatherMode(mode: String) {
+        val valid = if (mode in setOf("RAIN_CHANGE", "APP_ALERT", "EVERY_UPDATE")) mode else "RAIN_CHANGE"
+        prefs.edit().putString(KEY_AUTO_TRIGGER_WEATHER_MODE, valid).commit()
+    }
+
     fun hasRequestedInitialPermissionsOnce(): Boolean {
         return prefs.getBoolean(KEY_INITIAL_PERMISSIONS_REQUESTED, false)
     }
@@ -289,6 +385,65 @@ class SyncPreferences(context: Context) {
 
     fun setHealthConnectSleepPermissionGranted(granted: Boolean) {
         prefs.edit().putBoolean(KEY_HEALTH_CONNECT_SLEEP_PERM_GRANTED, granted).commit()
+    }
+
+    fun isHealthConnectStepsPermissionGranted(): Boolean {
+        return prefs.getBoolean(KEY_HEALTH_CONNECT_STEPS_PERM_GRANTED, false)
+    }
+
+    fun setHealthConnectStepsPermissionGranted(granted: Boolean) {
+        prefs.edit().putBoolean(KEY_HEALTH_CONNECT_STEPS_PERM_GRANTED, granted).commit()
+    }
+
+    fun saveStepsSnapshot(
+        todaySteps: Int,
+        dailyGoal: Int = getStepsDailyGoal(),
+        weekStepsCsv: String,
+        weekLabelsCsv: String,
+        nowMs: Long = System.currentTimeMillis()
+    ) {
+        prefs.edit()
+            .putInt(KEY_STEPS_TODAY, todaySteps.coerceAtLeast(0))
+            .putInt(KEY_STEPS_GOAL, dailyGoal.coerceAtLeast(1000))
+            .putString(KEY_STEPS_WEEK_CSV, weekStepsCsv)
+            .putString(KEY_STEPS_WEEK_LABELS_CSV, weekLabelsCsv)
+            .putLong(KEY_STEPS_LAST_SYNC_MS, nowMs)
+            .commit()
+    }
+
+    fun clearStepsData() {
+        prefs.edit()
+            .putInt(KEY_STEPS_TODAY, 0)
+            .putString(KEY_STEPS_WEEK_CSV, "0,0,0,0,0,0,0")
+            .putLong(KEY_STEPS_LAST_SYNC_MS, 0L)
+            .commit()
+    }
+
+    fun getStepsToday(): Int {
+        return prefs.getInt(KEY_STEPS_TODAY, 0).coerceAtLeast(0)
+    }
+
+    fun getStepsDailyGoal(): Int {
+        return prefs.getInt(KEY_STEPS_GOAL, 10000).coerceAtLeast(1000)
+    }
+
+    fun getStepsWeekCsv(): String {
+        return prefs.getString(KEY_STEPS_WEEK_CSV, "0,0,0,0,0,0,0") ?: "0,0,0,0,0,0,0"
+    }
+
+    fun getStepsWeekList(): List<Int> {
+        val parsed = getStepsWeekCsv().split(",").mapNotNull { it.trim().toIntOrNull() }
+        return if (parsed.size == 7) parsed else listOf(0, 0, 0, 0, 0, 0, getStepsToday())
+    }
+
+    fun getStepsWeekLabelsCsv(): String {
+        return prefs.getString(KEY_STEPS_WEEK_LABELS_CSV, "Seg,Ter,Qua,Qui,Sex,Sáb,Dom")
+            ?: "Seg,Ter,Qua,Qui,Sex,Sáb,Dom"
+    }
+
+    fun getStepsWeekLabelsList(): List<String> {
+        val parsed = getStepsWeekLabelsCsv().split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        return if (parsed.size == 7) parsed else listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
     }
 
     private fun isSameDayEpoch(epochA: Long, epochB: Long): Boolean {
@@ -956,6 +1111,16 @@ class SyncPreferences(context: Context) {
         private const val KEY_NOTIFY_ON_CANVAS_CHANGE = "notify_on_canvas_change"
         private const val KEY_NOTIFY_AGENDA_15MIN = "notify_agenda_15min"
         private const val KEY_AUTO_FALLBACK_AGENDA_TO_TASKS = "auto_fallback_agenda_to_tasks"
+        private const val KEY_AUTO_TRIGGER_AGENDA_TASKS_ENABLED = "auto_trigger_agenda_tasks_enabled"
+        private const val KEY_AUTO_TRIGGER_AGENDA_TASKS_LEAD_MIN = "auto_trigger_agenda_tasks_lead_min"
+        private const val KEY_AUTO_TRIGGER_STEPS_ENABLED = "auto_trigger_steps_enabled"
+        private const val KEY_AUTO_TRIGGER_STEPS_MILESTONE = "auto_trigger_steps_milestone"
+        private const val KEY_AUTO_TRIGGER_SUN_ENABLED = "auto_trigger_sun_enabled"
+        private const val KEY_AUTO_TRIGGER_SUN_LEAD_MIN = "auto_trigger_sun_lead_min"
+        private const val KEY_AUTO_TRIGGER_SLEEP_ENABLED = "auto_trigger_sleep_enabled"
+        private const val KEY_AUTO_TRIGGER_SLEEP_MODE = "auto_trigger_sleep_mode"
+        private const val KEY_AUTO_TRIGGER_WEATHER_ENABLED = "auto_trigger_weather_enabled"
+        private const val KEY_AUTO_TRIGGER_WEATHER_MODE = "auto_trigger_weather_mode"
         private const val KEY_INITIAL_PERMISSIONS_REQUESTED = "initial_permissions_requested"
         private const val KEY_HOME_WIDGETS_ORDER_CSV = "home_widgets_order_csv"
         private const val KEY_HOME_WIDGETS_EXPANDED_CSV = "home_widgets_expanded_csv"
@@ -966,6 +1131,12 @@ class SyncPreferences(context: Context) {
         private const val KEY_SLEEP_SYNC_ENABLED = "sleep_sync_enabled"
         private const val KEY_SLEEP_SHOW_SCORE = "sleep_show_score"
         private const val KEY_HEALTH_CONNECT_SLEEP_PERM_GRANTED = "health_connect_sleep_perm_granted"
+        private const val KEY_HEALTH_CONNECT_STEPS_PERM_GRANTED = "health_connect_steps_perm_granted"
+        private const val KEY_STEPS_TODAY = "steps_today_v2"
+        private const val KEY_STEPS_GOAL = "steps_goal_v2"
+        private const val KEY_STEPS_WEEK_CSV = "steps_week_csv_v2"
+        private const val KEY_STEPS_WEEK_LABELS_CSV = "steps_week_labels_csv_v2"
+        private const val KEY_STEPS_LAST_SYNC_MS = "steps_last_sync_ms_v2"
         private const val KEY_SLEEP_HAS_DATA_TODAY = "sleep_has_data_today_v2"
         private const val KEY_SLEEP_DURATION_MIN = "sleep_duration_min_v2"
         private const val KEY_SLEEP_SCORE = "sleep_score_v2"
