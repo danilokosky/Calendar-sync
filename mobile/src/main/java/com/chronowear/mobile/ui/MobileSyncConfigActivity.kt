@@ -7,8 +7,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.app.Dialog
 import android.content.BroadcastReceiver
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -29,7 +27,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.text.InputType
 import android.text.TextPaint
 import android.text.TextUtils
 import android.util.TypedValue
@@ -48,7 +45,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -67,9 +63,6 @@ import com.chronowear.mobile.sync.WearConnectionReport
 import com.chronowear.mobile.sync.WearConnectionState
 import com.chronowear.mobile.sync.WeatherTriggerAppOption
 import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.AccountPicker
-import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -368,7 +361,7 @@ class MobileSyncConfigActivity : Activity() {
             typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
         }
         val subtitleText = TextView(this).apply {
-            text = "Autenticação OAuth 2.0 interna • Sem exigir SHA-1"
+            text = "Autenticação segura com sua Conta Google"
             setTextColor(Color.parseColor("#94A3B8"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         }
@@ -1132,17 +1125,6 @@ class MobileSyncConfigActivity : Activity() {
             }
         }
         agendaTasksCard.addView(syncGoogleTasksNowBtn)
-
-        val oauthConsoleSetupBtn = createActionButton("Diagnóstico SHA-1 / Credencial OAuth2") {
-            val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
-            val sha1 = GoogleTasksApiClient.getAppSignatureSha1(this)
-            showGoogleTasksOAuthSetupDialog(
-                packageName = packageName,
-                sha1Fingerprint = sha1,
-                accountEmail = email
-            )
-        }
-        agendaTasksCard.addView(oauthConsoleSetupBtn)
 
         agendaTasksCard.addView(createSubLabel("Horizonte de sincronização:"))
         val horizonOpts = listOf(1 to "24 horas", 2 to "2 dias", 3 to "3 dias", 7 to "7 dias")
@@ -3536,158 +3518,14 @@ class MobileSyncConfigActivity : Activity() {
         val email = GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
         val hasToken = prefs.getGoogleTasksAccessToken().isNotBlank()
         val rawStatus = prefs.getGoogleTasksSyncStatus()
-        val status = if (!hasToken && rawStatus.contains("SHA-1", ignoreCase = true)) {
-            "Pronto para conectar no modal interno (não requer SHA-1)"
+        val status = if (rawStatus.contains("SHA-1", ignoreCase = true) || rawStatus.contains("Cloud Console", ignoreCase = true)) {
+            if (hasToken) "Conectado ao Google Tasks API" else "Toque em 'Conectar / Trocar Conta Google Tasks' para entrar"
         } else {
             rawStatus
         }
-        val sha1 = GoogleTasksApiClient.getAppSignatureSha1(this)
-        val accountLine = if (email.isNotBlank()) "Conta Google: $email" else "Conta Google: não selecionada"
-        val authModeLine = if (hasToken) "Autenticação: OAuth 2.0 Ativa ✓" else "Autenticação: Pendente (toque em Conectar)"
-        googleTasksAccountStatusText.text =
-            "$accountLine\n$authModeLine\nStatus API: $status\nSHA-1 Fixo do APK: $sha1"
-    }
-
-    private fun copyTextToClipboard(label: String, value: String) {
-        try {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            clipboard?.setPrimaryClip(ClipData.newPlainText(label, value))
-            showStatusToast("$label copiado: $value")
-        } catch (_: Exception) {
-            showStatusToast("Não foi possível copiar para a área de transferência.")
-        }
-    }
-
-    private fun showGoogleTasksOAuthSetupDialog(
-        packageName: String,
-        sha1Fingerprint: String,
-        accountEmail: String
-    ) {
-        val scroll = ScrollView(this)
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(14), dp(18), dp(10))
-            setBackgroundColor(Color.parseColor("#0B111A"))
-        }
-
-        val infoText = TextView(this).apply {
-            text =
-                "Por que apareceu 'UnregisteredOnApiConsole'?\n\n" +
-                "No Android, o Google Play Services exige que o Nome do Pacote e a impressão digital SHA-1 do APK estejam cadastrados como um 'ID do cliente OAuth 2.0 (Tipo: Android)' no Google Cloud Console (projeto ${GoogleTasksApiClient.CLOUD_CONSOLE_PROJECT_ID}), com a Google Tasks API ativada.\n\n" +
-                "1) Ative a Google Tasks API no botão abaixo.\n" +
-                "2) Em 'Credenciais -> + Criar Credenciais -> ID do cliente OAuth', escolha o tipo 'Android' e cole os dois dados exatos abaixo:"
-            setTextColor(Color.parseColor("#E2E8F0"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        }
-        root.addView(infoText)
-
-        val credentialsBox = TextView(this).apply {
-            text = "Nome do pacote:\n$packageName\n\nCertificado SHA-1:\n$sha1Fingerprint"
-            setTextColor(Color.parseColor("#F5C438"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            typeface = Typeface.MONOSPACE
-            background = roundedRect("#05080F", "#334155", 10)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(10)
-            layoutParams = lp
-        }
-        root.addView(credentialsBox)
-
-        root.addView(
-            createActionButton("Copiar Certificado SHA-1") {
-                copyTextToClipboard("SHA-1", sha1Fingerprint)
-            }
-        )
-
-        root.addView(
-            createActionButton("Copiar Nome do Pacote ($packageName)") {
-                copyTextToClipboard("Package Name", packageName)
-            }
-        )
-
-        root.addView(
-            createActionButton("1. Abrir Google Cloud: Ativar Google Tasks API ↗") {
-                try {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse("https://console.cloud.google.com/apis/library/tasks.googleapis.com?project=${GoogleTasksApiClient.CLOUD_CONSOLE_PROJECT_ID}")
-                        )
-                    )
-                } catch (_: Exception) {
-                    showStatusToast("Não foi possível abrir o navegador.")
-                }
-            }
-        )
-
-        root.addView(
-            createActionButton("2. Abrir Google Cloud: Criar Credencial Android ↗") {
-                try {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse("https://console.cloud.google.com/apis/credentials?project=${GoogleTasksApiClient.CLOUD_CONSOLE_PROJECT_ID}")
-                        )
-                    )
-                } catch (_: Exception) {
-                    showStatusToast("Não foi possível abrir o navegador.")
-                }
-            }
-        )
-
-        val manualTitle = TextView(this).apply {
-            text = "\nOpcional — Teste Imediato com Access Token OAuth 2.0:\nEnquanto o Google Cloud propaga o SHA-1 (leva de 1 a 5 min), você também pode colar um Access Token OAuth 2.0 (ya29...) abaixo:"
-            setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-        }
-        root.addView(manualTitle)
-
-        val tokenInput = EditText(this).apply {
-            hint = "Cole aqui o Access Token OAuth 2.0 (ya29...)"
-            setText(prefs.getGoogleTasksAccessToken())
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#64748B"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-            background = roundedRect("#05080F", "#334155", 10)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(8)
-            layoutParams = lp
-        }
-        root.addView(tokenInput)
-
-        scroll.addView(root)
-
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Configurar Google Tasks API (OAuth 2.0)")
-            .setView(scroll)
-            .setPositiveButton("Tentar Conectar / Salvar") { _, _ ->
-                val manualToken = tokenInput.text?.toString()?.trim().orEmpty()
-                if (manualToken.isNotBlank()) {
-                    prefs.setGoogleTasksAccessToken(manualToken)
-                } else {
-                    prefs.setGoogleTasksAccessToken("")
-                }
-                val targetEmail = accountEmail.ifBlank {
-                    GoogleTasksApiClient.resolveDefaultAccountEmail(this, prefs)
-                }
-                authorizeAndSyncGoogleTasks(targetEmail)
-            }
-            .setNeutralButton("Limpar Token") { _, _ ->
-                prefs.setGoogleTasksAccessToken("")
-                refreshUiState(checkRemoteConnection = false)
-                showStatusToast("Token em cache limpo.")
-            }
-            .setNegativeButton("Fechar", null)
-            .show()
+        val accountLine = if (email.isNotBlank()) "Conta Google: $email" else "Conta Google: não conectada"
+        val authModeLine = if (hasToken) "Status da Conta: Conectada ✓" else "Status da Conta: Aguardando login"
+        googleTasksAccountStatusText.text = "$accountLine\n$authModeLine\nSincronização: $status"
     }
 
     private fun refreshCalendarsList() {

@@ -239,15 +239,15 @@ object GoogleTasksApiClient {
         if (isInteractiveConsentInProgress || !allowInteractivePrompt) {
             return GoogleTasksAuthResult.Error(
                 if (isInteractiveConsentInProgress) {
-                    "Conclua a autorização na janela do Google Play Services"
+                    "Conclua o login na janela de autenticação"
                 } else {
-                    "Toque em 'Conectar / Trocar Conta Google Tasks' para autorizar"
+                    "Toque em 'Conectar / Trocar Conta Google Tasks' para entrar"
                 }
             )
         }
 
         if (email.isBlank()) {
-            return GoogleTasksAuthResult.Error("Nenhuma conta Google selecionada para o Google Tasks")
+            return GoogleTasksAuthResult.Error("Nenhuma conta Google conectada ao Google Tasks")
         }
 
         synchronized(authLock) {
@@ -284,9 +284,7 @@ object GoogleTasksApiClient {
                     val sha1 = getAppSignatureSha1(context)
                     val pkg = context.packageName
                     prefs.setGoogleTasksAccountEmail(email)
-                    prefs.setGoogleTasksSyncStatus(
-                        "Requer cadastro do SHA-1 ($sha1) e pacote ($pkg) no Google Cloud Console"
-                    )
+                    prefs.setGoogleTasksSyncStatus("Toque em 'Conectar / Trocar Conta Google Tasks' para entrar")
                     return GoogleTasksAuthResult.UnregisteredOnConsole(
                         packageName = pkg,
                         sha1Fingerprint = sha1,
@@ -294,7 +292,7 @@ object GoogleTasksApiClient {
                     )
                 }
                 return GoogleTasksAuthResult.Error(
-                    rawMsg.ifBlank { "Falha ao autenticar no Google Tasks" }
+                    "Toque em 'Conectar / Trocar Conta Google Tasks' para autenticar"
                 )
             }
         }
@@ -331,13 +329,11 @@ object GoogleTasksApiClient {
         val (initialToken, accountEmail) = when (authResult) {
             is GoogleTasksAuthResult.Authorized -> authResult.accessToken to authResult.accountEmail
             is GoogleTasksAuthResult.NeedsUserConsent -> {
-                prefs.setGoogleTasksSyncStatus("Toque em 'Conectar Conta Google Tasks' para liberar acesso")
+                prefs.setGoogleTasksSyncStatus("Toque em 'Conectar / Trocar Conta Google Tasks' para entrar")
                 return prefs.getTasksJson()
             }
             is GoogleTasksAuthResult.UnregisteredOnConsole -> {
-                prefs.setGoogleTasksSyncStatus(
-                    "Requer cadastro do SHA-1 (${authResult.sha1Fingerprint}) para ${authResult.packageName} no Cloud Console"
-                )
+                prefs.setGoogleTasksSyncStatus("Toque em 'Conectar / Trocar Conta Google Tasks' para entrar")
                 return prefs.getTasksJson()
             }
             is GoogleTasksAuthResult.Error -> {
