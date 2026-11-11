@@ -688,12 +688,19 @@ class SyncPreferences(context: Context) {
         return prefs.getString(KEY_GOOGLE_TASKS_ACCESS_TOKEN, "") ?: ""
     }
 
+    fun getGoogleTasksTokenAcquiredMs(): Long {
+        return prefs.getLong(KEY_GOOGLE_TASKS_TOKEN_ACQUIRED_MS, 0L)
+    }
+
     fun setGoogleTasksAccessToken(token: String) {
         val clean = token.trim()
         val editor = prefs.edit().putString(KEY_GOOGLE_TASKS_ACCESS_TOKEN, clean)
         if (clean.isNotEmpty()) {
+            editor.putLong(KEY_GOOGLE_TASKS_TOKEN_ACQUIRED_MS, System.currentTimeMillis())
             editor.putInt(KEY_GOOGLE_TASKS_REMIND_LATER_COUNT, 0)
             editor.putBoolean(KEY_GOOGLE_TASKS_NEVER_REMIND, false)
+        } else {
+            editor.putLong(KEY_GOOGLE_TASKS_TOKEN_ACQUIRED_MS, 0L)
         }
         editor.commit()
     }
@@ -740,7 +747,7 @@ class SyncPreferences(context: Context) {
 
     private fun parseTaskItemsFromJsonString(jsonStr: String, nowMs: Long): List<MobileTaskItem> {
         val list = mutableListOf<MobileTaskItem>()
-        val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
+        val sdfIso = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
         val todayIso = sdfIso.format(java.util.Date(nowMs))
         val tomorrowIso = sdfIso.format(java.util.Date(nowMs + 24L * 60L * 60L * 1000L))
         val thirtyDaysAgoIso = sdfIso.format(java.util.Date(nowMs - 30L * 24L * 60L * 60L * 1000L))
@@ -788,7 +795,7 @@ class SyncPreferences(context: Context) {
 
                 val matchedTime = timeRegex.find(rawDue)?.groupValues?.getOrNull(1) ?: ""
                 val formattedTime = when (resolvedCategory) {
-                    "TODAY", "TOMORROW" -> matchedTime.padStart(5, '0').ifBlank { "09:00" }
+                    "TODAY", "TOMORROW" -> if (matchedTime.isNotBlank()) matchedTime.padStart(5, '0') else ""
                     else -> ""
                 }
 
@@ -1323,6 +1330,7 @@ class SyncPreferences(context: Context) {
         private const val KEY_TASKS_SYNC_ENABLED = "tasks_sync_enabled"
         private const val KEY_GOOGLE_TASKS_ACCOUNT_EMAIL = "google_tasks_account_email"
         private const val KEY_GOOGLE_TASKS_ACCESS_TOKEN = "google_tasks_access_token"
+        private const val KEY_GOOGLE_TASKS_TOKEN_ACQUIRED_MS = "google_tasks_token_acquired_ms"
         private const val KEY_GOOGLE_TASKS_REMIND_LATER_COUNT = "google_tasks_remind_later_count"
         private const val KEY_GOOGLE_TASKS_NEVER_REMIND = "google_tasks_never_remind"
         private const val KEY_GOOGLE_TASKS_LAST_SYNC_MS = "google_tasks_last_sync_ms"
@@ -1331,9 +1339,9 @@ class SyncPreferences(context: Context) {
         private const val KEY_TASKS_ALERT_TS_MS = "tasks_alert_ts_ms"
         private const val KEY_HIGH_FREQ_15MIN_RULE = "high_freq_15min_rule"
         const val DEFAULT_TASKS_JSON = """[
-            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"14:00","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
-            {"id":"t2","title":"Reunião de revisão da sprint","dueHHMM":"16:30","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
-            {"id":"t3","title":"Apresentar protótipo Wear OS","dueHHMM":"10:00","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TOMORROW","isOverdue":false},
+            {"id":"t1","title":"Enviar relatório trimestral","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
+            {"id":"t2","title":"Reunião de revisão da sprint","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TODAY","isOverdue":false},
+            {"id":"t3","title":"Apresentar protótipo Wear OS","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"TOMORROW","isOverdue":false},
             {"id":"t4","title":"Pagar fatura do cartão corporativo","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"OVERDUE","isOverdue":true},
             {"id":"t5","title":"Organizar documentos da contabilidade","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"UNDATED","isOverdue":false}
         ]"""

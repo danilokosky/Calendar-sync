@@ -1251,7 +1251,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (rawJson.isNotBlank()) {
             try {
                 val arr = JSONArray(rawJson)
-                val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+                val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                 val todayDateIso = sdfIso.format(Date(nowMs))
                 val tomorrowDateIso = sdfIso.format(Date(nowMs + TimeUnit.DAYS.toMillis(1L)))
                 val thirtyDaysAgoIso = sdfIso.format(Date(nowMs - TimeUnit.DAYS.toMillis(30L)))
@@ -1276,13 +1276,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
                     val explicitOverdue = obj.optBoolean("isOverdue", false)
 
                     val resolvedCategory = when {
+                        dueDateIso.isNotBlank() && dueDateIso < todayDateIso -> "OVERDUE"
+                        dueDateIso == todayDateIso -> "TODAY"
+                        dueDateIso == tomorrowDateIso -> "TOMORROW"
                         explicitCat in setOf("TODAY", "TOMORROW", "UNDATED", "OVERDUE") -> explicitCat
                         explicitOverdue ||
-                            (dueDateIso.isNotBlank() && dueDateIso < todayDateIso) ||
                             rawLower.contains("atras") ||
                             rawLower.contains("ontem") ||
                             rawLower.contains("vencid") -> "OVERDUE"
-                        dueDateIso == tomorrowDateIso || rawLower.contains("amanh") -> "TOMORROW"
+                        rawLower.contains("amanh") -> "TOMORROW"
                         dueDateIso.isBlank() && (
                             rawDue.isBlank() ||
                                 rawLower == "sem data" ||
@@ -1290,7 +1292,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                                 rawLower == "sem horario" ||
                                 rawLower == "hoje"
                             ) -> "UNDATED"
-                        dueDateIso.isBlank() || dueDateIso == todayDateIso -> {
+                        dueDateIso.isBlank() -> {
                             if (timeRegex.containsMatchIn(rawDue)) "TODAY" else "UNDATED"
                         }
                         else -> continue
@@ -1298,7 +1300,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
                     val matchedTime = timeRegex.find(rawDue)?.groupValues?.getOrNull(1) ?: ""
                     val formattedTime = when (resolvedCategory) {
-                        "TODAY", "TOMORROW" -> matchedTime.padStart(5, '0').ifBlank { "09:00" }
+                        "TODAY", "TOMORROW" -> if (matchedTime.isNotBlank()) matchedTime.padStart(5, '0') else ""
                         else -> "" // Sem data e atrasadas NÃO apresentam data nem hora
                     }
 

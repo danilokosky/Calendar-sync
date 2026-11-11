@@ -5,6 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.UserRecoverableAuthException
 import org.json.JSONArray
@@ -17,7 +23,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 sealed class GoogleTasksAuthResult {
     data class Authorized(val accessToken: String, val accountEmail: String) : GoogleTasksAuthResult()
@@ -110,6 +118,151 @@ object GoogleTasksApiClient {
             }
         }
         return null
+    }
+
+    /**
+     * Renova silenciosamente o Access Token OAuth 2.0 em 2º plano reutilizando os cookies de sessão
+     * já autenticados no WebView interno do app (`prompt=none`), sem abrir janela para o usuário.
+     */
+    fun refreshTokenSilentlyViaWebView(
+        context: Context,
+        prefs: SyncPreferences,
+        loginHintEmail: String?
+    ): String? {
+        if (Looper.myLooper() == Looper.getMainLooper() || isInteractiveConsentInProgress) {
+            return null
+        }
+        val hint = (loginHintEmail ?: prefs.getGoogleTasksAccountEmail()).trim()
+        val resultRef = AtomicReference<String?>(null)
+        val latch = CountDownLatch(1)
+        val mainHandler = Handler(Looper.getMainLooper())
+        var webViewRef: WebView? = null
+
+        fun cleanupAndRelease(token: String?) {
+            if (token != null) {
+                resultRef.compareAndSet(null, token)
+            }
+            latch.countDown()
+            mainHandler.post {
+                try {
+                    webViewRef?.stopLoading()
+                    webViewRef?.destroy()
+                } catch (_: Exception) {
+                }
+                webViewRef = null
+            }
+        }
+
+        mainHandler.post {
+            try {
+                val appCtx = context.applicationContext
+                val wv = WebView(appCtx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
+                    val rawUa = settings.userAgentString ?: ""
+                    val cleanUa = rawUa
+                        .replace("; wv", "")
+                        .replace("Version/4.0 ", "")
+                        .trim()
+                    settings.userAgentString = if (cleanUa.isNotBlank()) {
+                        cleanUa
+                    } else {
+                        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                    }
+                }
+                webViewRef = wv
+
+                try {
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        cookieManager.setAcceptThirdPartyCookies(wv, true)
+                    }
+                } catch (_: Exception) {
+                }
+
+                fun inspectCandidateUrl(candidateUrl: String?): Boolean {
+                    if (candidateUrl.isNullOrBlank()) return false
+                    val token = extractAccessTokenFromRedirectUrl(candidateUrl)
+                    if (!token.isNullOrBlank()) {
+                        prefs.setGoogleTasksAccessToken(token)
+                        try {
+                            CookieManager.getInstance().flush()
+                        } catch (_: Exception) {
+                        }
+                        cleanupAndRelease(token)
+                        return true
+                    }
+                    if (
+                        candidateUrl.startsWith(FIREBASE_AUTH_REDIRECT_URI, ignoreCase = true) &&
+                        candidateUrl.contains("error=", ignoreCase = true)
+                    ) {
+                        cleanupAndRelease(null)
+                        return true
+                    }
+                    return false
+                }
+
+                wv.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        return inspectCandidateUrl(request?.url?.toString())
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                        return inspectCandidateUrl(url)
+                    }
+
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        if (inspectCandidateUrl(url)) return
+                        super.onPageStarted(view, url, favicon)
+                    }
+
+                    override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                        if (inspectCandidateUrl(url)) return
+                        super.doUpdateVisitedHistory(view, url, isReload)
+                    }
+
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        if (inspectCandidateUrl(url)) return
+                        // Se terminou de carregar uma página de login/erro sem redirecionar com token, encerra
+                        if (!url.isNullOrBlank() && !url.startsWith(FIREBASE_AUTH_REDIRECT_URI, ignoreCase = true)) {
+                            mainHandler.postDelayed({
+                                if (latch.count > 0) {
+                                    cleanupAndRelease(null)
+                                }
+                            }, 1200L)
+                        }
+                    }
+                }
+
+                val silentUrl = buildInAppOAuthUrl(
+                    loginHintEmail = hint,
+                    forceSelectAccount = false
+                )
+                wv.loadUrl(silentUrl)
+            } catch (_: Exception) {
+                cleanupAndRelease(null)
+            }
+        }
+
+        try {
+            latch.await(8, TimeUnit.SECONDS)
+        } catch (_: Exception) {
+        } finally {
+            if (webViewRef != null) {
+                mainHandler.post {
+                    try {
+                        webViewRef?.stopLoading()
+                        webViewRef?.destroy()
+                    } catch (_: Exception) {
+                    }
+                    webViewRef = null
+                }
+            }
+        }
+        return resultRef.get()
     }
 
     /**
@@ -224,9 +377,30 @@ object GoogleTasksApiClient {
     ): GoogleTasksAuthResult {
         val email = (explicitEmail ?: resolveDefaultGoogleAccountEmail(context, prefs)).trim()
         val cachedToken = prefs.getGoogleTasksAccessToken().trim()
+        val acquiredMs = prefs.getGoogleTasksTokenAcquiredMs()
+        val tokenAgeMs = if (acquiredMs > 0L) System.currentTimeMillis() - acquiredMs else 0L
+        val isTokenFresh = cachedToken.isNotBlank() && (acquiredMs <= 0L || tokenAgeMs < TimeUnit.MINUTES.toMillis(50))
 
-        // Fast-path: se já possuímos um Access Token salvo (via OAuth nativo, GIS ou ponte Chrome),
-        // retornamos imediatamente sem abrir IPC concorrente no Google Play Services.
+        // Fast-path: se já possuímos um Access Token recente (< 50 min), retornamos imediatamente.
+        if (isTokenFresh) {
+            return GoogleTasksAuthResult.Authorized(
+                cachedToken,
+                email.ifBlank { "Conta Google" }
+            )
+        }
+
+        // Se o token está próximo de expirar (>= 50 min) ou vazio após ter expirado, tenta renovar
+        // silenciosamente via cookies do WebView antes de desistir.
+        if (!isInteractiveConsentInProgress && Looper.myLooper() != Looper.getMainLooper()) {
+            val silentToken = refreshTokenSilentlyViaWebView(context, prefs, email)
+            if (!silentToken.isNullOrBlank()) {
+                return GoogleTasksAuthResult.Authorized(
+                    silentToken,
+                    email.ifBlank { "Conta Google" }
+                )
+            }
+        }
+
         if (cachedToken.isNotBlank()) {
             return GoogleTasksAuthResult.Authorized(
                 cachedToken,
@@ -349,30 +523,34 @@ object GoogleTasksApiClient {
             activeToken
         )
 
-        // Se o token expirou (HTTP 401), limpa o token em cache e tenta renovar silenciosamente 1 vez
+        // Se o token expirou (HTTP 401), tenta renovar silenciosamente via WebView (OAuth 2.0 prompt=none)
+        // ou via GoogleAuthUtil antes de limpar o token salvo.
         if (listsResponse.first == 401) {
-            prefs.setGoogleTasksAccessToken("")
-            if (!isInteractiveConsentInProgress && accountEmail.contains("@")) {
+            var renewedToken: String? = refreshTokenSilentlyViaWebView(context, prefs, accountEmail)
+            if (renewedToken.isNullOrBlank() && !isInteractiveConsentInProgress && accountEmail.contains("@")) {
                 try {
                     GoogleAuthUtil.clearToken(context, activeToken)
-                    val refreshed = synchronized(authLock) {
+                    renewedToken = synchronized(authLock) {
                         GoogleAuthUtil.getToken(
                             context,
                             Account(accountEmail, "com.google"),
                             OAUTH_SCOPE_STRING
                         )
                     }
-                    if (!refreshed.isNullOrBlank()) {
-                        activeToken = refreshed
-                        prefs.setGoogleTasksAccessToken(activeToken)
-                        listsResponse = executeGetRequest(
-                            context,
-                            "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=20",
-                            activeToken
-                        )
-                    }
                 } catch (_: Exception) {
                 }
+            }
+
+            if (!renewedToken.isNullOrBlank()) {
+                activeToken = renewedToken
+                prefs.setGoogleTasksAccessToken(activeToken)
+                listsResponse = executeGetRequest(
+                    context,
+                    "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=20",
+                    activeToken
+                )
+            } else {
+                prefs.setGoogleTasksAccessToken("")
             }
         }
 
@@ -388,7 +566,7 @@ object GoogleTasksApiClient {
             return prefs.getTasksJson()
         }
 
-        val sdfIsoLocal = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+        val sdfIsoLocal = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val todayIso = sdfIsoLocal.format(Date(nowMs))
         val tomorrowIso = sdfIsoLocal.format(Date(nowMs + TimeUnit.DAYS.toMillis(1)))
         val yesterdayIso = sdfIsoLocal.format(Date(nowMs - TimeUnit.DAYS.toMillis(1)))
@@ -438,10 +616,11 @@ object GoogleTasksApiClient {
                     if (dueDateIso.isNotBlank() && dueDateIso < thirtyDaysAgoIso) continue
                     if (dueDateIso.isBlank() && updatedDateIso.isNotBlank() && updatedDateIso < thirtyDaysAgoIso) continue
 
-                    // Extrai horário se houver na nota, no título ou no campo due (quando não for 00:00:00Z)
+                    // Extrai horário apenas se houver explicitamente na nota, no título ou no campo due (quando não for 00:00:00Z).
+                    // Nunca usa horário fictício ("09:00") quando a API do Google Tasks não envia hora.
                     val matchedTimeInText = timeRegex.find("$rawTitle $notes")?.groupValues?.getOrNull(1)?.padStart(5, '0')
                     val dueTimePart = extractLocalHHMMFromRfc3339IfNonMidnight(dueRfc3339)
-                    val resolvedHHMM = matchedTimeInText ?: dueTimePart ?: "09:00"
+                    val resolvedHHMM = matchedTimeInText ?: dueTimePart ?: ""
 
                     val category: String
                     val displayHHMM: String
@@ -480,13 +659,10 @@ object GoogleTasksApiClient {
                     )
                     taskDueDateIsoMap[item.id] = dueDateIso
 
-                    val existingIdx = collectedTasks.indexOfFirst {
-                        it.title.equals(item.title, ignoreCase = true)
-                    }
+                    // Deduplica apenas pelo ID único da tarefa no Google Tasks, preservando tarefas distintas com o mesmo título
+                    val existingIdx = collectedTasks.indexOfFirst { it.id == item.id }
                     if (existingIdx >= 0) {
-                        if (categoryPriorityRank(item.scheduleCategory) <= categoryPriorityRank(collectedTasks[existingIdx].scheduleCategory)) {
-                            collectedTasks[existingIdx] = item
-                        }
+                        collectedTasks[existingIdx] = item
                     } else {
                         collectedTasks.add(item)
                     }

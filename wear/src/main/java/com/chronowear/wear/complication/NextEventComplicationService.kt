@@ -1049,8 +1049,9 @@ object AgendaCardBitmapRenderer {
                 canvas.drawText(task.sourceLabel.take(8), CARD_WIDTH - 24f, baseY - 2f, sourceBadgePaint)
             } else {
                 canvas.drawCircle(38f, centerY, 10f, emptyCirclePaint)
-                val emptyMsg = if (idx == 0 && displayTasks.isEmpty()) "Não há tarefas pendentes" else "Livre"
-                canvas.drawText(emptyMsg, 68f, baseY, taskEmptyPaint)
+                if (idx == 0 && displayTasks.isEmpty()) {
+                    canvas.drawText("Não há tarefas pendentes", 68f, baseY, taskEmptyPaint)
+                }
             }
         }
 

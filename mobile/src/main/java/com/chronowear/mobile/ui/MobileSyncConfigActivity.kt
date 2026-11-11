@@ -563,7 +563,7 @@ class MobileSyncConfigActivity : Activity() {
         showInAppGoogleOAuthDialog(currentEmail)
     }
 
-    private fun completeAuthorizedTasksSync() {
+    private fun completeAuthorizedTasksSync(fallbackEmailForDialog: String = "") {
         uiScope.launch {
             withContext(Dispatchers.IO) {
                 GoogleTasksApiClient.fetchTasksFromGoogleApi(
@@ -576,6 +576,10 @@ class MobileSyncConfigActivity : Activity() {
                     "Google Tasks API Conectado"
                 )
             }
+            if (prefs.getGoogleTasksAccessToken().isBlank() && fallbackEmailForDialog.isNotBlank()) {
+                showInAppGoogleOAuthDialog(fallbackEmailForDialog)
+                return@launch
+            }
             cachedTasks = prefs.getActiveUncompletedTasks(System.currentTimeMillis())
             refreshUiState(checkRemoteConnection = false)
             showStatusToast("Tarefas sincronizadas via Google Tasks API (${cachedTasks.size} ativas).")
@@ -587,8 +591,8 @@ class MobileSyncConfigActivity : Activity() {
         if (cleanEmail.isNotBlank()) {
             prefs.setGoogleTasksAccountEmail(cleanEmail)
         }
-        if (prefs.getGoogleTasksAccessToken().isNotBlank()) {
-            completeAuthorizedTasksSync()
+        if (prefs.getGoogleTasksAccessToken().isNotBlank() || cleanEmail.isNotBlank()) {
+            completeAuthorizedTasksSync(cleanEmail.ifBlank { prefs.getGoogleTasksAccountEmail() })
             return
         }
         showInAppGoogleOAuthDialog(cleanEmail)
@@ -1798,27 +1802,35 @@ class MobileSyncConfigActivity : Activity() {
 
             applyConnectionReportToUi(report)
 
+            withContext(Dispatchers.IO) {
+                if (prefs.isTasksSyncEnabled()) {
+                    GoogleTasksApiClient.fetchTasksFromGoogleApi(
+                        this@MobileSyncConfigActivity,
+                        prefs,
+                        System.currentTimeMillis()
+                    )
+                }
+                CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
+                    this@MobileSyncConfigActivity,
+                    forceRefresh = true
+                )
+                CalendarSyncEngine.performFullSyncToWatch(
+                    this@MobileSyncConfigActivity,
+                    "Puxar para Atualizar"
+                )
+            }
+
             when {
                 missingPerms > 0 -> {
-                    showStatusToast("Conceda as $missingPerms permissões pendentes para sincronizar.")
+                    showStatusToast("Tarefas atualizadas. Conceda as $missingPerms permissões pendentes.")
                 }
                 !report.bluetoothEnabled -> {
-                    showStatusToast("Bluetooth desligado no smartphone.")
+                    showStatusToast("Tarefas atualizadas localmente (Bluetooth desligado).")
                 }
                 report.state != WearConnectionState.CONNECTED_WITH_APP_INSTALLED -> {
-                    showStatusToast("App ChronoWear não detectado no relógio.")
+                    showStatusToast("Tarefas atualizadas no telefone (relógio desconectado).")
                 }
                 else -> {
-                    withContext(Dispatchers.IO) {
-                        CalendarSyncEngine.performFullSyncToWatch(
-                            this@MobileSyncConfigActivity,
-                            "Puxar para Atualizar"
-                        )
-                        CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
-                            this@MobileSyncConfigActivity,
-                            forceRefresh = true
-                        )
-                    }
                     showStatusToast("Agenda e tarefas sincronizadas com o relógio.")
                 }
             }
@@ -3490,11 +3502,12 @@ class MobileSyncConfigActivity : Activity() {
                         paint.color = Color.parseColor("#475569")
                         canvas.drawCircle(38f, cy, 10f, paint)
 
-                        textPaint.textAlign = Paint.Align.LEFT
-                        textPaint.color = Color.parseColor("#64748B")
-                        textPaint.textSize = 33f
-                        val emptyMsg = if (i == 0 && activeTasks.isEmpty()) "Sem tarefas pendentes" else "Livre"
-                        canvas.drawText(emptyMsg, 68f, baseY, textPaint)
+                        if (i == 0 && activeTasks.isEmpty()) {
+                            textPaint.textAlign = Paint.Align.LEFT
+                            textPaint.color = Color.parseColor("#64748B")
+                            textPaint.textSize = 33f
+                            canvas.drawText("Sem tarefas pendentes", 68f, baseY, textPaint)
+                        }
                     }
                 }
             }
