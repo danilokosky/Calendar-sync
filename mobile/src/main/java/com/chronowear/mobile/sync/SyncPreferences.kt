@@ -993,12 +993,23 @@ class SyncPreferences(context: Context) {
     }
 
     fun getSelectedWeatherTriggerPackages(): Set<String> {
-        return prefs.getStringSet(KEY_SELECTED_WEATHER_TRIGGER_PKGS, DEFAULT_WEATHER_TRIGGER_PACKAGES)
+        val raw = prefs.getStringSet(KEY_SELECTED_WEATHER_TRIGGER_PKGS, DEFAULT_WEATHER_TRIGGER_PACKAGES)
             ?: DEFAULT_WEATHER_TRIGGER_PACKAGES
+        val migrated = raw.toMutableSet()
+        // Garante que ambas as variantes do app Clima da Samsung estejam incluídas quando selecionado
+        if (migrated.contains("com.sec.android.daemonapp")) {
+            migrated.add("com.samsung.android.weather")
+        }
+        migrated.remove("com.google.android.googlequicksearchbox")
+        return migrated
     }
 
     fun setSelectedWeatherTriggerPackages(packages: Set<String>) {
-        prefs.edit().putStringSet(KEY_SELECTED_WEATHER_TRIGGER_PKGS, HashSet(packages)).commit()
+        val normalized = packages.toMutableSet()
+        if (normalized.contains("com.sec.android.daemonapp")) {
+            normalized.add("com.samsung.android.weather")
+        }
+        prefs.edit().putStringSet(KEY_SELECTED_WEATHER_TRIGGER_PKGS, HashSet(normalized)).commit()
     }
 
     fun isWatchStandaloneWeatherEnabled(): Boolean {
@@ -1082,23 +1093,26 @@ class SyncPreferences(context: Context) {
     ): Boolean {
         val prevTempsStr = prefs.getString(KEY_WEATHER_TEMPS_CSV, "") ?: ""
         val prevFirstTemp = prevTempsStr.split(",").firstOrNull()?.trim()?.toIntOrNull()
+        val prevRainProb = prefs.getInt(KEY_WEATHER_RAIN_PROB, -1)
         val prevCondition = prefs.getString(KEY_WEATHER_CONDITION_LABEL, "") ?: ""
+        val hasPreviousBaseline = prevFirstTemp != null && prevCondition.isNotBlank()
 
         val tempsCsv = pickedTemps.joinToString(",")
         val hoursCsv = pickedLabels.joinToString(",")
-
-        val minT = pickedTemps.minOrNull() ?: 22
-        val maxT = pickedTemps.maxOrNull() ?: 22
         val firstT = pickedTemps.firstOrNull() ?: 22
 
-        val shiftAcrossHours = (maxT - minT) >= 3
-        val shiftFromPreviousFetch = prevFirstTemp != null && abs(firstT - prevFirstTemp) >= 2
-        val rainAlert = rainProbPct >= 45
-        val weatherConditionChanged = conditionShiftDetected ||
-            (prevCondition.isNotBlank() && !prevCondition.equals(weatherConditionLabel, ignoreCase = true))
+        val shiftFromPreviousFetch = hasPreviousBaseline && abs(firstT - (prevFirstTemp ?: firstT)) >= 3
+        val rainJumpFromPrevious = hasPreviousBaseline && (
+            (rainProbPct >= 50 && prevRainProb in 0..49) ||
+                (prevRainProb >= 0 && (rainProbPct - prevRainProb) >= 30 && rainProbPct >= 40)
+            )
+        val weatherConditionChanged = hasPreviousBaseline && (
+            conditionShiftDetected ||
+                !prevCondition.equals(weatherConditionLabel, ignoreCase = true)
+            )
 
         val shiftDetected = isPhoneWeatherAutoCheckEnabled() &&
-            (shiftAcrossHours || shiftFromPreviousFetch || rainAlert || weatherConditionChanged)
+            (shiftFromPreviousFetch || rainJumpFromPrevious || weatherConditionChanged)
 
         val validCandidateLoc = locationName.trim().takeIf {
             it.isNotBlank() && !it.equals("Local, BR", ignoreCase = true)
@@ -1353,9 +1367,9 @@ class SyncPreferences(context: Context) {
         private const val KEY_LAST_SYNC_STATUS = "last_sync_status"
 
         val DEFAULT_WEATHER_TRIGGER_PACKAGES = setOf(
-            "com.google.android.googlequicksearchbox",
             "com.google.android.apps.weather",
             "com.sec.android.daemonapp",
+            "com.samsung.android.weather",
             "br.com.climatempo.meteorologia",
             "com.accuweather.android",
             "com.weather.Weather"
@@ -1496,22 +1510,16 @@ class SyncPreferences(context: Context) {
 
         val KNOWN_WEATHER_TRIGGER_CATALOG = listOf(
             WeatherTriggerAppOption(
-                packageName = "com.google.android.googlequicksearchbox",
-                displayName = "App Google",
+                packageName = "com.sec.android.daemonapp",
+                displayName = "Samsung Clima (One UI Weather)",
                 categoryName = "Provedores do Sistema",
-                categoryDescription = "Alertas meteorológicos do Google"
+                categoryDescription = "Provedor oficial de Clima da Samsung"
             ),
             WeatherTriggerAppOption(
                 packageName = "com.google.android.apps.weather",
                 displayName = "Google Clima / Weather",
                 categoryName = "Provedores do Sistema",
                 categoryDescription = "App dedicado de Clima do Google"
-            ),
-            WeatherTriggerAppOption(
-                packageName = "com.sec.android.daemonapp",
-                displayName = "Samsung Clima (One UI Weather)",
-                categoryName = "Provedores do Sistema",
-                categoryDescription = "Provedor oficial de Clima da Samsung"
             ),
             WeatherTriggerAppOption(
                 packageName = "br.com.climatempo.meteorologia",

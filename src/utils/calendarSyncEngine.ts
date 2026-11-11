@@ -674,13 +674,15 @@ export function computeSolarCurvePoint(
 
 /**
  * Avalia se a previsão horária buscada periodicamente pelo nosso App (no telefone ou no serviço
- * Stand-Alone do relógio) apresenta mudança relevante de temperatura, chuva ou condição climática.
+ * Stand-Alone do relógio) apresenta mudança real em relação à leitura anterior (variação >= 3°C
+ * na temperatura atual, salto de chuva ou mudança na condição climática).
  */
 export function detectHourlyWeatherShift(
   temps: number[],
   rainProbPct: number,
   previousFirstTemp?: number | null,
-  conditionChanged?: boolean
+  conditionChanged?: boolean,
+  previousRainProbPct?: number | null
 ): { hasShift: boolean; summary: string } {
   if (temps.length < 2) {
     return { hasShift: false, summary: 'Estável' };
@@ -689,15 +691,17 @@ export function detectHourlyWeatherShift(
   const lastT = temps[temps.length - 1];
   const minT = Math.min(...temps);
   const maxT = Math.max(...temps);
-  const swingInUpcomingHours = maxT - minT >= 3;
   const deltaFromPreviousCheck =
-    previousFirstTemp != null && Math.abs(firstT - previousFirstTemp) >= 2;
-  const highRain = rainProbPct >= 45;
+    previousFirstTemp != null && Math.abs(firstT - previousFirstTemp) >= 3;
+  const rainJumpFromPrevious =
+    previousRainProbPct != null
+      ? (rainProbPct >= 50 && previousRainProbPct < 50) ||
+        (rainProbPct - previousRainProbPct >= 30 && rainProbPct >= 40)
+      : rainProbPct >= 65;
 
   const hasShift =
-    swingInUpcomingHours ||
     deltaFromPreviousCheck ||
-    highRain ||
+    rainJumpFromPrevious ||
     Boolean(conditionChanged);
 
   const summary =

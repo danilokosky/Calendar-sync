@@ -1,6 +1,5 @@
 package com.chronowear.mobile.sync
 
-import android.app.Notification
 import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -11,11 +10,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Escuta mensagens vindas do Smartwatch:
  * 1) Confirmação de que o app Wear OS está instalado (`/chronowear/pong_watch_app`)
  * 2) Solicitação de sincronização iniciada pelo relógio (`/chronowear/request_sync_from_watch`)
+ * 3) Relatório periódico de bateria do relógio (`/chronowear/watch_battery_report`)
  */
 class WearRequestListenerService : WearableListenerService() {
 
@@ -65,10 +66,11 @@ class WearRequestListenerService : WearableListenerService() {
 }
 
 /**
- * Observador de Notificações de Clima no Smartphone (`PhoneWeatherNotificationListenerService`):
- * - Detecta notificações de Apps de Clima escolhidos pelo usuário e envia atualização imediata ao relógio.
- * - Dados de Sono são lidos exclusivamente via API oficial do Android Health Connect (`HealthConnectSleepReader`),
- *   e tarefas via API oficial do Google Tasks, sem depender da barra de notificações.
+ * Observador de Notificações Exclusivo no Smartphone (`PhoneWeatherNotificationListenerService`):
+ * - Serve unicamente como gatilho ao identificar que um aplicativo de Clima confiável emitiu uma notificação.
+ * - NÃO extrai nem lê qualquer texto ou conteúdo interno da notificação.
+ * - Ao identificar a emissão da notificação pelo pacote do app de Clima, aciona imediatamente a busca interna
+ *   de clima do próprio ChronoWear e sincroniza com o relógio para exibir o Canvas de Clima e emitir a notificação no Wear OS.
  */
 class PhoneWeatherNotificationListenerService : NotificationListenerService() {
 
@@ -79,70 +81,64 @@ class PhoneWeatherNotificationListenerService : NotificationListenerService() {
         if (sbn == null) return
 
         val prefs = SyncPreferences(applicationContext)
-        if (!prefs.isNotificationsSyncEnabled()) return
+        if (!prefs.isNotificationsSyncEnabled() || !prefs.isAutoTriggerWeatherEnabled()) return
 
         val pkg = sbn.packageName.lowercase(Locale.ROOT)
-        val extras = sbn.notification?.extras ?: return
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-        val text = (
-            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
-                ?: extras.getCharSequence(Notification.EXTRA_TEXT)
-            )?.toString()?.trim().orEmpty()
-        val combinedLower = "$title $text".lowercase(Locale.ROOT)
-
         val selectedPkgs = prefs.getSelectedWeatherTriggerPackages().map { it.lowercase(Locale.ROOT) }.toSet()
-        val isSelectedTriggerPkg = selectedPkgs.any { sel -> pkg == sel || pkg.contains(sel) }
-        if (!isSelectedTriggerPkg) return
 
-        val isGeneralGoogleSearchApp = pkg.contains("googlequicksearchbox")
-        val hasWeatherKeywords = combinedLower.contains("chuva") ||
-            combinedLower.contains("temperatura") ||
-            combinedLower.contains("previsão") ||
-            combinedLower.contains("frente fria") ||
-            combinedLower.contains("tempestade") ||
-            combinedLower.contains("clima") ||
-            combinedLower.contains("°c") ||
-            combinedLower.contains("°")
+        val isSamsungWeatherSelected = selectedPkgs.any {
+            it.contains("daemonapp") || it.contains("samsung.android.weather")
+        }
+        val isMatchedWeatherApp = selectedPkgs.any { sel -> pkg == sel || pkg.contains(sel) } ||
+            (isSamsungWeatherSelected && (pkg == "com.sec.android.daemonapp" || pkg == "com.samsung.android.weather"))
 
-        if (!isGeneralGoogleSearchApp || hasWeatherKeywords) {
-            val catalogMatch = SyncPreferences.KNOWN_WEATHER_TRIGGER_CATALOG.firstOrNull {
-                pkg == it.packageName.lowercase(Locale.ROOT) || pkg.contains(it.packageName.lowercase(Locale.ROOT))
-            }
-            val sourceLabel = catalogMatch?.displayName ?: when {
-                isGeneralGoogleSearchApp -> "App Google"
-                pkg.contains("daemonapp") || pkg.contains("samsung") -> "App Clima"
-                else -> try {
-                    val ai = applicationContext.packageManager.getApplicationInfo(sbn.packageName, 0)
-                    applicationContext.packageManager.getApplicationLabel(ai).toString()
-                } catch (_: Exception) {
-                    "App Clima"
-                }
-            }
+        if (!isMatchedWeatherApp) return
 
-            val rawSummary = when {
-                title.isNotBlank() && text.isNotBlank() -> "$title: $text"
-                title.isNotBlank() -> title
-                text.isNotBlank() -> text
-                else -> "Mudança climática nas próximas horas"
-            }
-            val formattedHeadline = "$sourceLabel • $rawSummary".take(42)
+        val nowMs = System.currentTimeMillis()
+        val lastPkgTriggerMs = lastTriggerByPackageMs[pkg] ?: 0L
+        // Evita disparo duplicado quando o mesmo app posta resumo de grupo + notificação filha no mesmo instante
+        if ((nowMs - lastPkgTriggerMs) < 60_000L) return
+        lastTriggerByPackageMs[pkg] = nowMs
 
-            scope.launch {
-                CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
-                    context = applicationContext,
-                    forceRefresh = true
-                )
-                val nowMs = System.currentTimeMillis()
-                prefs.recordObservedWeatherNotification(
-                    sourceAppLabel = sourceLabel,
-                    headline = formattedHeadline,
-                    timestampMs = nowMs
-                )
-                CalendarSyncEngine.performFullSyncToWatch(
-                    context = applicationContext,
-                    triggerSource = "Trigger App Clima ($sourceLabel)"
-                )
+        val catalogMatch = SyncPreferences.KNOWN_WEATHER_TRIGGER_CATALOG.firstOrNull {
+            pkg == it.packageName.lowercase(Locale.ROOT) || pkg.contains(it.packageName.lowercase(Locale.ROOT))
+        }
+        val sourceLabel = catalogMatch?.displayName ?: when {
+            pkg.contains("daemonapp") || pkg.contains("samsung.android.weather") -> "Samsung Clima"
+            pkg.contains("google.android.apps.weather") -> "Google Clima"
+            else -> try {
+                val ai = applicationContext.packageManager.getApplicationInfo(sbn.packageName, 0)
+                applicationContext.packageManager.getApplicationLabel(ai).toString()
+            } catch (_: Exception) {
+                "App Clima"
             }
         }
+
+        scope.launch {
+            // 1. Busca a atualização de clima independente pelo provedor interno do nosso aplicativo
+            CalendarSyncEngine.fetchPhoneHourlyWeatherIfNeeded(
+                context = applicationContext,
+                forceRefresh = true
+            )
+            // 2. Registra o gatilho de atualização para virar o Canvas para Clima e notificar no relógio
+            val triggerTs = System.currentTimeMillis()
+            val locName = prefs.getPhoneWeatherLocationName()
+            val updatedHHMM = prefs.getPhoneWeatherUpdatedHHMM()
+            val internalHeadline = "$locName • Atualizado $updatedHHMM"
+            prefs.recordObservedWeatherNotification(
+                sourceAppLabel = sourceLabel,
+                headline = internalHeadline,
+                timestampMs = triggerTs
+            )
+            // 3. Sincroniza imediatamente com o relógio para mudar o Canvas e emitir a notificação no Wear OS
+            CalendarSyncEngine.performFullSyncToWatch(
+                context = applicationContext,
+                triggerSource = "Gatilho App de Clima ($sourceLabel)"
+            )
+        }
+    }
+
+    companion object {
+        private val lastTriggerByPackageMs = ConcurrentHashMap<String, Long>()
     }
 }

@@ -2076,7 +2076,7 @@ class MobileSyncConfigActivity : Activity() {
             missing.add(
                 MissingPermItem(
                     title = "Acesso a Notificações",
-                    reason = "Detecção de alertas de clima do telefone.",
+                    reason = "Exclusivo p/ gatilho de atualização de Apps de Clima.",
                     actionLabel = "Ativar",
                     onGrantClick = {
                         try {
@@ -2864,6 +2864,24 @@ class MobileSyncConfigActivity : Activity() {
                 if (imminentTask != null) {
                     return SyncPreferences.MODE_TASKS
                 }
+            }
+        }
+        // 2. Gatilho de Clima (Mudança climática ou gatilho vindo de notificação de App de Clima)
+        if (prefs.isAutoTriggerWeatherEnabled()) {
+            val holdMs = prefs.getUnifiedCanvasHoldMinutes() * 60_000L
+            val weatherAlertTs = prefs.getWeatherAlertTimestampMs()
+            val weatherMode = prefs.getAutoTriggerWeatherMode()
+            val shouldShowWeather = when (weatherMode) {
+                "APP_ALERT" -> weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..holdMs &&
+                    !prefs.getWeatherAlertSource().equals("Clima", ignoreCase = true)
+                "EVERY_UPDATE" -> {
+                    val lastFetchTs = prefs.getPhoneWeatherLastFetchMs().coerceAtLeast(weatherAlertTs)
+                    lastFetchTs > 0L && (nowMs - lastFetchTs) in 0..holdMs
+                }
+                else -> weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..holdMs
+            }
+            if (shouldShowWeather) {
+                return SyncPreferences.MODE_WEATHER
             }
         }
         val primary = prefs.getAutoPrimaryContext()

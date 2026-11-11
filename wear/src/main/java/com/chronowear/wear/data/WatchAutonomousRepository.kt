@@ -1012,8 +1012,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Avalia se a curva horária buscada pelo relógio apresenta mudança significativa de
-     * temperatura OU mudança climática (chuva, garoa, tempestade, neblina).
+     * Avalia se a previsão horária recém-buscada pelo relógio apresenta mudança real em relação
+     * à leitura anterior (variação brusca >= 3°C na temperatura atual, salto de chuva ou mudança
+     * da condição climática), sem gerar falso-positivo pela variação normal de 8 horas do dia.
      */
     fun saveStandaloneWeatherAndDetectShift(
         pickedTemps: List<Int>,
@@ -1026,23 +1027,27 @@ class WatchAutonomousRepository private constructor(context: Context) :
     ): Boolean {
         val prevTempsStr = prefs.getString("weather_temps_csv", "") ?: ""
         val prevFirstTemp = prevTempsStr.split(",").firstOrNull()?.trim()?.toIntOrNull()
+        val prevRainProb = prefs.getInt("weather_rain_prob", -1)
         val prevCondition = prefs.getString("weather_condition_label", "") ?: ""
+        val hasPreviousBaseline = prevFirstTemp != null && prevCondition.isNotBlank()
 
         val tempsCsv = pickedTemps.joinToString(",")
         val hoursCsv = pickedLabels.joinToString(",")
 
-        val minT = pickedTemps.minOrNull() ?: 22
-        val maxT = pickedTemps.maxOrNull() ?: 22
         val firstT = pickedTemps.firstOrNull() ?: 22
         val lastT = pickedTemps.lastOrNull() ?: firstT
 
-        val shiftAcrossHours = (maxT - minT) >= 3
-        val shiftFromPreviousFetch = prevFirstTemp != null && abs(firstT - prevFirstTemp) >= 2
-        val rainAlert = maxRainProbPct >= 45
-        val weatherConditionChanged = conditionShiftDetected ||
-            (prevCondition.isNotBlank() && !prevCondition.equals(weatherConditionLabel, ignoreCase = true))
+        val shiftFromPreviousFetch = hasPreviousBaseline && abs(firstT - (prevFirstTemp ?: firstT)) >= 3
+        val rainJumpFromPrevious = hasPreviousBaseline && (
+            (maxRainProbPct >= 50 && prevRainProb in 0..49) ||
+                (prevRainProb >= 0 && (maxRainProbPct - prevRainProb) >= 30 && maxRainProbPct >= 40)
+            )
+        val weatherConditionChanged = hasPreviousBaseline && (
+            conditionShiftDetected ||
+                !prevCondition.equals(weatherConditionLabel, ignoreCase = true)
+            )
 
-        val shiftDetected = shiftAcrossHours || shiftFromPreviousFetch || rainAlert || weatherConditionChanged
+        val shiftDetected = shiftFromPreviousFetch || rainJumpFromPrevious || weatherConditionChanged
 
         val updatedHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nowMs))
         val editor = prefs.edit()
@@ -1059,16 +1064,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
         if (shiftDetected) {
             val headline = when {
-                rainAlert && shiftAcrossHours ->
-                    "$weatherConditionLabel (${maxRainProbPct}%) • ${firstT}° → ${lastT}°C"
+                rainJumpFromPrevious ->
+                    "Previsão de $weatherConditionLabel (${maxRainProbPct}% chuva) • ${firstT}°C"
                 weatherConditionChanged ->
-                    "$weatherConditionLabel • ${firstT}° → ${lastT}°C (Chuva ${maxRainProbPct}%)"
-                rainAlert ->
-                    "Previsão de $weatherConditionLabel (${maxRainProbPct}%)"
-                shiftAcrossHours ->
-                    "$weatherConditionLabel • Variação ${firstT}° → ${lastT}°C"
+                    "$prevCondition → $weatherConditionLabel • ${firstT}°C (Chuva ${maxRainProbPct}%)"
+                shiftFromPreviousFetch ->
+                    "$weatherConditionLabel • Mudança ${prevFirstTemp}° → ${firstT}°C"
                 else ->
-                    "$weatherConditionLabel • Temperatura ${firstT}°C"
+                    "$weatherConditionLabel • ${firstT}° → ${lastT}°C"
             }
             editor.putString("weather_alert_source", "Clima")
             editor.putString("weather_alert_headline", headline)
@@ -1081,34 +1084,20 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return shiftDetected
     }
 
-    fun recordWatchWeatherNotificationAlert(
-        sourceAppLabel: String = "Clima",
-        headline: String,
-        tempsCsv: String? = null,
-        hoursCsv: String? = null,
-        rainProbPct: Int? = null,
-        nowMs: Long = System.currentTimeMillis()
-    ) {
-        val updatedHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nowMs))
-        val editor = prefs.edit()
-            .putString("weather_alert_source", sourceAppLabel)
-            .putString("weather_alert_headline", headline)
-            .putString("weather_updated_hhmm", updatedHHMM)
-            .putLong("weather_alert_timestamp_ms", nowMs)
-            // Prioridade máxima: cancela toque manual
-            .remove("tap_override_context_mode")
-            .putLong("tap_override_timestamp_ms", 0L)
+    fun getWeatherAlertTimestampMs(): Long {
+        return prefs.getLong("weather_alert_timestamp_ms", 0L)
+    }
 
-        if (!tempsCsv.isNullOrBlank()) {
-            editor.putString("weather_temps_csv", tempsCsv)
-        }
-        if (!hoursCsv.isNullOrBlank()) {
-            editor.putString("weather_hours_csv", hoursCsv)
-        }
-        if (rainProbPct != null) {
-            editor.putInt("weather_rain_prob", rainProbPct.coerceIn(0, 100))
-        }
-        editor.apply()
+    fun getTasksAlertTimestampMs(): Long {
+        return prefs.getLong("tasks_alert_timestamp_ms", 0L)
+    }
+
+    fun getStepsMilestoneAlertTimestampMs(): Long {
+        return prefs.getLong("steps_milestone_alert_timestamp_ms", 0L)
+    }
+
+    fun getBatteryAlertTimestampMs(): Long {
+        return prefs.getLong("battery_alert_timestamp_ms", 0L)
     }
 
     fun hasActiveWeatherNotificationOverride(

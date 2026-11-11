@@ -78,19 +78,42 @@ object AutonomousCountdownScheduler {
         }
 
         val nextEventId = upcomingThree.firstOrNull()?.id ?: ""
-        val notificationDedupKey = if (forcedMode == WatchAutonomousRepository.MODE_EVENTS) {
-            "EVENTS_15M_$nextEventId"
-        } else {
-            forcedMode
+        val calNow = Calendar.getInstance().apply { timeInMillis = nowMs }
+        val dayKey = "${calNow.get(Calendar.YEAR)}_${calNow.get(Calendar.DAY_OF_YEAR)}"
+        val curMinsOfDay = calNow.get(Calendar.HOUR_OF_DAY) * 60 + calNow.get(Calendar.MINUTE)
+
+        val notificationDedupKey = when (forcedMode) {
+            WatchAutonomousRepository.MODE_EVENTS -> "EVENTS_15M_$nextEventId"
+            WatchAutonomousRepository.MODE_WEATHER -> {
+                val weatherTs = if (repo.getAutoTriggerWeatherMode() == "EVERY_UPDATE") {
+                    maxOf(repo.getWeatherAlertTimestampMs(), repo.getLastStandaloneWeatherFetchMs())
+                } else {
+                    repo.getWeatherAlertTimestampMs()
+                }
+                "WEATHER_$weatherTs"
+            }
+            WatchAutonomousRepository.MODE_TASKS -> {
+                val tasksSnap = repo.getTasksSnapshot(nowMs)
+                val firstTaskId = tasksSnap.tasks.firstOrNull()?.id ?: ""
+                "TASKS_${dayKey}_${firstTaskId}_${repo.getTasksAlertTimestampMs()}"
+            }
+            WatchAutonomousRepository.MODE_SUN -> {
+                val sunPhase = if (curMinsOfDay < 720) "SUNRISE" else "SUNSET"
+                "SUN_${dayKey}_$sunPhase"
+            }
+            WatchAutonomousRepository.MODE_SLEEP -> {
+                val sleepPhase = if (curMinsOfDay in 240..840) "WAKE" else "BEDTIME"
+                "SLEEP_${dayKey}_$sleepPhase"
+            }
+            WatchAutonomousRepository.MODE_STEPS -> "STEPS_${dayKey}_${repo.getStepsMilestoneAlertTimestampMs()}"
+            WatchAutonomousRepository.MODE_BATTERY -> "BATTERY_${repo.getBatteryAlertTimestampMs()}"
+            else -> "${forcedMode}_$dayKey"
         }
 
         val lastMode = repo.getLastNotifiedForcedContext()
-        val lastTs = repo.getLastNotifiedForcedContextTimestampMs()
-        // Evita repetir a mesma notificação para o mesmo compromisso de 15m ou mesmo gatilho em menos de 10 minutos
-        if (notificationDedupKey == lastMode &&
-            (forcedMode == WatchAutonomousRepository.MODE_EVENTS || (nowMs - lastTs) < TimeUnit.MINUTES.toMillis(10L)) &&
-            explicitReasonOverride == null
-        ) {
+        // Dispara exatamente 1 notificação por mudança real de gatilho (ex: cada novo alerta de clima,
+        // compromisso, marco de passos ou evento solar), sem repetir a cada 10 minutos durante a retenção.
+        if (notificationDedupKey == lastMode && explicitReasonOverride == null) {
             return
         }
         repo.recordNotifiedForcedContext(notificationDedupKey, nowMs)
@@ -405,9 +428,7 @@ object AutonomousCountdownScheduler {
                             }
                         } ?: 0
 
-                        val firstCondition = mapWmoCodeToPortugueseLabel(pickedCodes.firstOrNull() ?: 0, 0)
                         val dominantCondition = mapWmoCodeToPortugueseLabel(dominantWmoCode, maxRain)
-                        val conditionShiftAcrossHours = firstCondition != dominantCondition
                         val resolvedLocationName = resolveWatchLocationName(appCtx, lat, lon)
 
                         val shiftDetected = repo.saveStandaloneWeatherAndDetectShift(
@@ -416,11 +437,11 @@ object AutonomousCountdownScheduler {
                             maxRainProbPct = maxRain,
                             weatherConditionLabel = dominantCondition,
                             locationName = resolvedLocationName,
-                            conditionShiftDetected = conditionShiftAcrossHours,
+                            conditionShiftDetected = false,
                             nowMs = nowMs
                         )
 
-                        if (shiftDetected) {
+                        if (shiftDetected || forceRefresh) {
                             notifyWatchOnForcedCanvasChangeIfNeeded(appCtx)
                         }
 

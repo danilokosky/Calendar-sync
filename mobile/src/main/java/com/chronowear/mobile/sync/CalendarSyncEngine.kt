@@ -686,9 +686,7 @@ object CalendarSyncEngine {
                         }
                     } ?: 0
 
-                    val firstCondition = mapWmoCodeToPortugueseLabel(pickedCodes.firstOrNull() ?: 0, 0)
                     val dominantCondition = mapWmoCodeToPortugueseLabel(dominantWmoCode, maxRain)
-                    val conditionShiftAcrossHours = firstCondition != dominantCondition
                     val resolvedLocationName = resolveDeviceLocationName(context, lat, lon)
 
                     shiftDetected = prefs.savePhoneFetchedWeatherAndDetectShift(
@@ -697,7 +695,7 @@ object CalendarSyncEngine {
                         rainProbPct = maxRain,
                         weatherConditionLabel = dominantCondition,
                         locationName = resolvedLocationName,
-                        conditionShiftDetected = conditionShiftAcrossHours,
+                        conditionShiftDetected = false,
                         fetchTimestampMs = nowMs
                     )
                 }
@@ -776,6 +774,14 @@ object CalendarSyncEngine {
         try {
             HealthConnectSleepReader.refreshPermissionAndReadTodaySleep(context, nowMs)
         } catch (_: Exception) {
+        }
+
+        // Verifica se a atualização periódica de clima está vencida antes de montar o payload para o relógio
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            try {
+                fetchPhoneHourlyWeatherIfNeeded(context, forceRefresh = false)
+            } catch (_: Exception) {
+            }
         }
 
         val contextMode = prefs.getContextWindowMode()
@@ -1016,12 +1022,6 @@ object CalendarSyncEngine {
         context.sendBroadcast(
             Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(context.packageName)
         )
-
-        // 2. Somente APÓS o relógio já ter sido atualizado instantaneamente, verifica em segundo plano se o clima precisa ser renovado
-        try {
-            fetchPhoneHourlyWeatherIfNeeded(context, forceRefresh = false)
-        } catch (_: Exception) {
-        }
 
         return events.size
     }

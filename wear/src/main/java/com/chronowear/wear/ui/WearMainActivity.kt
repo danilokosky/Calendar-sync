@@ -122,6 +122,7 @@ class WearMainActivity : Activity() {
             WatchAutonomousRepository.MODE_STEPS -> "Contexto: Passos"
             WatchAutonomousRepository.MODE_SUN -> "Contexto: Nascer/Pôr do Sol"
             WatchAutonomousRepository.MODE_SLEEP -> "Contexto: Sono"
+            WatchAutonomousRepository.MODE_BATTERY -> "Contexto: Bateria"
             else -> "Contexto: Auto (Dinâmico)"
         }
     }
@@ -134,7 +135,8 @@ class WearMainActivity : Activity() {
             WatchAutonomousRepository.MODE_WEATHER,
             WatchAutonomousRepository.MODE_STEPS,
             WatchAutonomousRepository.MODE_SUN,
-            WatchAutonomousRepository.MODE_SLEEP
+            WatchAutonomousRepository.MODE_SLEEP,
+            WatchAutonomousRepository.MODE_BATTERY
         )
         val cur = repo.getContextWindowMode()
         val next = order[(order.indexOf(cur) + 1) % order.size]
@@ -311,7 +313,7 @@ class WearMainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(32)
-            ).apply { bottomMargin = dp(6) }
+            ).apply { bottomMargin = dp(8) }
             setOnClickListener {
                 val next = !repo.isWatchStandaloneWeatherEnabled()
                 repo.setWatchStandaloneWeatherEnabled(next)
@@ -328,30 +330,6 @@ class WearMainActivity : Activity() {
             }
         }
         container.addView(standaloneWeatherButton)
-
-        val notifAccessBtn = Button(this).apply {
-            text = "Acesso Notificações (Clima)"
-            isAllCaps = false
-            textSize = 10.5f
-            setTextColor(Color.parseColor("#BAE6FD"))
-            background = pillBg("#141C22", "#283844", 18)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(32)
-            ).apply { bottomMargin = dp(8) }
-            setOnClickListener {
-                try {
-                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                } catch (_: Exception) {
-                    Toast.makeText(
-                        this@WearMainActivity,
-                        "Ative em Config. > Apps > Acesso Especial > Acesso a Notificações",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-        container.addView(notifAccessBtn)
 
         val syncBtn = Button(this).apply {
             text = "Atualizar Clima, Sol e Local"

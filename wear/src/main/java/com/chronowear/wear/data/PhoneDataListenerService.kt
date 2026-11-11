@@ -1,9 +1,6 @@
 package com.chronowear.wear.data
 
-import android.app.Notification
 import android.content.Intent
-import android.service.notification.NotificationListenerService
-import android.service.notification.StatusBarNotification
 import androidx.wear.tiles.TileService
 import com.chronowear.wear.complication.ChronoWearComplicationUpdater
 import com.chronowear.wear.tile.UpNextThreeEventsTileService
@@ -627,6 +624,17 @@ class PhoneDataListenerService : WearableListenerService() {
 
             sendWatchBatteryReportToPhone(replyNodeId)
 
+            if (weatherAlertTimestampMs != null &&
+                weatherAlertTimestampMs > 0L &&
+                (System.currentTimeMillis() - weatherAlertTimestampMs) < 120_000L &&
+                repo.isWatchStandaloneWeatherEnabled()
+            ) {
+                AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
+                    applicationContext,
+                    forceRefresh = true
+                )
+            }
+
             AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(applicationContext)
             AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
 
@@ -670,113 +678,5 @@ class PhoneDataListenerService : WearableListenerService() {
     companion object {
         const val ACTION_WEAR_CACHE_UPDATED = "com.chronowear.wear.ACTION_WEAR_CACHE_UPDATED"
         const val CAPABILITY_WATCH_APP_INSTALLED = "chronowear_wear_app_installed"
-    }
-}
-
-class WearContextNotificationListenerService : NotificationListenerService() {
-
-    override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        super.onNotificationPosted(sbn)
-        if (sbn == null) return
-
-        val pkg = sbn.packageName.lowercase()
-        val extras = sbn.notification?.extras ?: return
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-        val text = (
-            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
-                ?: extras.getCharSequence(Notification.EXTRA_TEXT)
-            )?.toString()?.trim().orEmpty()
-        val combined = "$title $text".lowercase()
-
-        val repo = WatchAutonomousRepository.getInstance(applicationContext)
-        val selectedPkgs = repo.getSelectedWeatherTriggerPackages()
-        val isUserSelectedWeatherTrigger = selectedPkgs.any { selected ->
-            pkg == selected || pkg.contains(selected) || selected.contains(pkg)
-        }
-
-        val hasWeatherKeywords = combined.contains("chuva") ||
-            combined.contains("temperatura") ||
-            combined.contains("previsão") ||
-            combined.contains("frente fria") ||
-            combined.contains("tempestade") ||
-            combined.contains("clima") ||
-            combined.contains("°c") ||
-            combined.contains("°")
-
-        if (isUserSelectedWeatherTrigger && hasWeatherKeywords) {
-            val sourceLabel = when {
-                pkg.contains("google") -> "App Google"
-                pkg.contains("daemonapp") || pkg.contains("samsung") -> "App Clima"
-                pkg.contains("climatempo") -> "Climatempo"
-                pkg.contains("accuweather") -> "AccuWeather"
-                else -> "Clima"
-            }
-
-            val rawSummary = when {
-                title.isNotBlank() && text.isNotBlank() -> "$title: $text"
-                title.isNotBlank() -> title
-                text.isNotBlank() -> text
-                else -> "Mudança climática detectada"
-            }
-            val headline = "$sourceLabel • $rawSummary".take(44)
-
-            repo.recordWatchWeatherNotificationAlert(
-                sourceAppLabel = sourceLabel,
-                headline = headline,
-                tempsCsv = null,
-                hoursCsv = null,
-                rainProbPct = null,
-                nowMs = System.currentTimeMillis()
-            )
-
-            if (repo.isWatchStandaloneWeatherEnabled()) {
-                AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(
-                    applicationContext,
-                    forceRefresh = true
-                )
-            }
-
-            AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(
-                applicationContext,
-                headline
-            )
-            AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
-            ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
-            applicationContext.sendBroadcast(
-                Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
-                    .setPackage(applicationContext.packageName)
-            )
-            return
-        }
-
-        // Captura lembretes e tarefas do Samsung Reminder ou Google Tasks diretamente no relógio
-        val isTaskReminderNotification = pkg.contains("com.samsung.android.app.reminder") ||
-            pkg.contains("reminder") ||
-            pkg.contains("com.google.android.apps.tasks") ||
-            pkg.contains("microsoft.todos")
-
-        if (isTaskReminderNotification && repo.isTasksSyncEnabled()) {
-            val sourceLabel = if (pkg.contains("reminder") || pkg.contains("samsung")) {
-                "Reminder"
-            } else {
-                "Tasks"
-            }
-            val taskTitle = title.ifBlank { text }.ifBlank { "Lembrete agendado" }
-            repo.recordWatchTaskNotification(
-                title = taskTitle,
-                sourceLabel = sourceLabel,
-                nowMs = System.currentTimeMillis()
-            )
-            AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(
-                applicationContext,
-                "$sourceLabel: $taskTitle"
-            )
-            AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
-            ChronoWearComplicationUpdater.requestUpdateAllSlots(applicationContext)
-            applicationContext.sendBroadcast(
-                Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
-                    .setPackage(applicationContext.packageName)
-            )
-        }
     }
 }
