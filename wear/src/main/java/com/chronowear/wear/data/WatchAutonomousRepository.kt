@@ -149,6 +149,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
     fun replaceHorizonCache(
         eventsJson: String,
         syncTimestampMs: Long,
+        syncIntervalMinutes: Int? = null,
         horizonDays: Int,
         progressWindowMinutes: Int,
         cardPngBase64: String? = null,
@@ -163,6 +164,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         autoSleepExposureMin: Int? = null,
         highFreq15MinRule: Boolean? = null,
         updateOnScreenWake: Boolean? = null,
+        updateOnCanvasTap: Boolean? = null,
         weatherTempsCsv: String? = null,
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
@@ -219,6 +221,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             .putLong("last_sync_ms", syncTimestampMs)
             .putInt("horizon_days", horizonDays)
             .putInt("progress_window_minutes", progressWindowMinutes)
+        if (syncIntervalMinutes != null && syncIntervalMinutes >= 15) {
+            editor.putInt("sync_interval_minutes", syncIntervalMinutes.coerceIn(15, 120))
+        }
         if (!cardPngBase64.isNullOrBlank()) {
             editor.putString("phone_rendered_card_png_b64", cardPngBase64)
             editor.putLong("phone_rendered_card_ms", syncTimestampMs)
@@ -231,10 +236,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
             if (autoPrimaryContext != prevAutoPrimary) focusChangedFromPhone = true
             editor.putString("auto_primary_context", autoPrimaryContext)
         }
-        // Sempre que o smartphone sincroniza, limpa qualquer override antigo de toque manual no relógio
-        editor.remove("tap_override_context_mode")
-        editor.putLong("tap_override_timestamp_ms", 0L)
         if (focusChangedFromPhone) {
+            // Somente limpa o toque manual no relógio quando o usuário muda explicitamente o foco pelo smartphone
+            editor.remove("tap_override_context_mode")
+            editor.putLong("tap_override_timestamp_ms", 0L)
             editor.putLong("phone_focus_change_timestamp_ms", syncTimestampMs)
             editor.putLong("weather_alert_timestamp_ms", 0L)
             editor.putLong("tasks_alert_timestamp_ms", 0L)
@@ -264,6 +269,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (updateOnScreenWake != null) {
             editor.putBoolean("update_on_screen_wake", updateOnScreenWake)
+        }
+        if (updateOnCanvasTap != null) {
+            editor.putBoolean("update_on_canvas_tap", updateOnCanvasTap)
         }
         val unifiedWatchStandaloneLocation = watchStandaloneWeatherEnabled ?: watchStandaloneSolarEnabled
         if (unifiedWatchStandaloneLocation != null) {
@@ -395,14 +403,23 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (!tasksJson.isNullOrBlank()) {
             editor.putString("cached_tasks_json", tasksJson)
+            if (tasksJson.trim() == "[]") {
+                editor.putLong("tasks_alert_timestamp_ms", 0L)
+            }
         }
-        if (tasksAlertTimestampMs != null && tasksAlertTimestampMs > 0L) {
-            val currentTaskTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
-            if (tasksAlertTimestampMs > currentTaskTs) {
-                editor.putLong("tasks_alert_timestamp_ms", tasksAlertTimestampMs)
-                // Alerta de Tarefa (Samsung Reminder / Google Tasks) tem prioridade máxima
-                editor.remove("tap_override_context_mode")
-                editor.putLong("tap_override_timestamp_ms", 0L)
+        if (tasksAlertTimestampMs != null) {
+            if (tasksAlertTimestampMs <= 0L) {
+                if (tasksJson?.trim() == "[]") {
+                    editor.putLong("tasks_alert_timestamp_ms", 0L)
+                }
+            } else {
+                val currentTaskTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
+                if (tasksAlertTimestampMs > currentTaskTs) {
+                    editor.putLong("tasks_alert_timestamp_ms", tasksAlertTimestampMs)
+                    // Alerta de nova Tarefa tem prioridade máxima
+                    editor.remove("tap_override_context_mode")
+                    editor.putLong("tap_override_timestamp_ms", 0L)
+                }
             }
         }
         if (autoFallbackAgendaToTasks != null) {
@@ -905,6 +922,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
         prefs.edit().putBoolean("update_on_screen_wake", enabled).commit()
     }
 
+    fun isUpdateOnCanvasTapEnabled(): Boolean {
+        return prefs.getBoolean("update_on_canvas_tap", true)
+    }
+
+    fun setUpdateOnCanvasTapEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("update_on_canvas_tap", enabled).commit()
+    }
+
     fun isWatchStandaloneWeatherEnabled(): Boolean {
         return prefs.getBoolean(
             "watch_standalone_weather_enabled",
@@ -921,6 +946,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     fun getWatchStandaloneWeatherIntervalMinutes(): Int {
         return prefs.getInt("watch_standalone_weather_interval_min", 60).coerceAtLeast(15)
+    }
+
+    fun getUniversalSyncIntervalMinutes(): Int {
+        return prefs.getInt("sync_interval_minutes", 15).coerceIn(15, 120)
     }
 
     fun setWatchStandaloneWeatherIntervalMinutes(minutes: Int) {
@@ -1600,19 +1629,18 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val unifiedHoldMin = getUnifiedCanvasHoldMinutes().toLong()
         val tapOverride = getActiveTapOverrideMode(nowMs, unifiedHoldMin)
         val tapTs: Long = prefs.getLong("tap_override_timestamp_ms", 0L)
-        val lastSyncMs: Long = getLastSyncTimestampMs()
+        val phoneFocusChangeTs = prefs.getLong("phone_focus_change_timestamp_ms", 0L)
 
         // 1. Se o usuário escolheu um MODO FIXO no smartphone (ex: TASKS, WEATHER, SUN, STEPS, SLEEP, EVENTS),
-        //    reflete IMEDIATAMENTE no relógio (exceto se o usuário tocou na tela do relógio após a última sincronização).
+        //    reflete IMEDIATAMENTE no relógio (exceto se o usuário tocou na tela do relógio após a mudança de foco no telefone).
         val configuredMode = getContextWindowMode()
         if (configuredMode != MODE_DYNAMIC) {
-            if (tapOverride != null && tapTs > lastSyncMs) {
+            if (tapOverride != null && tapTs > phoneFocusChangeTs) {
                 return tapOverride
             }
             return configuredMode
         }
 
-        val phoneFocusChangeTs = prefs.getLong("phone_focus_change_timestamp_ms", 0L)
         val recentPhoneFocusChange = phoneFocusChangeTs > 0L &&
             (nowMs - phoneFocusChangeTs) in 0..TimeUnit.MINUTES.toMillis(unifiedHoldMin)
 
@@ -1639,7 +1667,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
 
         // 3. Se o usuário tocou no Canvas na Watch Face dentro do tempo unificado configurado
-        if (tapOverride != null && tapTs > lastSyncMs) {
+        if (tapOverride != null && tapTs > phoneFocusChangeTs) {
             return tapOverride
         }
 

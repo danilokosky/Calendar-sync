@@ -34,7 +34,11 @@ class CalendarSyncWorker(
     companion object {
         private const val UNIQUE_WORK_NAME = "ChronoWearPeriodicCalendarSync"
 
-        fun schedulePeriodicSync(context: Context, intervalMinutes: Long) {
+        fun schedulePeriodicSync(
+            context: Context,
+            intervalMinutes: Long,
+            forceUpdate: Boolean = false
+        ) {
             val prefs = SyncPreferences(context)
             if (!prefs.isBackgroundServiceEnabled()) {
                 cancelPeriodicSync(context)
@@ -48,9 +52,15 @@ class CalendarSyncWorker(
                 .setInputData(workDataOf("source" to "Leitura Periódica (${intervalMinutes}m)"))
                 .build()
 
+            val policy = if (forceUpdate) {
+                ExistingPeriodicWorkPolicy.UPDATE
+            } else {
+                ExistingPeriodicWorkPolicy.KEEP
+            }
+
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_WORK_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
+                policy,
                 request
             )
         }

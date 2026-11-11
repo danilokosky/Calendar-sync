@@ -42,6 +42,9 @@ class PhoneDataListenerService : WearableListenerService() {
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
                 val eventsJson = dataMap.getString("events_json") ?: "[]"
                 val syncTimestampMs = dataMap.getLong("sync_timestamp_ms")
+                val syncIntervalMinutes = if (dataMap.containsKey("sync_interval_minutes")) {
+                    dataMap.getInt("sync_interval_minutes", 15)
+                } else null
                 val horizonDays = dataMap.getInt("horizon_days", 5)
                 val progressWindowMinutes = dataMap.getInt("progress_window_minutes", 60)
                 val cardPngB64 = dataMap.getString("card_png_b64")
@@ -73,6 +76,9 @@ class PhoneDataListenerService : WearableListenerService() {
                 } else null
                 val updateOnWake = if (dataMap.containsKey("update_on_screen_wake")) {
                     dataMap.getBoolean("update_on_screen_wake", true)
+                } else null
+                val updateOnTap = if (dataMap.containsKey("update_on_canvas_tap")) {
+                    dataMap.getBoolean("update_on_canvas_tap", true)
                 } else null
                 val weatherTempsCsv = dataMap.getString("weather_temps_csv")
                 val weatherHoursCsv = dataMap.getString("weather_hours_csv")
@@ -183,6 +189,7 @@ class PhoneDataListenerService : WearableListenerService() {
                 persistAndNotify(
                     eventsJson = eventsJson,
                     syncTimestampMs = syncTimestampMs,
+                    syncIntervalMinutes = syncIntervalMinutes,
                     horizonDays = horizonDays,
                     progressWindowMinutes = progressWindowMinutes,
                     cardPngBase64 = cardPngB64,
@@ -197,6 +204,7 @@ class PhoneDataListenerService : WearableListenerService() {
                     autoSleepExposureMin = autoSleepExpMin,
                     highFreq15MinRule = highFreq15Min,
                     updateOnScreenWake = updateOnWake,
+                    updateOnCanvasTap = updateOnTap,
                     weatherTempsCsv = weatherTempsCsv,
                     weatherHoursCsv = weatherHoursCsv,
                     weatherRainProb = weatherRainProb,
@@ -277,6 +285,9 @@ class PhoneDataListenerService : WearableListenerService() {
                     val json = JSONObject(payloadStr)
                     val eventsArray = json.optJSONArray("events")?.toString() ?: "[]"
                     val syncTimestampMs = json.optLong("sync_timestamp_ms", System.currentTimeMillis())
+                    val syncIntervalMinutes = if (json.has("sync_interval_minutes")) {
+                        json.optInt("sync_interval_minutes", 15)
+                    } else null
                     val horizonDays = json.optInt("horizon_days", 5)
                     val progressWindowMinutes = json.optInt("progress_window_minutes", 60)
                     val cardPngB64 = json.optString("card_png_b64", "").takeIf { it.isNotBlank() }
@@ -308,6 +319,9 @@ class PhoneDataListenerService : WearableListenerService() {
                     } else null
                     val updateOnWake = if (json.has("update_on_screen_wake")) {
                         json.optBoolean("update_on_screen_wake", true)
+                    } else null
+                    val updateOnTap = if (json.has("update_on_canvas_tap")) {
+                        json.optBoolean("update_on_canvas_tap", true)
                     } else null
                     val weatherTempsCsv = json.optString("weather_temps_csv", "").takeIf { it.isNotBlank() }
                     val weatherHoursCsv = json.optString("weather_hours_csv", "").takeIf { it.isNotBlank() }
@@ -419,6 +433,7 @@ class PhoneDataListenerService : WearableListenerService() {
                     persistAndNotify(
                         eventsJson = eventsArray,
                         syncTimestampMs = syncTimestampMs,
+                        syncIntervalMinutes = syncIntervalMinutes,
                         horizonDays = horizonDays,
                         progressWindowMinutes = progressWindowMinutes,
                         cardPngBase64 = cardPngB64,
@@ -433,6 +448,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         autoSleepExposureMin = autoSleepExpMin,
                         highFreq15MinRule = highFreq15Min,
                         updateOnScreenWake = updateOnWake,
+                        updateOnCanvasTap = updateOnTap,
                         weatherTempsCsv = weatherTempsCsv,
                         weatherHoursCsv = weatherHoursCsv,
                         weatherRainProb = weatherRainProb,
@@ -491,6 +507,7 @@ class PhoneDataListenerService : WearableListenerService() {
     private fun persistAndNotify(
         eventsJson: String,
         syncTimestampMs: Long,
+        syncIntervalMinutes: Int? = null,
         horizonDays: Int,
         progressWindowMinutes: Int,
         cardPngBase64: String? = null,
@@ -505,6 +522,7 @@ class PhoneDataListenerService : WearableListenerService() {
         autoSleepExposureMin: Int? = null,
         highFreq15MinRule: Boolean? = null,
         updateOnScreenWake: Boolean? = null,
+        updateOnCanvasTap: Boolean? = null,
         weatherTempsCsv: String? = null,
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
@@ -559,6 +577,7 @@ class PhoneDataListenerService : WearableListenerService() {
             repo.replaceHorizonCache(
                 eventsJson = eventsJson,
                 syncTimestampMs = syncTimestampMs,
+                syncIntervalMinutes = syncIntervalMinutes,
                 horizonDays = horizonDays,
                 progressWindowMinutes = progressWindowMinutes,
                 cardPngBase64 = cardPngBase64,
@@ -573,6 +592,7 @@ class PhoneDataListenerService : WearableListenerService() {
                 autoSleepExposureMin = autoSleepExposureMin,
                 highFreq15MinRule = highFreq15MinRule,
                 updateOnScreenWake = updateOnScreenWake,
+                updateOnCanvasTap = updateOnCanvasTap,
                 weatherTempsCsv = weatherTempsCsv,
                 weatherHoursCsv = weatherHoursCsv,
                 weatherRainProb = weatherRainProb,

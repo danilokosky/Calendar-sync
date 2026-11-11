@@ -813,6 +813,7 @@ object CalendarSyncEngine {
         val tasksAlertTsMs = prefs.getTasksAlertTimestampMs()
         val highFreq15Min = prefs.isHighFreq15MinRuleEnabled()
         val updateOnWake = prefs.isUpdateOnScreenWakeEnabled()
+        val updateOnTap = prefs.isUpdateOnCanvasTapEnabled()
 
         val weatherTempsCsv = prefs.getPhoneWeatherTempsCsv()
         val weatherHoursCsv = prefs.getPhoneWeatherHoursCsv()
@@ -843,10 +844,12 @@ object CalendarSyncEngine {
         val autoTriggerBatteryEnabled = prefs.isAutoTriggerBatteryEnabled()
         val autoTriggerBatteryMode = prefs.getAutoTriggerBatteryMode()
         val batteryGraphWindowHours = prefs.getBatteryGraphWindowHours()
+        val syncIntervalMinutes = prefs.getSyncIntervalMinutes().toInt().coerceIn(15, 120)
 
         val payloadJson = JSONObject().apply {
             put("events", jsonArray)
             put("sync_timestamp_ms", nowMs)
+            put("sync_interval_minutes", syncIntervalMinutes)
             put("horizon_days", horizonDays)
             put("progress_window_minutes", progressWindowMinutes)
             put("context_window_mode", contextMode)
@@ -890,6 +893,7 @@ object CalendarSyncEngine {
             put("tasks_alert_timestamp_ms", tasksAlertTsMs)
             put("high_freq_15min_rule", highFreq15Min)
             put("update_on_screen_wake", updateOnWake)
+            put("update_on_canvas_tap", updateOnTap)
             put("weather_temps_csv", weatherTempsCsv)
             put("weather_hours_csv", weatherHoursCsv)
             put("weather_rain_prob", weatherRainProb)
@@ -930,6 +934,7 @@ object CalendarSyncEngine {
             val putDataMapReq = PutDataMapRequest.create(DATA_LAYER_PATH).apply {
                 dataMap.putString("events_json", jsonArray.toString())
                 dataMap.putLong("sync_timestamp_ms", nowMs)
+                dataMap.putInt("sync_interval_minutes", syncIntervalMinutes)
                 dataMap.putInt("horizon_days", horizonDays)
                 dataMap.putInt("progress_window_minutes", progressWindowMinutes)
                 dataMap.putString("context_window_mode", contextMode)
@@ -973,6 +978,7 @@ object CalendarSyncEngine {
                 dataMap.putLong("tasks_alert_timestamp_ms", tasksAlertTsMs)
                 dataMap.putBoolean("high_freq_15min_rule", highFreq15Min)
                 dataMap.putBoolean("update_on_screen_wake", updateOnWake)
+                dataMap.putBoolean("update_on_canvas_tap", updateOnTap)
                 dataMap.putString("weather_temps_csv", weatherTempsCsv)
                 dataMap.putString("weather_hours_csv", weatherHoursCsv)
                 dataMap.putInt("weather_rain_prob", weatherRainProb)

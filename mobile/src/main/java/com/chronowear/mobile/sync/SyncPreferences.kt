@@ -917,11 +917,18 @@ class SyncPreferences(context: Context) {
     }
 
     fun saveTasksJson(tasksJson: String, alertTimestampMs: Long = 0L) {
-        val editor = prefs.edit().putString(KEY_TASKS_JSON, tasksJson.ifBlank { "[]" })
-        if (alertTimestampMs > 0L) {
+        val cleanJson = tasksJson.ifBlank { "[]" }
+        val editor = prefs.edit().putString(KEY_TASKS_JSON, cleanJson)
+        if (cleanJson == "[]") {
+            editor.putLong(KEY_TASKS_ALERT_TS_MS, 0L)
+        } else if (alertTimestampMs > 0L) {
             editor.putLong(KEY_TASKS_ALERT_TS_MS, alertTimestampMs)
         }
         editor.commit()
+    }
+
+    fun getLastSyncTimestampMs(): Long {
+        return prefs.getLong(KEY_LAST_SYNC_MS, 0L)
     }
 
     fun saveMobileTaskItems(items: List<MobileTaskItem>, alertTimestampMs: Long = 0L) {
@@ -971,6 +978,14 @@ class SyncPreferences(context: Context) {
 
     fun setUpdateOnScreenWakeEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_UPDATE_ON_SCREEN_WAKE, enabled).commit()
+    }
+
+    fun isUpdateOnCanvasTapEnabled(): Boolean {
+        return prefs.getBoolean(KEY_UPDATE_ON_CANVAS_TAP, true)
+    }
+
+    fun setUpdateOnCanvasTapEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_UPDATE_ON_CANVAS_TAP, enabled).commit()
     }
 
     /**
@@ -1346,6 +1361,7 @@ class SyncPreferences(context: Context) {
             {"id":"t5","title":"Organizar documentos da contabilidade","dueHHMM":"","sourceLabel":"Tasks","completed":false,"isTodayOrTimeless":true,"scheduleCategory":"UNDATED","isOverdue":false}
         ]"""
         private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"
+        private const val KEY_UPDATE_ON_CANVAS_TAP = "update_on_canvas_tap"
         private const val KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED = "phone_weather_auto_check_enabled"
         private const val KEY_PHONE_WEATHER_CHECK_INTERVAL_MIN = "phone_weather_check_interval_min"
         private const val KEY_SELECTED_WEATHER_TRIGGER_PKGS = "selected_weather_trigger_pkgs"

@@ -139,6 +139,7 @@ class MobileSyncConfigActivity : Activity() {
     private lateinit var switchSleepShowScore: Switch
     private lateinit var switchHighFreq15Min: Switch
     private lateinit var switchUpdateOnWake: Switch
+    private lateinit var switchUpdateOnTap: Switch
     private lateinit var switchDaemonService: Switch
     private lateinit var switchAutoTriggerAgendaTasks: Switch
     private lateinit var switchAutoTriggerSteps: Switch
@@ -222,6 +223,10 @@ class MobileSyncConfigActivity : Activity() {
         }
 
         ensureDefaultCalendarsSelectedIfPermitted()
+        if (prefs.isBackgroundServiceEnabled()) {
+            CalendarSyncForegroundService.ensureRunning(this)
+            CalendarSyncWorker.schedulePeriodicSync(this, prefs.getSyncIntervalMinutes(), forceUpdate = false)
+        }
         refreshUiState(checkRemoteConnection = true)
     }
 
@@ -231,6 +236,9 @@ class MobileSyncConfigActivity : Activity() {
         if (!GoogleTasksApiClient.isInteractiveConsentInProgress) {
             clockHandler.post(liveClockRunnable)
             ensureDefaultCalendarsSelectedIfPermitted()
+            if (prefs.isBackgroundServiceEnabled()) {
+                CalendarSyncForegroundService.ensureRunning(this)
+            }
             refreshUiState(checkRemoteConnection = true)
         }
     }
@@ -1002,10 +1010,11 @@ class MobileSyncConfigActivity : Activity() {
             )
         }
 
-        // Card 1: Modo do Canvas e Prioridade Automática
-        val modeCard = createSectionCard(
-            "MODO DO CANVAS NO RELÓGIO",
-            "Escolha se o mostrador gira no Automático ou fica fixo em um contexto"
+        // Card 1: Modo do Canvas e Prioridade Automática (Submenu Engavetado)
+        val modeCard = createCollapsibleSettingsCard(
+            parentCol = col,
+            title = "MODO DO CANVAS NO RELÓGIO",
+            subtitle = "Modo de operação, intervalo universal de atualização periódica e atualização ao tocar/ligar a tela"
         )
 
         val modeOptions = listOf(
@@ -1069,6 +1078,32 @@ class MobileSyncConfigActivity : Activity() {
         )
 
         modeCard.addView(
+            createSubLabel("Intervalo universal de atualização periódica (Agenda, Tarefas, Clima, Sono e Passos):")
+        )
+        val syncIntervalOpts = listOf(15 to "15 min", 30 to "30 min", 60 to "1 hora", 120 to "2 horas")
+        modeCard.addView(
+            buildStaticChipGrid(
+                options = syncIntervalOpts,
+                buttonStore = syncIntervalChipButtons
+            ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setSyncIntervalMinutes(mins.toLong())
+                prefs.setPhoneWeatherCheckIntervalMinutes(mins)
+                prefs.setWatchStandaloneWeatherIntervalMinutes(mins)
+                CalendarSyncWorker.schedulePeriodicSync(this, mins.toLong(), forceUpdate = true)
+                if (prefs.isBackgroundServiceEnabled()) {
+                    CalendarSyncForegroundService.startOrUpdate(this, "Intervalo Periódico Universal: ${mins}m")
+                }
+                updateAllChipSelectionsInPlace()
+                triggerBackgroundSync("Intervalo Periódico Universal: ${mins}m")
+            }
+        )
+
+        modeCard.addView(
             createSubLabel("Tempo de retenção de alertas temporários:")
         )
         val holdOptions = listOf(5 to "5 min", 10 to "10 min", 15 to "15 min", 30 to "30 min")
@@ -1088,6 +1123,24 @@ class MobileSyncConfigActivity : Activity() {
             }
         )
 
+        switchUpdateOnTap = createResponsiveSettingToggleRow(
+            parent = modeCard,
+            title = "Atualizar ao tocar e trocar o Canvas",
+            subtitle = "Solicita sincronização imediata ao alternar manualmente entre qualquer Canvas no relógio"
+        ) { checked ->
+            prefs.setUpdateOnCanvasTapEnabled(checked)
+            triggerBackgroundSync("Toggle Atualizar ao Tocar no Canvas: $checked")
+        }
+
+        switchUpdateOnWake = createResponsiveSettingToggleRow(
+            parent = modeCard,
+            title = "Atualizar ao ligar a tela do relógio",
+            subtitle = "Solicita atualização ao smartphone e recalcula os timers ao acender a tela"
+        ) { checked ->
+            prefs.setUpdateOnScreenWakeEnabled(checked)
+            triggerBackgroundSync("Toggle Atualizar ao Ligar a Tela: $checked")
+        }
+
         switchAutoFallbackTasks = createResponsiveSettingToggleRow(
             parent = modeCard,
             title = "Priorizar Tarefas se Agenda de Hoje estiver vazia",
@@ -1098,12 +1151,11 @@ class MobileSyncConfigActivity : Activity() {
             triggerBackgroundSync("Fallback Agenda->Tarefas")
         }
 
-        col.addView(modeCard)
-
-        // Card 1B: GATILHOS DO MODO AUTOMÁTICO (Formato A — Centralizado)
-        val autoTriggersCard = createSectionCard(
-            "GATILHOS DO MODO AUTOMÁTICO",
-            "Personalize como e quando cada Canvas assume a tela automaticamente"
+        // Card 1B: GATILHOS DO MODO AUTOMÁTICO (Submenu Engavetado)
+        val autoTriggersCard = createCollapsibleSettingsCard(
+            parentCol = col,
+            title = "GATILHOS DO MODO AUTOMÁTICO",
+            subtitle = "Personalize como e quando cada Canvas assume a tela automaticamente"
         )
 
         // 1. Agenda & Tarefas (Unificados)
@@ -1306,12 +1358,11 @@ class MobileSyncConfigActivity : Activity() {
             }
         )
 
-        col.addView(autoTriggersCard)
-
-        // Card 2: Notificações do Relógio e Alerta de 15 Minutos
-        val notifCard = createSectionCard(
-            "NOTIFICAÇÕES NO RELÓGIO",
-            "Avisos vibratórios na troca de Canvas e antes dos compromissos"
+        // Card 2: Notificações do Relógio e Alerta de 15 Minutos (Submenu Engavetado)
+        val notifCard = createCollapsibleSettingsCard(
+            parentCol = col,
+            title = "NOTIFICAÇÕES NO RELÓGIO",
+            subtitle = "Avisos vibratórios na troca de Canvas e antes dos compromissos"
         )
 
         switchNotifyOnCanvasChange = createResponsiveSettingToggleRow(
@@ -1332,12 +1383,11 @@ class MobileSyncConfigActivity : Activity() {
             triggerBackgroundSync("Alerta 15 min Agenda")
         }
 
-        col.addView(notifCard)
-
-        // Card 3: Sincronização de Agenda e Tarefas
-        val agendaTasksCard = createSectionCard(
-            "AGENDA & TAREFAS",
-            "Sincronização de calendários e tarefas pendentes"
+        // Card 3: Sincronização de Agenda e Tarefas (Submenu Engavetado)
+        val agendaTasksCard = createCollapsibleSettingsCard(
+            parentCol = col,
+            title = "AGENDA & TAREFAS",
+            subtitle = "Sincronização de calendários e tarefas pendentes"
         )
 
         switchCalendarEvents = createResponsiveSettingToggleRow(
@@ -1411,28 +1461,6 @@ class MobileSyncConfigActivity : Activity() {
         }
         agendaTasksCard.addView(syncGoogleTasksNowBtn)
 
-        agendaTasksCard.addView(createSubLabel("Atualização periódica geral (economia de bateria):"))
-        val syncIntervalOpts = listOf(15 to "15 min", 30 to "30 min", 60 to "1 hora", 120 to "2 horas")
-        agendaTasksCard.addView(
-            buildStaticChipGrid(
-                options = syncIntervalOpts,
-                buttonStore = syncIntervalChipButtons
-            ) { mins ->
-                if (!isAppUnlockedForCustomization()) {
-                    showLockedCustomizationToast()
-                    return@buildStaticChipGrid
-                }
-                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
-                prefs.setSyncIntervalMinutes(mins.toLong())
-                CalendarSyncWorker.schedulePeriodicSync(this, mins.toLong())
-                if (prefs.isBackgroundServiceEnabled()) {
-                    CalendarSyncForegroundService.startOrUpdate(this, "Intervalo Periódico: ${mins}m")
-                }
-                updateAllChipSelectionsInPlace()
-                triggerBackgroundSync("Intervalo Periódico: ${mins}m")
-            }
-        )
-
         agendaTasksCard.addView(createSubLabel("Horizonte de sincronização:"))
         val horizonOpts = listOf(1 to "24 horas", 2 to "2 dias", 3 to "3 dias", 7 to "7 dias")
         agendaTasksCard.addView(
@@ -1477,12 +1505,11 @@ class MobileSyncConfigActivity : Activity() {
         }
         agendaTasksCard.addView(calendarsCheckboxContainer)
 
-        col.addView(agendaTasksCard)
-
-        // Card 4: Localização Unificada (Clima + Nascer/Pôr do Sol)
-        val weatherSunCard = createSectionCard(
-            "CLIMA & SOL",
-            "Localização unificada para Clima e Pôr do Sol"
+        // Card 4: Localização Unificada (Clima + Nascer/Pôr do Sol) (Submenu Engavetado)
+        val weatherSunCard = createCollapsibleSettingsCard(
+            parentCol = col,
+            title = "CLIMA & SOL",
+            subtitle = "Localização unificada para Clima e Pôr do Sol"
         )
 
         switchUnifiedWeatherSolar = createResponsiveSettingToggleRow(
@@ -1569,12 +1596,11 @@ class MobileSyncConfigActivity : Activity() {
             }
         )
 
-        col.addView(weatherSunCard)
-
-        // Card 5: Sono do Dia, Bateria do Relógio e Serviço em Segundo Plano
-        val sleepSystemCard = createSectionCard(
-            "SONO, BATERIA & SISTEMA",
-            "Sincronização de sono, janela do gráfico de bateria do relógio e serviço em segundo plano"
+        // Card 5: Sono do Dia, Bateria do Relógio e Serviço em Segundo Plano (Submenu Engavetado)
+        val sleepSystemCard = createCollapsibleSettingsCard(
+            parentCol = col,
+            title = "SONO, BATERIA & SISTEMA",
+            subtitle = "Sincronização de sono, janela do gráfico de bateria do relógio e serviço em segundo plano"
         )
 
         switchSleepSync = createResponsiveSettingToggleRow(
@@ -1621,15 +1647,6 @@ class MobileSyncConfigActivity : Activity() {
             }
         )
 
-        switchUpdateOnWake = createResponsiveSettingToggleRow(
-            parent = sleepSystemCard,
-            title = "Atualizar mostrador ao ligar a tela",
-            subtitle = "Recalcula timers e expira eventos passados instantaneamente"
-        ) { checked ->
-            prefs.setUpdateOnScreenWakeEnabled(checked)
-            triggerBackgroundSync("Toggle Update On Wake")
-        }
-
         switchDaemonService = createResponsiveSettingToggleRow(
             parent = sleepSystemCard,
             title = "Serviço Contínuo em Segundo Plano",
@@ -1647,7 +1664,6 @@ class MobileSyncConfigActivity : Activity() {
             refreshProtectionLockOverlays()
         }
 
-        col.addView(sleepSystemCard)
         rootFrame.addView(col)
 
         // Camada fina escura de proteção apenas sobre as configurações quando bloqueado (sem caixas de texto gigantes)
@@ -1872,7 +1888,10 @@ class MobileSyncConfigActivity : Activity() {
                     refreshGoogleTasksAccountSummary()
                     virtualWatchView.invalidate()
                     refreshWidgetsGridInPlace()
-                    if (latestTasksJson != prevTasksJson) {
+                    if (
+                        latestTasksJson != prevTasksJson ||
+                        (System.currentTimeMillis() - prefs.getLastSyncTimestampMs()) >= 30_000L
+                    ) {
                         triggerBackgroundSync("Tarefas atualizadas via Google Tasks API")
                     }
                 }
@@ -1908,6 +1927,7 @@ class MobileSyncConfigActivity : Activity() {
             switchSleepShowScore.isChecked = prefs.isSleepScoreVisible()
             switchHighFreq15Min.isChecked = prefs.isHighFreq15MinRuleEnabled()
             switchUpdateOnWake.isChecked = prefs.isUpdateOnScreenWakeEnabled()
+            switchUpdateOnTap.isChecked = prefs.isUpdateOnCanvasTapEnabled()
             switchDaemonService.isChecked = prefs.isBackgroundServiceEnabled()
             switchAutoTriggerAgendaTasks.isChecked = prefs.isAutoTriggerAgendaTasksEnabled()
             switchAutoTriggerSteps.isChecked = prefs.isAutoTriggerStepsEnabled()
@@ -4518,6 +4538,138 @@ class MobileSyncConfigActivity : Activity() {
         if (!initial) {
             refreshUiState(checkRemoteConnection = true)
         }
+    }
+
+    private fun createCollapsibleSettingsCard(
+        parentCol: LinearLayout,
+        title: String,
+        subtitle: String,
+        defaultExpanded: Boolean = false
+    ): LinearLayout {
+        val outerCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedRect(
+                bgHex = "#0B0F17",
+                borderHex = if (defaultExpanded) "#F5C438" else "#1B2434",
+                radiusDp = 20
+            )
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.bottomMargin = dp(10)
+            layoutParams = lp
+        }
+
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val textCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                rightMargin = dp(10)
+            }
+        }
+        textCol.addView(
+            TextView(this).apply {
+                text = title
+                setTextColor(Color.parseColor("#F5C438"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                letterSpacing = 0.05f
+            }
+        )
+        textCol.addView(
+            TextView(this).apply {
+                text = subtitle
+                setTextColor(Color.parseColor("#94A3B8"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                val subLp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                subLp.topMargin = dp(2)
+                layoutParams = subLp
+            }
+        )
+        headerRow.addView(textCol)
+
+        val actionBadge = TextView(this).apply {
+            text = if (defaultExpanded) "▾ Fechar" else "▸ Abrir"
+            setTextColor(Color.parseColor(if (defaultExpanded) "#F5C438" else "#E2E8F0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            background = roundedRect(
+                bgHex = if (defaultExpanded) "#241E0C" else "#131C2B",
+                borderHex = if (defaultExpanded) "#F5C438" else "#2A3A52",
+                radiusDp = 999
+            )
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        headerRow.addView(actionBadge)
+
+        val dividerView = View(this).apply {
+            setBackgroundColor(Color.parseColor("#1E293B"))
+            visibility = if (defaultExpanded) View.VISIBLE else View.GONE
+            val divLp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1)
+            )
+            divLp.topMargin = dp(10)
+            divLp.bottomMargin = dp(6)
+            layoutParams = divLp
+        }
+
+        val bodyContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (defaultExpanded) View.VISIBLE else View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        headerRow.setOnClickListener {
+            if (!isAppUnlockedForCustomization()) {
+                showLockedCustomizationToast()
+                return@setOnClickListener
+            }
+            val willExpand = bodyContainer.visibility != View.VISIBLE
+            bodyContainer.visibility = if (willExpand) View.VISIBLE else View.GONE
+            dividerView.visibility = if (willExpand) View.VISIBLE else View.GONE
+            actionBadge.text = if (willExpand) "▾ Fechar" else "▸ Abrir"
+            actionBadge.setTextColor(Color.parseColor(if (willExpand) "#F5C438" else "#E2E8F0"))
+            actionBadge.background = roundedRect(
+                bgHex = if (willExpand) "#241E0C" else "#131C2B",
+                borderHex = if (willExpand) "#F5C438" else "#2A3A52",
+                radiusDp = 999
+            )
+            outerCard.background = roundedRect(
+                bgHex = "#0B0F17",
+                borderHex = if (willExpand) "#F5C438" else "#1B2434",
+                radiusDp = 20
+            )
+        }
+
+        outerCard.addView(headerRow)
+        outerCard.addView(dividerView)
+        outerCard.addView(bodyContainer)
+        parentCol.addView(outerCard)
+        return bodyContainer
     }
 
     private fun createSectionCard(title: String, subtitle: String): LinearLayout {

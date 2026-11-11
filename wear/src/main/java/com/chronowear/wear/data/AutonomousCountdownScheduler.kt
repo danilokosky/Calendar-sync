@@ -19,10 +19,12 @@ import com.chronowear.wear.R
 import com.chronowear.wear.complication.ChronoWearComplicationUpdater
 import com.chronowear.wear.tile.UpNextThreeEventsTileService
 import com.chronowear.wear.ui.WearMainActivity
+import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -45,6 +47,54 @@ object AutonomousCountdownScheduler {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var screenWakeReceiverRegistered = false
     private var lastScreenWakeUpdateMs = 0L
+    @Volatile
+    private var lastPhoneSyncRequestMs = 0L
+
+    /**
+     * Solicita imediatamente ao smartphone conectado uma sincronização completa
+     * (`/chronowear/request_sync_from_watch`) ao tocar para alternar qualquer Canvas
+     * ou ao acender a tela do relógio (quando as respectivas opções estiverem ativadas).
+     */
+    fun requestPhoneSyncNow(context: Context, minThrottleMs: Long = 5_000L) {
+        val nowMs = System.currentTimeMillis()
+        if ((nowMs - lastPhoneSyncRequestMs) < minThrottleMs) return
+        lastPhoneSyncRequestMs = nowMs
+        val appCtx = context.applicationContext
+
+        ioScope.launch {
+            try {
+                val nodes = Wearable.getNodeClient(appCtx).connectedNodes.await()
+                val msgClient = Wearable.getMessageClient(appCtx)
+                val payload = "sync_req:$nowMs".toByteArray(Charsets.UTF_8)
+                for (node in nodes) {
+                    try {
+                        msgClient.sendMessage(
+                            node.id,
+                            "/chronowear/request_sync_from_watch",
+                            payload
+                        ).await()
+                    } catch (_: Exception) {
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Solicita ao smartphone conectado uma sincronização completa (`/chronowear/request_sync_from_watch`)
+     * respeitando estritamente o único intervalo periódico universal configurado pelo usuário
+     * (15 min, 30 min, 1 hora ou 2 horas), fazendo o relógio acordar o telefone quando o ciclo vencer.
+     */
+    fun requestPhoneSyncIfDue(context: Context) {
+        val nowMs = System.currentTimeMillis()
+        val appCtx = context.applicationContext
+        val repo = WatchAutonomousRepository.getInstance(appCtx)
+        val universalIntervalMs = TimeUnit.MINUTES.toMillis(repo.getUniversalSyncIntervalMinutes().toLong())
+        val lastSyncMs = repo.getLastSyncTimestampMs()
+        if (lastSyncMs > 0L && (nowMs - lastSyncMs) < universalIntervalMs) return
+        requestPhoneSyncNow(context, minThrottleMs = 30_000L)
+    }
 
     /**
      * Exibe uma notificação no Relógio quando o app recebe ou detecta uma mudança de contexto
@@ -200,6 +250,7 @@ object AutonomousCountdownScheduler {
             if (action == Intent.ACTION_TIME_TICK) {
                 repo.recordWatchBatterySampleOnPeriodicUpdate(nowMs)
                 runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+                requestPhoneSyncIfDue(context)
                 notifyWatchOnForcedCanvasChangeIfNeeded(context)
                 ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
                 scheduleNextTransition(context)
@@ -212,6 +263,7 @@ object AutonomousCountdownScheduler {
             if (nowMs - lastScreenWakeUpdateMs >= 15_000L) {
                 lastScreenWakeUpdateMs = nowMs
                 runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+                requestPhoneSyncNow(context, minThrottleMs = 15_000L)
                 ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
                 scheduleNextTransition(context)
             }
@@ -477,6 +529,14 @@ object AutonomousCountdownScheduler {
             Long.MAX_VALUE
         }
 
+        val universalIntervalMs = TimeUnit.MINUTES.toMillis(repo.getUniversalSyncIntervalMinutes().toLong())
+        val lastSyncMs = repo.getLastSyncTimestampMs()
+        val universalPeriodicWakeMs = if (lastSyncMs > 0L) {
+            (lastSyncMs + universalIntervalMs).coerceAtLeast(nowMs + 30_000L)
+        } else {
+            nowMs + universalIntervalMs
+        }
+
         val tapOverrideReturnMs = repo.getTapOverrideExpiryEpochMs(nowMs)
 
         // Sempre que houver compromissos futuros sincronizados no cache do relógio,
@@ -496,7 +556,10 @@ object AutonomousCountdownScheduler {
             }
         }
 
-        val nextWakeUpMs = minOf(eventWakeUpMs, minOf(standaloneWeatherWakeMs, tapOverrideReturnMs))
+        val nextWakeUpMs = minOf(
+            minOf(eventWakeUpMs, universalPeriodicWakeMs),
+            minOf(standaloneWeatherWakeMs, tapOverrideReturnMs)
+        )
         if (nextWakeUpMs == Long.MAX_VALUE) return
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -535,6 +598,10 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
             val nowMs = System.currentTimeMillis()
             val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
             repo.cycleNextVisualCanvasOnTap(nowMs, upcomingThree)
+            if (repo.isUpdateOnCanvasTapEnabled()) {
+                AutonomousCountdownScheduler.requestPhoneSyncNow(context, minThrottleMs = 3_000L)
+                AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+            }
             ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
             AutonomousCountdownScheduler.scheduleNextTransition(context)
             context.sendBroadcast(
@@ -546,6 +613,7 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
 
         WatchAutonomousRepository.getInstance(context).recordWatchBatterySampleOnPeriodicUpdate()
         AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+        AutonomousCountdownScheduler.requestPhoneSyncIfDue(context)
         AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(context)
 
         ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
