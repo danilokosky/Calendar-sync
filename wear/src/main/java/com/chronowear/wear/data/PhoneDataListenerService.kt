@@ -80,6 +80,12 @@ class PhoneDataListenerService : WearableListenerService() {
                 val updateOnTap = if (dataMap.containsKey("update_on_canvas_tap")) {
                     dataMap.getBoolean("update_on_canvas_tap", true)
                 } else null
+                val realtimeHighTierMin = if (dataMap.containsKey("realtime_sync_high_tier_min")) {
+                    dataMap.getInt("realtime_sync_high_tier_min", 2)
+                } else null
+                val realtimeLowTierMin = if (dataMap.containsKey("realtime_sync_low_tier_min")) {
+                    dataMap.getInt("realtime_sync_low_tier_min", 10)
+                } else null
                 val weatherTempsCsv = dataMap.getString("weather_temps_csv")
                 val weatherHoursCsv = dataMap.getString("weather_hours_csv")
                 val weatherRainProb = if (dataMap.containsKey("weather_rain_prob")) {
@@ -205,6 +211,8 @@ class PhoneDataListenerService : WearableListenerService() {
                     highFreq15MinRule = highFreq15Min,
                     updateOnScreenWake = updateOnWake,
                     updateOnCanvasTap = updateOnTap,
+                    realtimeSyncHighTierMin = realtimeHighTierMin,
+                    realtimeSyncLowTierMin = realtimeLowTierMin,
                     weatherTempsCsv = weatherTempsCsv,
                     weatherHoursCsv = weatherHoursCsv,
                     weatherRainProb = weatherRainProb,
@@ -322,6 +330,12 @@ class PhoneDataListenerService : WearableListenerService() {
                     } else null
                     val updateOnTap = if (json.has("update_on_canvas_tap")) {
                         json.optBoolean("update_on_canvas_tap", true)
+                    } else null
+                    val realtimeHighTierMin = if (json.has("realtime_sync_high_tier_min")) {
+                        json.optInt("realtime_sync_high_tier_min", 2)
+                    } else null
+                    val realtimeLowTierMin = if (json.has("realtime_sync_low_tier_min")) {
+                        json.optInt("realtime_sync_low_tier_min", 10)
                     } else null
                     val weatherTempsCsv = json.optString("weather_temps_csv", "").takeIf { it.isNotBlank() }
                     val weatherHoursCsv = json.optString("weather_hours_csv", "").takeIf { it.isNotBlank() }
@@ -449,6 +463,8 @@ class PhoneDataListenerService : WearableListenerService() {
                         highFreq15MinRule = highFreq15Min,
                         updateOnScreenWake = updateOnWake,
                         updateOnCanvasTap = updateOnTap,
+                        realtimeSyncHighTierMin = realtimeHighTierMin,
+                        realtimeSyncLowTierMin = realtimeLowTierMin,
                         weatherTempsCsv = weatherTempsCsv,
                         weatherHoursCsv = weatherHoursCsv,
                         weatherRainProb = weatherRainProb,
@@ -523,6 +539,8 @@ class PhoneDataListenerService : WearableListenerService() {
         highFreq15MinRule: Boolean? = null,
         updateOnScreenWake: Boolean? = null,
         updateOnCanvasTap: Boolean? = null,
+        realtimeSyncHighTierMin: Int? = null,
+        realtimeSyncLowTierMin: Int? = null,
         weatherTempsCsv: String? = null,
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
@@ -593,6 +611,8 @@ class PhoneDataListenerService : WearableListenerService() {
                 highFreq15MinRule = highFreq15MinRule,
                 updateOnScreenWake = updateOnScreenWake,
                 updateOnCanvasTap = updateOnCanvasTap,
+                realtimeSyncHighTierMin = realtimeSyncHighTierMin,
+                realtimeSyncLowTierMin = realtimeSyncLowTierMin,
                 weatherTempsCsv = weatherTempsCsv,
                 weatherHoursCsv = weatherHoursCsv,
                 weatherRainProb = weatherRainProb,

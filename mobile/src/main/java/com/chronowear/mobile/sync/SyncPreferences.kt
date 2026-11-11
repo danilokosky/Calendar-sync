@@ -988,6 +988,26 @@ class SyncPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_UPDATE_ON_CANVAS_TAP, enabled).commit()
     }
 
+    fun getRealtimeSyncHighTierMinutes(): Int {
+        val v = prefs.getInt(KEY_REALTIME_SYNC_HIGH_TIER_MIN, 2)
+        return if (v in setOf(1, 2, 5, 10)) v else 2
+    }
+
+    fun setRealtimeSyncHighTierMinutes(minutes: Int) {
+        val valid = if (minutes in setOf(1, 2, 5, 10)) minutes else 2
+        prefs.edit().putInt(KEY_REALTIME_SYNC_HIGH_TIER_MIN, valid).commit()
+    }
+
+    fun getRealtimeSyncLowTierMinutes(): Int {
+        val v = prefs.getInt(KEY_REALTIME_SYNC_LOW_TIER_MIN, 10)
+        return if (v in setOf(5, 10, 15, 30)) v else 10
+    }
+
+    fun setRealtimeSyncLowTierMinutes(minutes: Int) {
+        val valid = if (minutes in setOf(5, 10, 15, 30)) minutes else 10
+        prefs.edit().putInt(KEY_REALTIME_SYNC_LOW_TIER_MIN, valid).commit()
+    }
+
     /**
      * GATILHO 1 UNIFICADO (TELEFONE): Busca Periódica Autônoma de Clima + Nascer/Pôr do Sol
      * pela mesma Localização do Smartphone (quando um atualiza, o outro atualiza junto).
@@ -1362,6 +1382,8 @@ class SyncPreferences(context: Context) {
         ]"""
         private const val KEY_UPDATE_ON_SCREEN_WAKE = "update_on_screen_wake"
         private const val KEY_UPDATE_ON_CANVAS_TAP = "update_on_canvas_tap"
+        private const val KEY_REALTIME_SYNC_HIGH_TIER_MIN = "realtime_sync_high_tier_min"
+        private const val KEY_REALTIME_SYNC_LOW_TIER_MIN = "realtime_sync_low_tier_min"
         private const val KEY_PHONE_WEATHER_AUTO_CHECK_ENABLED = "phone_weather_auto_check_enabled"
         private const val KEY_PHONE_WEATHER_CHECK_INTERVAL_MIN = "phone_weather_check_interval_min"
         private const val KEY_SELECTED_WEATHER_TRIGGER_PKGS = "selected_weather_trigger_pkgs"

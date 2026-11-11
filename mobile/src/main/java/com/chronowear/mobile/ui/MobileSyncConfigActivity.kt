@@ -164,6 +164,9 @@ class MobileSyncConfigActivity : Activity() {
     private val progressWindowChipButtons = mutableMapOf<Int, Button>()
     private val phoneWeatherIntervalChipButtons = mutableMapOf<Int, Button>()
     private val watchWeatherIntervalChipButtons = mutableMapOf<Int, Button>()
+    private val realtimeHighTierChipButtons = mutableMapOf<Int, Button>()
+    private val realtimeLowTierChipButtons = mutableMapOf<Int, Button>()
+    private lateinit var realtimeTiersContainer: LinearLayout
 
     private lateinit var calendarsCheckboxContainer: LinearLayout
     private lateinit var weatherTriggerAppsSummaryText: TextView
@@ -1014,7 +1017,7 @@ class MobileSyncConfigActivity : Activity() {
         val modeCard = createCollapsibleSettingsCard(
             parentCol = col,
             title = "MODO DO CANVAS NO RELÓGIO",
-            subtitle = "Modo de operação, intervalo universal de atualização periódica e atualização ao tocar/ligar a tela"
+            subtitle = "Modo de operação, foco automático e intervalo universal de atualização periódica"
         )
 
         val modeOptions = listOf(
@@ -1122,24 +1125,6 @@ class MobileSyncConfigActivity : Activity() {
                 triggerBackgroundSync("Retenção Canvas: ${mins}m")
             }
         )
-
-        switchUpdateOnTap = createResponsiveSettingToggleRow(
-            parent = modeCard,
-            title = "Atualizar ao tocar e trocar o Canvas",
-            subtitle = "Solicita sincronização imediata ao alternar manualmente entre qualquer Canvas no relógio"
-        ) { checked ->
-            prefs.setUpdateOnCanvasTapEnabled(checked)
-            triggerBackgroundSync("Toggle Atualizar ao Tocar no Canvas: $checked")
-        }
-
-        switchUpdateOnWake = createResponsiveSettingToggleRow(
-            parent = modeCard,
-            title = "Atualizar ao ligar a tela do relógio",
-            subtitle = "Solicita atualização ao smartphone e recalcula os timers ao acender a tela"
-        ) { checked ->
-            prefs.setUpdateOnScreenWakeEnabled(checked)
-            triggerBackgroundSync("Toggle Atualizar ao Ligar a Tela: $checked")
-        }
 
         switchAutoFallbackTasks = createResponsiveSettingToggleRow(
             parent = modeCard,
@@ -1596,12 +1581,145 @@ class MobileSyncConfigActivity : Activity() {
             }
         )
 
-        // Card 5: Sono do Dia, Bateria do Relógio e Serviço em Segundo Plano (Submenu Engavetado)
+        // Card 5: Sono do Dia, Bateria do Relógio e Sistema (Submenu Engavetado)
         val sleepSystemCard = createCollapsibleSettingsCard(
             parentCol = col,
             title = "SONO, BATERIA & SISTEMA",
-            subtitle = "Sincronização de sono, janela do gráfico de bateria do relógio e serviço em segundo plano"
+            subtitle = "Atualização em tempo real (2 Tiers), sono, gráfico de bateria e serviço em 2º plano"
         )
+
+        // Subseção: Atualização em Tempo Real (Toque no Canvas & Ao Ligar a Tela) com 2 Tiers de Prioridade
+        val realtimeSectionBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedRect("#090E16", "#233044", 16)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(4)
+            lp.bottomMargin = dp(8)
+            layoutParams = lp
+        }
+
+        realtimeSectionBox.addView(
+            TextView(this).apply {
+                text = "ATUALIZAÇÃO EM TEMPO REAL (TOQUE & TELA)"
+                setTextColor(Color.parseColor("#F5C438"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                letterSpacing = 0.05f
+            }
+        )
+        realtimeSectionBox.addView(
+            TextView(this).apply {
+                text = "Controla quando o relógio acorda o smartphone ao tocar no Canvas ou ligar a tela, dividindo os contextos em 2 níveis de prioridade para economizar bateria."
+                setTextColor(Color.parseColor("#94A3B8"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                val subLp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                subLp.topMargin = dp(3)
+                subLp.bottomMargin = dp(4)
+                layoutParams = subLp
+            }
+        )
+
+        switchUpdateOnTap = createResponsiveSettingToggleRow(
+            parent = realtimeSectionBox,
+            title = "Atualizar ao tocar e trocar o Canvas",
+            subtitle = "Solicita sincronização ao alternar de Canvas, respeitando a janela do Tier abaixo"
+        ) { checked ->
+            prefs.setUpdateOnCanvasTapEnabled(checked)
+            updateAllChipSelectionsInPlace()
+            triggerBackgroundSync("Toggle Atualizar ao Tocar no Canvas: $checked")
+        }
+
+        switchUpdateOnWake = createResponsiveSettingToggleRow(
+            parent = realtimeSectionBox,
+            title = "Atualizar ao ligar a tela do relógio",
+            subtitle = "Solicita sincronização ao acender o visor, respeitando a janela do Canvas ativo"
+        ) { checked ->
+            prefs.setUpdateOnScreenWakeEnabled(checked)
+            updateAllChipSelectionsInPlace()
+            triggerBackgroundSync("Toggle Atualizar ao Ligar a Tela: $checked")
+        }
+
+        realtimeTiersContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedRect("#0B111A", "#1E293B", 14)
+            setPadding(dp(10), dp(8), dp(10), dp(10))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(8)
+            layoutParams = lp
+        }
+
+        realtimeTiersContainer.addView(
+            TextView(this).apply {
+                text = "JANELA MÍNIMA POR TIER DE PRIORIDADE"
+                setTextColor(Color.parseColor("#67E8F9"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+                typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+                letterSpacing = 0.04f
+            }
+        )
+
+        realtimeTiersContainer.addView(
+            createSubLabel("Alta Prioridade (Agenda, Tarefas e Clima) — Padrão 2 min:")
+        )
+        val highTierOptions = listOf(
+            1 to "1 min",
+            2 to "2 min",
+            5 to "5 min",
+            10 to "10 min"
+        )
+        realtimeTiersContainer.addView(
+            buildStaticChipGrid(
+                options = highTierOptions,
+                buttonStore = realtimeHighTierChipButtons
+            ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setRealtimeSyncHighTierMinutes(mins)
+                updateAllChipSelectionsInPlace()
+                triggerBackgroundSync("Tier Alta Prioridade (Toque/Tela): ${mins}m")
+            }
+        )
+
+        realtimeTiersContainer.addView(
+            createSubLabel("Baixa Prioridade (Sol, Sono, Passos e Bateria) — Padrão 10 min:")
+        )
+        val lowTierOptions = listOf(
+            5 to "5 min",
+            10 to "10 min",
+            15 to "15 min",
+            30 to "30 min"
+        )
+        realtimeTiersContainer.addView(
+            buildStaticChipGrid(
+                options = lowTierOptions,
+                buttonStore = realtimeLowTierChipButtons
+            ) { mins ->
+                if (!isAppUnlockedForCustomization()) {
+                    showLockedCustomizationToast()
+                    return@buildStaticChipGrid
+                }
+                suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
+                prefs.setRealtimeSyncLowTierMinutes(mins)
+                updateAllChipSelectionsInPlace()
+                triggerBackgroundSync("Tier Baixa Prioridade (Toque/Tela): ${mins}m")
+            }
+        )
+
+        realtimeSectionBox.addView(realtimeTiersContainer)
+        sleepSystemCard.addView(realtimeSectionBox)
 
         switchSleepSync = createResponsiveSettingToggleRow(
             parent = sleepSystemCard,
@@ -4318,6 +4436,18 @@ class MobileSyncConfigActivity : Activity() {
         val currentWatchW = prefs.getWatchStandaloneWeatherIntervalMinutes()
         for ((k, btn) in watchWeatherIntervalChipButtons) {
             styleChipButton(btn, k == currentWatchW)
+        }
+        val currentHighTier = prefs.getRealtimeSyncHighTierMinutes()
+        for ((k, btn) in realtimeHighTierChipButtons) {
+            styleChipButton(btn, k == currentHighTier)
+        }
+        val currentLowTier = prefs.getRealtimeSyncLowTierMinutes()
+        for ((k, btn) in realtimeLowTierChipButtons) {
+            styleChipButton(btn, k == currentLowTier)
+        }
+        if (::realtimeTiersContainer.isInitialized) {
+            val anyRealtimeActive = prefs.isUpdateOnCanvasTapEnabled() || prefs.isUpdateOnScreenWakeEnabled()
+            realtimeTiersContainer.alpha = if (anyRealtimeActive) 1.0f else 0.48f
         }
     }
 

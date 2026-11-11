@@ -165,6 +165,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         highFreq15MinRule: Boolean? = null,
         updateOnScreenWake: Boolean? = null,
         updateOnCanvasTap: Boolean? = null,
+        realtimeSyncHighTierMin: Int? = null,
+        realtimeSyncLowTierMin: Int? = null,
         weatherTempsCsv: String? = null,
         weatherHoursCsv: String? = null,
         weatherRainProb: Int? = null,
@@ -272,6 +274,12 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (updateOnCanvasTap != null) {
             editor.putBoolean("update_on_canvas_tap", updateOnCanvasTap)
+        }
+        if (realtimeSyncHighTierMin != null && realtimeSyncHighTierMin in setOf(1, 2, 5, 10)) {
+            editor.putInt("realtime_sync_high_tier_min", realtimeSyncHighTierMin)
+        }
+        if (realtimeSyncLowTierMin != null && realtimeSyncLowTierMin in setOf(5, 10, 15, 30)) {
+            editor.putInt("realtime_sync_low_tier_min", realtimeSyncLowTierMin)
         }
         val unifiedWatchStandaloneLocation = watchStandaloneWeatherEnabled ?: watchStandaloneSolarEnabled
         if (unifiedWatchStandaloneLocation != null) {
@@ -928,6 +936,29 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     fun setUpdateOnCanvasTapEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("update_on_canvas_tap", enabled).commit()
+    }
+
+    fun getRealtimeSyncHighTierMinutes(): Int {
+        val v = prefs.getInt("realtime_sync_high_tier_min", 2)
+        return if (v in setOf(1, 2, 5, 10)) v else 2
+    }
+
+    fun getRealtimeSyncLowTierMinutes(): Int {
+        val v = prefs.getInt("realtime_sync_low_tier_min", 10)
+        return if (v in setOf(5, 10, 15, 30)) v else 10
+    }
+
+    /**
+     * Retorna a janela mínima (em minutos) para atualização em tempo real (Toque no Canvas ou Ao Ligar a Tela)
+     * de acordo com o Tier de prioridade do Canvas ativo:
+     * - Tier 1 (Alta Prioridade: Agenda, Tarefas e Clima): padrão 2 min (1, 2, 5 ou 10 min)
+     * - Tier 2 (Baixa Prioridade: Sol, Sono, Passos e Bateria): padrão 10 min (5, 10, 15 ou 30 min)
+     */
+    fun getRealtimeSyncTierMinutesForMode(mode: String): Int {
+        return when (mode) {
+            MODE_EVENTS, MODE_TASKS, MODE_WEATHER -> getRealtimeSyncHighTierMinutes()
+            else -> getRealtimeSyncLowTierMinutes()
+        }
     }
 
     fun isWatchStandaloneWeatherEnabled(): Boolean {

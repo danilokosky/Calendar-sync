@@ -82,6 +82,37 @@ object AutonomousCountdownScheduler {
     }
 
     /**
+     * Avalia a sincronização em tempo real (disparada ao tocar no Canvas ou ao ligar a tela do relógio)
+     * aplicando os 2 Tiers de prioridade para economia inteligente de bateria:
+     * - Tier Alta Prioridade (Agenda, Tarefas e Clima): janela padrão de 2 minutos
+     * - Tier Baixa Prioridade (Sol, Sono, Passos e Bateria): janela padrão de 10 minutos
+     * Somente acorda o smartphone via `/chronowear/request_sync_from_watch` se o tempo desde a última
+     * sincronização for maior ou igual à janela do Tier do Canvas ativo no visor.
+     */
+    fun requestPhoneSyncForActiveCanvasIfDue(context: Context) {
+        val nowMs = System.currentTimeMillis()
+        val appCtx = context.applicationContext
+        val repo = WatchAutonomousRepository.getInstance(appCtx)
+        val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
+        val activeCanvasMode = repo.resolveEffectiveContextMode(nowMs, upcomingThree)
+        val tierMinutes = repo.getRealtimeSyncTierMinutesForMode(activeCanvasMode)
+        val requiredWindowMs = TimeUnit.MINUTES.toMillis(tierMinutes.toLong())
+        val lastSyncOrReqMs = maxOf(repo.getLastSyncTimestampMs(), lastPhoneSyncRequestMs)
+
+        if (lastSyncOrReqMs > 0L && (nowMs - lastSyncOrReqMs) < requiredWindowMs) {
+            return
+        }
+
+        requestPhoneSyncNow(appCtx, minThrottleMs = 5_000L)
+        if (activeCanvasMode == WatchAutonomousRepository.MODE_WEATHER ||
+            activeCanvasMode == WatchAutonomousRepository.MODE_SUN ||
+            repo.isWatchStandaloneWeatherEnabled()
+        ) {
+            runStandaloneWatchWeatherCheckIfDue(appCtx, forceRefresh = false)
+        }
+    }
+
+    /**
      * Solicita ao smartphone conectado uma sincronização completa (`/chronowear/request_sync_from_watch`)
      * respeitando estritamente o único intervalo periódico universal configurado pelo usuário
      * (15 min, 30 min, 1 hora ou 2 horas), fazendo o relógio acordar o telefone quando o ciclo vencer.
@@ -262,8 +293,7 @@ object AutonomousCountdownScheduler {
 
             if (nowMs - lastScreenWakeUpdateMs >= 15_000L) {
                 lastScreenWakeUpdateMs = nowMs
-                runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
-                requestPhoneSyncNow(context, minThrottleMs = 15_000L)
+                requestPhoneSyncForActiveCanvasIfDue(context)
                 ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
                 scheduleNextTransition(context)
             }
@@ -599,8 +629,7 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
             val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
             repo.cycleNextVisualCanvasOnTap(nowMs, upcomingThree)
             if (repo.isUpdateOnCanvasTapEnabled()) {
-                AutonomousCountdownScheduler.requestPhoneSyncNow(context, minThrottleMs = 3_000L)
-                AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+                AutonomousCountdownScheduler.requestPhoneSyncForActiveCanvasIfDue(context)
             }
             ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
             AutonomousCountdownScheduler.scheduleNextTransition(context)
