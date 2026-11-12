@@ -1072,7 +1072,7 @@ class MobileSyncConfigActivity : Activity() {
                 }
                 suppressSyncBroadcastUntilMs = System.currentTimeMillis() + 1800L
                 prefs.setAutoPrimaryContext(selectedPrimary)
-                selectedVirtualPreviewOverride = null
+                selectedVirtualPreviewOverride = selectedPrimary
                 updateAllChipSelectionsInPlace()
                 virtualWatchView.invalidate()
                 refreshWidgetsGridInPlace()
@@ -3037,7 +3037,8 @@ class MobileSyncConfigActivity : Activity() {
         val primary = prefs.getAutoPrimaryContext()
         if (primary == SyncPreferences.MODE_EVENTS && prefs.isAutoFallbackAgendaToTasksEnabled()) {
             val todayEvents = cachedEvents.filter {
-                it.startEpochMs > nowMs - 15 * 60_000L &&
+                it.endEpochMs > nowMs &&
+                    (it.allDay || it.startEpochMs > nowMs - 15 * 60_000L) &&
                     CalendarSyncEngine.isSameCalendarDay(nowMs, it.startEpochMs)
             }
             if (todayEvents.isEmpty() && prefs.isTasksSyncEnabled() && cachedTasks.isNotEmpty()) {
@@ -3053,12 +3054,12 @@ class MobileSyncConfigActivity : Activity() {
             SyncPreferences.MODE_TASKS,
             SyncPreferences.MODE_WEATHER,
             SyncPreferences.MODE_SUN,
-            SyncPreferences.MODE_SLEEP,
             SyncPreferences.MODE_STEPS,
+            SyncPreferences.MODE_SLEEP,
             SyncPreferences.MODE_BATTERY
         )
         val current = resolveEffectivePreviewMode()
-        val nextIdx = (cycleOrder.indexOf(current) + 1) % cycleOrder.size
+        val nextIdx = (cycleOrder.indexOf(current).takeIf { it >= 0 } ?: 0).let { (it + 1) % cycleOrder.size }
         val nextMode = cycleOrder[nextIdx]
         selectedVirtualPreviewOverride = nextMode
         if (prefs.getContextWindowMode() == SyncPreferences.MODE_AUTO) {

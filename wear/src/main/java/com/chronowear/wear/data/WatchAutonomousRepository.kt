@@ -322,13 +322,17 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!weatherAlertHeadline.isNullOrBlank()) {
             editor.putString("weather_alert_headline", weatherAlertHeadline)
         }
+        val currentTapTs = prefs.getLong("tap_override_timestamp_ms", 0L)
+        val hasRecentManualTap = currentTapTs > 0L && (syncTimestampMs - currentTapTs) in -5_000L..30_000L
+
         if (weatherAlertTimestampMs != null && weatherAlertTimestampMs > 0L) {
             val currentTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
             if (weatherAlertTimestampMs > currentTs) {
                 editor.putLong("weather_alert_timestamp_ms", weatherAlertTimestampMs)
-                // Mudança climática tem prioridade máxima: cancela toque manual no Canvas
-                editor.remove("tap_override_context_mode")
-                editor.putLong("tap_override_timestamp_ms", 0L)
+                if (!hasRecentManualTap) {
+                    editor.remove("tap_override_context_mode")
+                    editor.putLong("tap_override_timestamp_ms", 0L)
+                }
             }
         }
         if (!solarSunriseHHMM.isNullOrBlank()) {
@@ -364,8 +368,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (sleepWakeTimestampMs != null) {
             val currentWakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
             editor.putLong("sleep_wake_timestamp_ms", sleepWakeTimestampMs)
-            if (sleepWakeTimestampMs > currentWakeTs && sleepWakeTimestampMs > 0L) {
-                // Novo registro de despertar/sono tem prioridade máxima: cancela toque manual
+            if (sleepWakeTimestampMs > currentWakeTs && sleepWakeTimestampMs > 0L && !hasRecentManualTap) {
                 editor.remove("tap_override_context_mode")
                 editor.putLong("tap_override_timestamp_ms", 0L)
             }
@@ -387,13 +390,17 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 if (hit100 && milestoneRule in setOf("100", "BOTH") && prev100Date != todayIso) {
                     editor.putString("steps_100_triggered_date", todayIso)
                     editor.putLong("steps_milestone_alert_timestamp_ms", syncTimestampMs)
-                    editor.remove("tap_override_context_mode")
-                    editor.putLong("tap_override_timestamp_ms", 0L)
+                    if (!hasRecentManualTap) {
+                        editor.remove("tap_override_context_mode")
+                        editor.putLong("tap_override_timestamp_ms", 0L)
+                    }
                 } else if (hit80 && milestoneRule in setOf("80", "BOTH") && prev80Date != todayIso) {
                     editor.putString("steps_80_triggered_date", todayIso)
                     editor.putLong("steps_milestone_alert_timestamp_ms", syncTimestampMs)
-                    editor.remove("tap_override_context_mode")
-                    editor.putLong("tap_override_timestamp_ms", 0L)
+                    if (!hasRecentManualTap) {
+                        editor.remove("tap_override_context_mode")
+                        editor.putLong("tap_override_timestamp_ms", 0L)
+                    }
                 }
             }
         }
@@ -424,9 +431,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 val currentTaskTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
                 if (tasksAlertTimestampMs > currentTaskTs) {
                     editor.putLong("tasks_alert_timestamp_ms", tasksAlertTimestampMs)
-                    // Alerta de nova Tarefa tem prioridade máxima
-                    editor.remove("tap_override_context_mode")
-                    editor.putLong("tap_override_timestamp_ms", 0L)
+                    if (!hasRecentManualTap) {
+                        editor.remove("tap_override_context_mode")
+                        editor.putLong("tap_override_timestamp_ms", 0L)
+                    }
                 }
             }
         }
@@ -1459,20 +1467,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val currentVisual = resolveEffectiveContextMode(nowMs, upcomingThree)
         val currentIdx = visualOrder.indexOf(currentVisual).takeIf { it >= 0 } ?: 0
         val nextVisual = visualOrder[(currentIdx + 1) % visualOrder.size]
-        val defaultPrimary = if (getContextWindowMode() != MODE_DYNAMIC) {
-            getContextWindowMode()
-        } else {
-            getAutoPrimaryContext()
-        }
 
-        if (nextVisual == defaultPrimary) {
-            clearTapOverride()
-        } else {
-            prefs.edit()
-                .putString("tap_override_context_mode", nextVisual)
-                .putLong("tap_override_timestamp_ms", nowMs)
-                .commit()
-        }
+        // Sempre grava explicitamente o Canvas escolhido no toque manual (inclusive quando for o próprio
+        // MODE_EVENTS / Foco Principal), evitando que o fallback "Priorizar Tarefas se Agenda de Hoje
+        // estiver vazia" ou gatilhos automáticos ativos pulem o Canvas da Agenda durante a rotação por toque.
+        prefs.edit()
+            .putString("tap_override_context_mode", nextVisual)
+            .putLong("tap_override_timestamp_ms", nowMs)
+            .commit()
         return nextVisual
     }
 
@@ -1675,7 +1677,27 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val recentPhoneFocusChange = phoneFocusChangeTs > 0L &&
             (nowMs - phoneFocusChangeTs) in 0..TimeUnit.MINUTES.toMillis(unifiedHoldMin)
 
-        // 2. Verifica se há mudança prioritária de contexto (Agenda/Tarefas, Clima, Sol, Sono, Passos)
+        // 2. Se o usuário tocou manualmente no Canvas do relógio, respeita o Canvas escolhido pelo toque
+        //    (só cede se um novo gatilho prioritário acontecer DEPOIS do toque, com margem de 15s para
+        //    não ser cancelado pelo próprio sync disparado pelo toque no Canvas).
+        if (tapOverride != null && tapTs > phoneFocusChangeTs) {
+            val priorityPair = evaluatePriorityContextOverride(nowMs, upcomingThree)
+            if (priorityPair != null) {
+                val (priorityMode, _) = priorityPair
+                val weatherTs = prefs.getLong("weather_alert_timestamp_ms", 0L)
+                val sleepTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
+                val tasksTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
+                val stepsTs = prefs.getLong("steps_milestone_alert_timestamp_ms", 0L)
+                val batteryTs = prefs.getLong("battery_alert_timestamp_ms", 0L)
+                val newestTriggerTs = maxOf(weatherTs, sleepTs, tasksTs, stepsTs, batteryTs)
+                if (newestTriggerTs > tapTs + 15_000L) {
+                    return priorityMode
+                }
+            }
+            return tapOverride
+        }
+
+        // 3. Verifica se há mudança prioritária de contexto (Agenda/Tarefas, Clima, Sol, Sono, Passos)
         val priorityPair = evaluatePriorityContextOverride(nowMs, upcomingThree)
         if (priorityPair != null) {
             val (priorityMode, _) = priorityPair
@@ -1691,15 +1713,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
             } == true
 
             if (!recentPhoneFocusChange || isUrgentLeadEvent || newestTriggerTs > phoneFocusChangeTs) {
-                if (tapOverride == null || newestTriggerTs >= tapTs) {
-                    return priorityMode
-                }
+                return priorityMode
             }
-        }
-
-        // 3. Se o usuário tocou no Canvas na Watch Face dentro do tempo unificado configurado
-        if (tapOverride != null && tapTs > phoneFocusChangeTs) {
-            return tapOverride
         }
 
         val primaryContext = getAutoPrimaryContext()
@@ -1719,18 +1734,18 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     /**
-     * Busca os próximos compromissos futuros (start_epoch_ms > nowMs) no cache SQLite.
-     * Conforme o horário passa, compromissos cujo horário de início já passou deixam automaticamente
-     * de ser retornados, fazendo a fila avançar dinamicamente no relógio sem depender de nova sincronização.
+     * Busca os próximos compromissos no cache SQLite, mantendo eventos de hoje recém-iniciados
+     * (até 15 min após o início) ou em andamento (end_epoch_ms > nowMs) alinhados com o smartphone.
      */
     fun getAllUpcomingHorizonEvents(nowMs: Long, limit: Int = 20): List<CachedWearEvent> {
         val list = mutableListOf<CachedWearEvent>()
+        val graceStartMs = nowMs - 15 * 60_000L
         val db = readableDatabase
         db.query(
             "cached_events",
             arrayOf("id", "calendar_id", "title", "location", "start_epoch_ms", "end_epoch_ms"),
-            "start_epoch_ms > ?",
-            arrayOf(nowMs.toString()),
+            "(start_epoch_ms > ? OR (end_epoch_ms - start_epoch_ms >= 50000000)) AND end_epoch_ms > ?",
+            arrayOf(graceStartMs.toString(), nowMs.toString()),
             null,
             null,
             "start_epoch_ms ASC",
@@ -1758,7 +1773,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
      *   o título é "Hoje" e SOMENTE os compromissos de hoje aparecem na lista (nunca mistura eventos de outros dias sob "Hoje").
      * - Somente quando NÃO houver mais nenhum compromisso para hoje, verifica se há compromissos
      *   para AMANHÃ (calendarDaysDiff == 1). Se houver, muda o título para "Amanhã" e lista apenas os de amanhã.
-     * - Se não houver compromissos para hoje nem para amanhã, mantém "Hoje" com lista vazia ("Não há compromissos").
+     * - Caso haja compromissos futuros no horizonte após amanhã, exibe o dia correspondente.
      */
     fun resolveDayHeaderAndEventsForWatch(nowMs: Long): Pair<String, List<CachedWearEvent>> {
         val allFuture = getAllUpcomingHorizonEvents(nowMs, 24)
@@ -1769,6 +1784,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val tomorrowEvents = allFuture.filter { calendarDaysDiff(nowMs, it.startEpochMs) == 1 }
         if (tomorrowEvents.isNotEmpty()) {
             return "Amanhã" to tomorrowEvents.take(3)
+        }
+        if (allFuture.isNotEmpty()) {
+            val firstNext = allFuture.first()
+            val header = SimpleDateFormat("EEE, dd", Locale("pt", "BR"))
+                .format(Date(firstNext.startEpochMs))
+                .replace(".", "")
+                .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+            return header to allFuture.filter { isSameCalendarDay(firstNext.startEpochMs, it.startEpochMs) }.take(3)
         }
         return "Hoje" to emptyList()
     }

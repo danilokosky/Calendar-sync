@@ -1070,7 +1070,9 @@ object CalendarSyncEngine {
         events: List<LocalCalendarEvent>,
         nowMs: Long
     ): Pair<String, List<LocalCalendarEvent>> {
-        val allFuture = events.filter { it.startEpochMs > nowMs - 15 * 60_000L && it.endEpochMs > nowMs }
+        val allFuture = events.filter {
+            it.endEpochMs > nowMs && (it.allDay || it.startEpochMs > nowMs - 15 * 60_000L)
+        }
         val todayEvents = allFuture.filter { isSameCalendarDay(nowMs, it.startEpochMs) }
         if (todayEvents.isNotEmpty()) {
             return "Hoje" to todayEvents.take(3)
@@ -1099,29 +1101,7 @@ object CalendarSyncEngine {
         nowMs: Long,
         progressWindowMinutes: Int
     ): String {
-        val allFuture = events.filter { it.startEpochMs > nowMs }
-        val todayEvents = allFuture.filter { isSameCalendarDay(nowMs, it.startEpochMs) }
-
-        val dayHeader: String
-        val dayEvents: List<LocalCalendarEvent>
-        if (todayEvents.isNotEmpty()) {
-            dayHeader = "Hoje"
-            dayEvents = todayEvents.take(3)
-        } else if (allFuture.isNotEmpty()) {
-            val firstNext = allFuture.first()
-            val diffDays = calendarDaysDiff(nowMs, firstNext.startEpochMs)
-            dayHeader = when (diffDays) {
-                1 -> "Amanhã"
-                else -> SimpleDateFormat("EEE, dd", Locale("pt", "BR"))
-                    .format(Date(firstNext.startEpochMs))
-                    .replace(".", "")
-                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
-            }
-            dayEvents = allFuture.filter { isSameCalendarDay(firstNext.startEpochMs, it.startEpochMs) }.take(3)
-        } else {
-            dayHeader = "Hoje"
-            dayEvents = emptyList()
-        }
+        val (dayHeader, dayEvents) = resolveDayHeaderAndEvents(events, nowMs)
 
         val primary = dayEvents.firstOrNull()
         val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.coerceAtLeast(1).toLong())

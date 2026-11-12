@@ -68,6 +68,7 @@ class CalendarSyncForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForegroundWithNotification("Sincronização ativa")
         val prefs = SyncPreferences(this)
         if (intent?.action == ACTION_STOP_SERVICE || !prefs.isBackgroundServiceEnabled()) {
             unregisterCalendarObserver()
@@ -210,7 +211,11 @@ class CalendarSyncForegroundService : Service() {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
             }
-            registerReceiver(systemEventsReceiver, filter)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(systemEventsReceiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(systemEventsReceiver, filter)
+            }
             systemEventsReceiverRegistered = true
         } catch (_: Exception) {
         }
@@ -294,15 +299,18 @@ class CalendarSyncForegroundService : Service() {
     }
 
     private fun startForegroundWithNotification(contentText: String) {
-        val notification = buildNotification(contentText)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            val notification = buildNotification(contentText)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (_: Exception) {
         }
     }
 
@@ -382,11 +390,14 @@ class CalendarSyncForegroundService : Service() {
         const val EXTRA_TRIGGER_REASON = "extra_trigger_reason"
 
         fun startOrUpdate(context: Context, reason: String = "Ativado pelo Usuário") {
-            val intent = Intent(context, CalendarSyncForegroundService::class.java).apply {
-                action = ACTION_SYNC_NOW
-                putExtra(EXTRA_TRIGGER_REASON, reason)
+            try {
+                val intent = Intent(context, CalendarSyncForegroundService::class.java).apply {
+                    action = ACTION_SYNC_NOW
+                    putExtra(EXTRA_TRIGGER_REASON, reason)
+                }
+                context.startForegroundService(intent)
+            } catch (_: Exception) {
             }
-            context.startForegroundService(intent)
         }
 
         fun ensureRunning(context: Context) {
@@ -402,10 +413,10 @@ class CalendarSyncForegroundService : Service() {
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, CalendarSyncForegroundService::class.java).apply {
-                action = ACTION_STOP_SERVICE
+            try {
+                context.stopService(Intent(context, CalendarSyncForegroundService::class.java))
+            } catch (_: Exception) {
             }
-            context.startService(intent)
         }
     }
 }
