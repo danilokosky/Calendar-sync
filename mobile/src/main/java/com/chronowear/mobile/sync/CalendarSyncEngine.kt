@@ -456,6 +456,49 @@ object CalendarSyncEngine {
         return result
     }
 
+    private fun normalizeEventWindow(
+        rawBeginMs: Long,
+        rawEndMs: Long,
+        allDay: Boolean
+    ): Pair<Long, Long> {
+        if (!allDay) {
+            val safeEnd = if (rawEndMs > rawBeginMs) rawEndMs else rawBeginMs + TimeUnit.MINUTES.toMillis(60)
+            return rawBeginMs to safeEnd
+        }
+        val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+            timeInMillis = rawBeginMs
+        }
+        val localCal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, utcCal.get(Calendar.YEAR))
+            set(Calendar.MONTH, utcCal.get(Calendar.MONTH))
+            set(Calendar.DAY_OF_MONTH, utcCal.get(Calendar.DAY_OF_MONTH))
+            set(Calendar.HOUR_OF_DAY, 9)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val beginMs = localCal.timeInMillis
+        localCal.set(Calendar.HOUR_OF_DAY, 23)
+        localCal.set(Calendar.MINUTE, 59)
+        localCal.set(Calendar.SECOND, 59)
+        return beginMs to localCal.timeInMillis
+    }
+
+    private fun parseDurationMillis(duration: String?): Long? {
+        if (duration.isNullOrBlank()) return null
+        val regex = Regex("^P(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?)?$")
+        val match = regex.matchEntire(duration.trim()) ?: return null
+        val days = match.groupValues[1].toLongOrNull() ?: 0L
+        val hours = match.groupValues[2].toLongOrNull() ?: 0L
+        val mins = match.groupValues[3].toLongOrNull() ?: 0L
+        val secs = match.groupValues[4].toLongOrNull() ?: 0L
+        val total = TimeUnit.DAYS.toMillis(days) +
+            TimeUnit.HOURS.toMillis(hours) +
+            TimeUnit.MINUTES.toMillis(mins) +
+            TimeUnit.SECONDS.toMillis(secs)
+        return total.takeIf { it > 0L }
+    }
+
     private fun countEventsForCalendar(
         context: Context,
         calendarId: String,
@@ -463,28 +506,94 @@ object CalendarSyncEngine {
         endMs: Long
     ): Int {
         var count = 0
+        val seenEventIds = HashSet<String>()
+        val queryStartMs = startMs - TimeUnit.HOURS.toMillis(24)
+        val queryEndMs = endMs + TimeUnit.HOURS.toMillis(24)
+
         val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
-        ContentUris.appendId(builder, startMs)
-        ContentUris.appendId(builder, endMs)
+        ContentUris.appendId(builder, queryStartMs)
+        ContentUris.appendId(builder, queryEndMs)
 
         val projection = arrayOf(
-            CalendarContract.Instances.CALENDAR_ID,
+            CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.BEGIN,
             CalendarContract.Instances.END,
-            CalendarContract.Instances.STATUS
+            CalendarContract.Instances.ALL_DAY
         )
 
         context.contentResolver.query(
             builder.build(),
             projection,
-            "${CalendarContract.Instances.CALENDAR_ID} = ? AND ${CalendarContract.Instances.STATUS} != ?",
+            "${CalendarContract.Instances.CALENDAR_ID} = ? AND (${CalendarContract.Instances.STATUS} IS NULL OR ${CalendarContract.Instances.STATUS} != ?)",
             arrayOf(calendarId, CalendarContract.Instances.STATUS_CANCELED.toString()),
             null
         )?.use { cursor ->
             while (cursor.moveToNext()) {
-                val evEnd = cursor.getLong(1)
-                if (evEnd > startMs) count++
+                val eventId = cursor.getLong(0).toString()
+                val rawBeginMs = cursor.getLong(1)
+                val rawEndMs = cursor.getLong(2)
+                val allDay = cursor.getInt(3) == 1
+                val (beginMs, endEventMs) = normalizeEventWindow(rawBeginMs, rawEndMs, allDay)
+                if (beginMs > endMs || endEventMs <= startMs) continue
+                if (!allDay && beginMs <= startMs - 15 * 60_000L) continue
+                seenEventIds.add(eventId)
+                count++
             }
         }
+
+        // Fallback seguro para eventos únicos recém-criados (ex.: Samsung Calendar local) que ainda
+        // não foram expandidos na tabela Instances no momento da consulta.
+        val eventsProjection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.DURATION,
+            CalendarContract.Events.ALL_DAY
+        )
+        val eventsSelection = "${CalendarContract.Events.CALENDAR_ID} = ? AND " +
+            "(${CalendarContract.Events.DELETED} IS NULL OR ${CalendarContract.Events.DELETED} = 0) AND " +
+            "(${CalendarContract.Events.STATUS} IS NULL OR ${CalendarContract.Events.STATUS} != ?) AND " +
+            "(${CalendarContract.Events.RRULE} IS NULL OR ${CalendarContract.Events.RRULE} = '') AND " +
+            "(${CalendarContract.Events.RDATE} IS NULL OR ${CalendarContract.Events.RDATE} = '') AND " +
+            "${CalendarContract.Events.ORIGINAL_ID} IS NULL AND " +
+            "${CalendarContract.Events.DTSTART} <= ? AND " +
+            "(${CalendarContract.Events.DTEND} IS NULL OR ${CalendarContract.Events.DTEND} >= ?)"
+
+        try {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                eventsProjection,
+                eventsSelection,
+                arrayOf(
+                    calendarId,
+                    CalendarContract.Events.STATUS_CANCELED.toString(),
+                    queryEndMs.toString(),
+                    queryStartMs.toString()
+                ),
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val eventId = cursor.getLong(0).toString()
+                    if (seenEventIds.contains(eventId)) continue
+                    val rawBeginMs = cursor.getLong(1)
+                    val rawEndCol = if (cursor.isNull(2)) 0L else cursor.getLong(2)
+                    val durationMs = parseDurationMillis(cursor.getString(3))
+                    val rawEndMs = if (rawEndCol > rawBeginMs) {
+                        rawEndCol
+                    } else {
+                        rawBeginMs + (durationMs ?: TimeUnit.MINUTES.toMillis(60))
+                    }
+                    val allDay = cursor.getInt(4) == 1
+                    val (beginMs, endEventMs) = normalizeEventWindow(rawBeginMs, rawEndMs, allDay)
+                    if (beginMs > endMs || endEventMs <= startMs) continue
+                    if (!allDay && beginMs <= startMs - 15 * 60_000L) continue
+                    seenEventIds.add(eventId)
+                    count++
+                }
+            }
+        } catch (_: Exception) {
+        }
+
         return count
     }
 
@@ -500,10 +609,12 @@ object CalendarSyncEngine {
 
         val nowMs = System.currentTimeMillis()
         val endMs = nowMs + TimeUnit.DAYS.toMillis(prefs.getHorizonDays().toLong())
+        val queryStartMs = nowMs - TimeUnit.HOURS.toMillis(24)
+        val queryEndMs = endMs + TimeUnit.HOURS.toMillis(24)
 
         val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
-        ContentUris.appendId(builder, nowMs)
-        ContentUris.appendId(builder, endMs)
+        ContentUris.appendId(builder, queryStartMs)
+        ContentUris.appendId(builder, queryEndMs)
 
         val projection = arrayOf(
             CalendarContract.Instances.EVENT_ID,
@@ -517,11 +628,12 @@ object CalendarSyncEngine {
         )
 
         val events = mutableListOf<LocalCalendarEvent>()
+        val seenEventIds = HashSet<String>()
 
         context.contentResolver.query(
             builder.build(),
             projection,
-            "${CalendarContract.Instances.STATUS} != ?",
+            "(${CalendarContract.Instances.STATUS} IS NULL OR ${CalendarContract.Instances.STATUS} != ?)",
             arrayOf(CalendarContract.Instances.STATUS_CANCELED.toString()),
             "${CalendarContract.Instances.BEGIN} ASC"
         )?.use { cursor ->
@@ -529,43 +641,21 @@ object CalendarSyncEngine {
                 val calId = cursor.getLong(1).toString()
                 if (!selectedIds.contains(calId)) continue
 
+                val eventId = cursor.getLong(0).toString()
                 val rawBeginMs = cursor.getLong(4)
                 val rawEndMs = cursor.getLong(5)
                 val allDay = cursor.getInt(6) == 1
 
-                // Eventos de dia inteiro no Android CalendarContract vêm em 00:00 UTC.
-                // Em UTC-3, 00:00 UTC de amanhã é 21:00 de hoje! Normalizamos para o dia local correto.
-                val beginMs: Long
-                val endEventMs: Long
-                if (allDay) {
-                    val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                        timeInMillis = rawBeginMs
-                    }
-                    val localCal = Calendar.getInstance().apply {
-                        set(Calendar.YEAR, utcCal.get(Calendar.YEAR))
-                        set(Calendar.MONTH, utcCal.get(Calendar.MONTH))
-                        set(Calendar.DAY_OF_MONTH, utcCal.get(Calendar.DAY_OF_MONTH))
-                        set(Calendar.HOUR_OF_DAY, 9)
-                        set(Calendar.MINUTE, 0)
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }
-                    beginMs = localCal.timeInMillis
-                    localCal.set(Calendar.HOUR_OF_DAY, 23)
-                    localCal.set(Calendar.MINUTE, 59)
-                    endEventMs = localCal.timeInMillis
-                } else {
-                    beginMs = rawBeginMs
-                    endEventMs = rawEndMs
-                }
+                val (beginMs, endEventMs) = normalizeEventWindow(rawBeginMs, rawEndMs, allDay)
 
-                if (endEventMs <= nowMs) continue
+                if (beginMs > endMs || endEventMs <= nowMs) continue
                 if (!allDay && beginMs <= nowMs - 15 * 60_000L) continue
 
+                seenEventIds.add(eventId)
                 val calMeta = calMap[calId]
                 events.add(
                     LocalCalendarEvent(
-                        id = cursor.getLong(0).toString(),
+                        id = eventId,
                         calendarId = calId,
                         calendarName = calMeta?.displayName ?: "Calendário",
                         title = cursor.getString(2)?.takeIf { it.isNotBlank() } ?: "Compromisso sem título",
@@ -577,6 +667,80 @@ object CalendarSyncEngine {
                     )
                 )
             }
+        }
+
+        // Complemento direto em CalendarContract.Events para eventos únicos recém-adicionados que ainda
+        // não apareceram em Instances (ou possuam STATUS nulo antes do sync em nuvem).
+        val eventsProjection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.CALENDAR_ID,
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.EVENT_LOCATION,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.DURATION,
+            CalendarContract.Events.ALL_DAY
+        )
+        val eventsSelection =
+            "(${CalendarContract.Events.DELETED} IS NULL OR ${CalendarContract.Events.DELETED} = 0) AND " +
+                "(${CalendarContract.Events.STATUS} IS NULL OR ${CalendarContract.Events.STATUS} != ?) AND " +
+                "(${CalendarContract.Events.RRULE} IS NULL OR ${CalendarContract.Events.RRULE} = '') AND " +
+                "(${CalendarContract.Events.RDATE} IS NULL OR ${CalendarContract.Events.RDATE} = '') AND " +
+                "${CalendarContract.Events.ORIGINAL_ID} IS NULL AND " +
+                "${CalendarContract.Events.DTSTART} <= ? AND " +
+                "(${CalendarContract.Events.DTEND} IS NULL OR ${CalendarContract.Events.DTEND} >= ?)"
+
+        try {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                eventsProjection,
+                eventsSelection,
+                arrayOf(
+                    CalendarContract.Events.STATUS_CANCELED.toString(),
+                    queryEndMs.toString(),
+                    queryStartMs.toString()
+                ),
+                "${CalendarContract.Events.DTSTART} ASC"
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val calId = cursor.getLong(1).toString()
+                    if (!selectedIds.contains(calId)) continue
+
+                    val eventId = cursor.getLong(0).toString()
+                    if (seenEventIds.contains(eventId)) continue
+
+                    val rawBeginMs = cursor.getLong(4)
+                    val rawEndCol = if (cursor.isNull(5)) 0L else cursor.getLong(5)
+                    val durationMs = parseDurationMillis(cursor.getString(6))
+                    val rawEndMs = if (rawEndCol > rawBeginMs) {
+                        rawEndCol
+                    } else {
+                        rawBeginMs + (durationMs ?: TimeUnit.MINUTES.toMillis(60))
+                    }
+                    val allDay = cursor.getInt(7) == 1
+
+                    val (beginMs, endEventMs) = normalizeEventWindow(rawBeginMs, rawEndMs, allDay)
+                    if (beginMs > endMs || endEventMs <= nowMs) continue
+                    if (!allDay && beginMs <= nowMs - 15 * 60_000L) continue
+
+                    seenEventIds.add(eventId)
+                    val calMeta = calMap[calId]
+                    events.add(
+                        LocalCalendarEvent(
+                            id = eventId,
+                            calendarId = calId,
+                            calendarName = calMeta?.displayName ?: "Calendário",
+                            title = cursor.getString(2)?.takeIf { it.isNotBlank() } ?: "Compromisso sem título",
+                            location = cursor.getString(3) ?: "",
+                            startEpochMs = beginMs,
+                            endEpochMs = endEventMs,
+                            allDay = allDay,
+                            colorInt = calMeta?.colorInt ?: 0xFFF59E0B.toInt()
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {
         }
 
         return events.sortedBy { it.startEpochMs }
