@@ -623,59 +623,98 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 strokeLinecap="round"
               />
 
-              {/* BARRA INFERIOR DE BATERIA ESTILO TUBO DE ENSAIO (164°..196°) */}
+              {/* BARRA INFERIOR DE BATERIA EM 3 CAMADAS (Cartucho + 14 pontos com máscara + degradê ativo) */}
+              <defs>
+                <linearGradient id="cwBatteryCartridgeGrad" x1="158" y1="424" x2="292" y2="424" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#162122" />
+                  <stop offset="50%" stopColor="#1E221B" />
+                  <stop offset="100%" stopColor="#262014" />
+                </linearGradient>
+                <linearGradient id="cwBatteryInactiveGrad" x1="167" y1="425" x2="283" y2="425" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#2A3E42" />
+                  <stop offset="50%" stopColor="#3A412F" />
+                  <stop offset="100%" stopColor="#4B3D1C" />
+                </linearGradient>
+                <linearGradient id="cwBatteryActiveGrad" x1="167" y1="425" x2="283" y2="425" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#6EC4DB" />
+                  <stop offset="35%" stopColor="#9DE0B7" />
+                  <stop offset="70%" stopColor="#D4E67A" />
+                  <stop offset="100%" stopColor="#F5C438" />
+                </linearGradient>
+                <mask id="cwBatteryDotsMask">
+                  {Array.from({ length: 14 }, (_, i) => {
+                    const wffDeg = 195.6 - i * 2.4;
+                    const rad = (wffDeg * Math.PI) / 180;
+                    const cx = 225 + 207 * Math.sin(rad);
+                    const cy = 225 - 207 * Math.cos(rad);
+                    const tilt = wffDeg - 180;
+                    return (
+                      <rect
+                        key={i}
+                        x={cx - 2.2}
+                        y={cy - 7.2}
+                        width="4.4"
+                        height="14.4"
+                        rx="2.2"
+                        ry="2.2"
+                        fill="#FFFFFF"
+                        transform={`rotate(${tilt} ${cx} ${cy})`}
+                      />
+                    );
+                  })}
+                </mask>
+                <path
+                  id="cwBatteryPctArcPath"
+                  d="M 307.05 418.31 A 210 210 0 0 0 385.87 359.99"
+                />
+              </defs>
+
+              {/* Camada 1: Cartucho externo de fundo */}
               <path
-                d="M 168.0 424.0 A 207 207 0 0 0 282.0 424.0"
+                d="M 166.21 423.48 A 207 207 0 0 0 283.79 423.48"
                 fill="none"
-                stroke="#22261A"
+                stroke="url(#cwBatteryCartridgeGrad)"
                 strokeWidth="22"
                 strokeLinecap="round"
               />
+
+              {/* Camada 2: 14 pontos inativos com degradê sutil */}
               <path
-                d="M 168.0 424.0 A 207 207 0 0 0 282.0 424.0"
+                d="M 164.48 422.96 A 207 207 0 0 0 285.52 422.96"
                 fill="none"
-                stroke="#3F4430"
-                strokeWidth="17"
-                strokeLinecap="round"
+                stroke="url(#cwBatteryInactiveGrad)"
+                strokeWidth="20"
+                strokeLinecap="butt"
+                mask="url(#cwBatteryDotsMask)"
               />
-              <line x1="182" y1="414" x2="177" y2="439" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="192" y1="416" x2="189" y2="441" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="203" y1="418" x2="201" y2="443" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="214" y1="419" x2="213" y2="444" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="225" y1="419" x2="225" y2="444" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="236" y1="419" x2="237" y2="444" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="247" y1="418" x2="249" y2="443" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="258" y1="416" x2="261" y2="441" stroke="#14170F" strokeWidth="3.2" />
-              <line x1="268" y1="414" x2="273" y2="439" stroke="#14170F" strokeWidth="3.2" />
+
+              {/* Camada 3: Barra ativa em máscara dinâmica (29% padrão visual) */}
               <path
-                d="M 168.0 424.0 A 207 207 0 0 0 246.0 431.0"
+                d="M 166.56 423.58 A 207 207 0 0 0 200.17 430.50"
                 fill="none"
-                stroke="#88D4DC"
-                strokeOpacity="0.8"
-                strokeWidth="11.5"
-                strokeLinecap="round"
+                stroke="url(#cwBatteryActiveGrad)"
+                strokeWidth="20"
+                strokeLinecap="butt"
+                mask="url(#cwBatteryDotsMask)"
               />
 
               {/* Ícone de Bateria Dourado Inclinado a +26° na curva esquerda inferior */}
-              <g transform="translate(130, 408) rotate(26) translate(-14, -16)">
-                <rect x="10" y="2" width="8" height="4" rx="1.5" fill="#F5C438" />
-                <rect x="6" y="6" width="16" height="22" rx="3.5" fill="#F5C438" />
+              <g transform="translate(133, 409) rotate(26) translate(-14, -16)">
+                <rect x="11" y="2" width="6" height="4" rx="1.5" fill="#F5C438" />
+                <rect x="7" y="6" width="14" height="21" rx="3.5" fill="#F5C438" />
               </g>
 
-              {/* Percentual 62% Inclinado a -26° na curva direita inferior */}
-              <g transform="translate(324, 406) rotate(-26)">
-                <text
-                  x="0"
-                  y="6"
-                  textAnchor="middle"
-                  fill="#88D4DC"
-                  fontSize="21"
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                >
-                  62%
-                </text>
-              </g>
+              {/* Percentual da Bateria Curvado ao Longo do Bisel Direito */}
+              <text
+                fill="#84D3D2"
+                fontSize="22"
+                fontWeight="500"
+                fontFamily="sans-serif"
+              >
+                <textPath href="#cwBatteryPctArcPath" startOffset="0%">
+                  29%
+                </textPath>
+              </text>
             </svg>
           )}
 

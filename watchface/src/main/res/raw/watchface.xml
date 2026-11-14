@@ -127,32 +127,31 @@
             </PartDraw>
 
             <!-- ============================================================= -->
-            <!-- BARRA INFERIOR DE BATERIA NATIVA ([BATTERY_PERCENT])          -->
-            <!-- Efeito "Líquido em Tubo de Ensaio":                           -->
-            <!-- 1. Cartucho de fundo mais grosso (thickness=22 / 17)          -->
-            <!-- 2. Cortes radiais AO FUNDO (cortando o cartucho de fundo)     -->
-            <!-- 3. Barra de progresso à frente mais fina (thickness=11.5) com -->
-            <!--    80% de visualização / 20% de transparência (#CC88D4DC)     -->
+            <!-- BARRA INFERIOR DE BATERIA EM 3 CAMADAS ([BATTERY_PERCENT])    -->
+            <!-- 1. Fundo: Cartucho escuro arredondado que delimita a barra    -->
+            <!-- 2. Meio: 14 pontos verticais arredondados com degradê inativo -->
+            <!-- 3. Topo (Máscara): Barra dinâmica com degradê ciano->ouro     -->
+            <!--    aplicada exclusivamente dentro dos pontos (renderMode=MASK)-->
             <!-- ============================================================= -->
 
-            <!-- Ícone de Bateria Dourado Inclinado na Curva (204°, angle=26°) -->
-            <Group x="116" y="392" width="28" height="32" pivotX="0.5" pivotY="0.5" angle="26">
+            <!-- Ícone de Bateria Dourado Inclinado na Curva Esquerda (206°, angle=26°) -->
+            <Group x="119" y="393" width="28" height="32" pivotX="0.5" pivotY="0.5" angle="26">
                 <Variant mode="AMBIENT" target="alpha" value="0" />
                 <PartDraw x="0" y="0" width="28" height="32">
                     <RoundRectangle
-                        x="10"
+                        x="11"
                         y="2"
-                        width="8"
+                        width="6"
                         height="4"
                         cornerRadiusX="1.5"
                         cornerRadiusY="1.5">
                         <Fill color="#FFF5C438" />
                     </RoundRectangle>
                     <RoundRectangle
-                        x="6"
+                        x="7"
                         y="6"
-                        width="16"
-                        height="22"
+                        width="14"
+                        height="21"
                         cornerRadiusX="3.5"
                         cornerRadiusY="3.5">
                         <Fill color="#FFF5C438" />
@@ -160,89 +159,135 @@
                 </PartDraw>
             </Group>
 
-            <!-- Tubo de Ensaio + Cortes ao Fundo + Líquido Translúcido (80% opaco) à Frente -->
+            <!-- Camada 1: Cartucho externo de fundo (delimita a cápsula arredondada) -->
             <PartDraw x="0" y="0" width="450" height="450">
                 <Variant mode="AMBIENT" target="alpha" value="0" />
-                <!-- 1. Borda externa do tubo/cartucho de fundo (Mais grosso: thickness=22) -->
                 <Arc
                     centerX="225"
                     centerY="225"
                     width="414"
                     height="414"
-                    startAngle="164"
-                    endAngle="196">
-                    <Stroke color="#FF22261A" thickness="22" cap="ROUND" />
-                </Arc>
-                <!-- 2. Interior do cartucho de fundo (Mais grosso que a barra: thickness=17) -->
-                <Arc
-                    centerX="225"
-                    centerY="225"
-                    width="414"
-                    height="414"
-                    startAngle="164"
-                    endAngle="196">
-                    <Stroke color="#FF3F4430" thickness="17" cap="ROUND" />
-                </Arc>
-                <!-- 3. Cortes Radiais AO FUNDO (cortam o cartucho de fundo antes do líquido!) -->
-                <Line startX="182" startY="415" endX="177" endY="439">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="192" startY="417" endX="189" endY="441">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="203" startY="419" endX="201" endY="443">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="214" startY="420" endX="213" endY="444">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="225" startY="420" endX="225" endY="444">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="236" startY="420" endX="237" endY="444">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="247" startY="419" endX="249" endY="443">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="258" startY="417" endX="261" endY="441">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <Line startX="268" startY="415" endX="273" endY="439">
-                    <Stroke color="#FF14170F" thickness="3.2" />
-                </Line>
-                <!-- 4. Barra de Progresso Verdadeira À FRENTE (Mais fina: thickness=11.5, 80% opaca / 20% transparente #CC88D4DC) -->
-                <Arc
-                    centerX="225"
-                    centerY="225"
-                    width="414"
-                    height="414"
-                    startAngle="164"
-                    endAngle="196">
-                    <Transform
-                        target="startAngle"
-                        value="196 - (32 * clamp([BATTERY_PERCENT], 4, 100) / 100)" />
-                    <Stroke color="#CC88D4DC" thickness="11.5" cap="ROUND" />
+                    startAngle="163.5"
+                    endAngle="196.5">
+                    <Stroke color="#FF1B201A" thickness="22" cap="ROUND">
+                        <LinearGradient
+                            startX="158"
+                            startY="424"
+                            endX="292"
+                            endY="424"
+                            colors="#FF162122 #FF1E221B #FF262014"
+                            positions="0.0 0.5 1.0" />
+                    </Stroke>
                 </Arc>
             </PartDraw>
 
-            <!-- Percentual da Bateria Inclinado na Curva Direita (150°, angle=-28°, ex: 26%) -->
-            <Group x="298" y="390" width="70" height="32" pivotX="0.5" pivotY="0.5" angle="-28">
-                <Variant mode="AMBIENT" target="alpha" value="180" />
-                <PartText x="0" y="0" width="70" height="32">
-                    <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                        <Font
-                            family="SYNC_TO_DEVICE"
-                            size="22.0"
-                            weight="BOLD"
-                            color="#FF88D4DC">
-                            <Template><![CDATA[%s%%]]>
-                                <Parameter expression="[BATTERY_PERCENT]" />
-                            </Template>
-                        </Font>
-                    </Text>
-                </PartText>
+            <!-- Camada 2: 14 pontos inativos com bordas arredondadas e degradê sutil -->
+            <Group x="0" y="0" width="450" height="450">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Arc
+                        centerX="225"
+                        centerY="225"
+                        width="414"
+                        height="414"
+                        startAngle="163.0"
+                        endAngle="197.0">
+                        <Stroke color="#FF3B3D2C" thickness="20" cap="BUTT">
+                            <LinearGradient
+                                startX="167"
+                                startY="425"
+                                endX="283"
+                                endY="425"
+                                colors="#FF2A3E42 #FF3A412F #FF4B3D1C"
+                                positions="0.0 0.5 1.0" />
+                        </Stroke>
+                    </Arc>
+                </PartDraw>
+                <Group x="0" y="0" width="450" height="450" renderMode="MASK">
+                    <PartDraw x="163" y="413" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="15.6"><RoundRectangle x="4.13" y="4.17" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="172" y="416" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="13.2"><RoundRectangle x="3.53" y="3.33" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="180" y="417" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="10.8"><RoundRectangle x="4.01" y="4.13" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="189" y="419" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="8.4"><RoundRectangle x="3.56" y="3.58" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="197" y="420" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="6.0"><RoundRectangle x="4.16" y="3.67" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="206" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="3.6"><RoundRectangle x="3.80" y="3.39" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="215" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="1.2"><RoundRectangle x="3.46" y="3.75" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="223" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-1.2"><RoundRectangle x="4.14" y="3.75" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="232" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-3.6"><RoundRectangle x="3.80" y="3.39" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="241" y="420" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-6.0"><RoundRectangle x="3.44" y="3.67" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="249" y="419" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-8.4"><RoundRectangle x="4.04" y="3.58" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="258" y="417" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-10.8"><RoundRectangle x="3.59" y="4.13" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="266" y="416" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-13.2"><RoundRectangle x="4.07" y="3.33" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="275" y="413" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-15.6"><RoundRectangle x="3.47" y="4.17" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                </Group>
             </Group>
+
+            <!-- Camada 3: Barra ativa em máscara dinâmica (altera a cor somente dentro dos pontos) -->
+            <Group x="0" y="0" width="450" height="450">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Arc
+                        centerX="225"
+                        centerY="225"
+                        width="414"
+                        height="414"
+                        startAngle="163.6"
+                        endAngle="196.4">
+                        <Transform
+                            target="startAngle"
+                            value="196.4 - (32.8 * clamp([BATTERY_PERCENT], 0, 100) / 100)" />
+                        <Stroke color="#FF88D4DC" thickness="20" cap="BUTT">
+                            <LinearGradient
+                                startX="167"
+                                startY="425"
+                                endX="283"
+                                endY="425"
+                                colors="#FF6EC4DB #FF9DE0B7 #FFD4E67A #FFF5C438"
+                                positions="0.0 0.35 0.70 1.0" />
+                        </Stroke>
+                    </Arc>
+                </PartDraw>
+                <Group x="0" y="0" width="450" height="450" renderMode="MASK">
+                    <PartDraw x="163" y="413" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="15.6"><RoundRectangle x="4.13" y="4.17" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="172" y="416" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="13.2"><RoundRectangle x="3.53" y="3.33" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="180" y="417" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="10.8"><RoundRectangle x="4.01" y="4.13" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="189" y="419" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="8.4"><RoundRectangle x="3.56" y="3.58" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="197" y="420" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="6.0"><RoundRectangle x="4.16" y="3.67" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="206" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="3.6"><RoundRectangle x="3.80" y="3.39" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="215" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="1.2"><RoundRectangle x="3.46" y="3.75" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="223" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-1.2"><RoundRectangle x="4.14" y="3.75" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="232" y="421" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-3.6"><RoundRectangle x="3.80" y="3.39" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="241" y="420" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-6.0"><RoundRectangle x="3.44" y="3.67" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="249" y="419" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-8.4"><RoundRectangle x="4.04" y="3.58" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="258" y="417" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-10.8"><RoundRectangle x="3.59" y="4.13" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="266" y="416" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-13.2"><RoundRectangle x="4.07" y="3.33" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="275" y="413" width="12" height="22" pivotX="0.5" pivotY="0.5" angle="-15.6"><RoundRectangle x="3.47" y="4.17" width="4.4" height="14.4" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                </Group>
+            </Group>
+
+            <!-- Percentual da Bateria Curvado ao Longo do Bisel Direito (157° -> 136°) -->
+            <PartText x="0" y="0" width="450" height="450">
+                <Variant mode="AMBIENT" target="alpha" value="180" />
+                <TextCircular
+                    centerX="225"
+                    centerY="225"
+                    width="420"
+                    height="420"
+                    startAngle="157.0"
+                    endAngle="130.0"
+                    align="START"
+                    direction="COUNTER_CLOCKWISE"
+                    ellipsis="TRUE">
+                    <Font
+                        family="SYNC_TO_DEVICE"
+                        size="22.0"
+                        weight="MEDIUM"
+                        color="#FF84D3D2">
+                        <Template><![CDATA[%s%%]]>
+                            <Parameter expression="[BATTERY_PERCENT]" />
+                        </Template>
+                    </Font>
+                </TextCircular>
+            </PartText>
 
         </Group>
 

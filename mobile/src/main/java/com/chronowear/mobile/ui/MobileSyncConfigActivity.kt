@@ -18,6 +18,8 @@ import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -3370,61 +3372,114 @@ class MobileSyncConfigActivity : Activity() {
             textPaint.color = Color.WHITE
             canvas.drawText(prefs.getSolarSunsetHHMM(), 294.5f, 334f, textPaint)
 
-            // 7. BARRA INFERIOR DE BATERIA ESTILO TUBO DE ENSAIO (watchface.xml linhas 138-246)
+            // 7. BARRA INFERIOR DE BATERIA EM 3 CAMADAS (cópia exata do watchface.xml linhas 130-292)
+            val watchBatteryPct = prefs.getWatchBatteryPct().coerceIn(0, 100)
             rect.set(18f, 18f, 432f, 432f)
+
+            // Camada 1: Cartucho externo de fundo (delimita a cápsula arredondada)
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
             paint.strokeWidth = 22f
-            paint.color = Color.parseColor("#22261A")
-            canvas.drawArc(rect, 74f, 32f, false, paint)
-
-            paint.strokeWidth = 17f
-            paint.color = Color.parseColor("#3F4430")
-            canvas.drawArc(rect, 74f, 32f, false, paint)
-
-            // 9 cortes radiais no tubo de fundo
-            paint.strokeWidth = 3.2f
-            paint.color = Color.parseColor("#14170F")
-            val cuts = arrayOf(
-                floatArrayOf(182f, 415f, 177f, 439f),
-                floatArrayOf(192f, 417f, 189f, 441f),
-                floatArrayOf(203f, 419f, 201f, 443f),
-                floatArrayOf(214f, 420f, 213f, 444f),
-                floatArrayOf(225f, 420f, 225f, 444f),
-                floatArrayOf(236f, 420f, 237f, 444f),
-                floatArrayOf(247f, 419f, 249f, 443f),
-                floatArrayOf(258f, 417f, 261f, 441f),
-                floatArrayOf(268f, 415f, 273f, 439f)
+            paint.shader = LinearGradient(
+                158f, 424f, 292f, 424f,
+                intArrayOf(
+                    Color.parseColor("#162122"),
+                    Color.parseColor("#1E221B"),
+                    Color.parseColor("#262014")
+                ),
+                floatArrayOf(0.0f, 0.5f, 1.0f),
+                Shader.TileMode.CLAMP
             )
-            for (c in cuts) {
-                canvas.drawLine(c[0], c[1], c[2], c[3], paint)
+            canvas.drawArc(rect, 73.5f, 33.0f, false, paint)
+            paint.shader = null
+
+            val dotRect = RectF(-2.2f, -7.2f, 2.2f, 7.2f)
+            val drawMaskDots = {
+                paint.style = Paint.Style.FILL
+                paint.shader = null
+                paint.xfermode = null
+                paint.color = Color.WHITE
+                for (i in 0 until 14) {
+                    val wffAngleDeg = 195.6 - i * 2.4
+                    val wffRad = Math.toRadians(wffAngleDeg)
+                    val cx = (225.0 + 207.0 * kotlin.math.sin(wffRad)).toFloat()
+                    val cy = (225.0 - 207.0 * kotlin.math.cos(wffRad)).toFloat()
+                    val tiltDeg = (wffAngleDeg - 180.0).toFloat()
+                    canvas.save()
+                    canvas.translate(cx, cy)
+                    canvas.rotate(tiltDeg)
+                    canvas.drawRoundRect(dotRect, 2.2f, 2.2f, paint)
+                    canvas.restore()
+                }
             }
 
-            // Líquido translúcido ciano à frente
-            paint.strokeWidth = 11.5f
-            paint.color = Color.parseColor("#CC88D4DC")
-            canvas.drawArc(rect, 84f, 22f, false, paint)
+            // Camada 2: 14 pontos inativos com bordas arredondadas e degradê sutil (máscara SRC_IN)
+            val inactiveLayerId = canvas.saveLayer(145f, 400f, 305f, 450f, null)
+            drawMaskDots()
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            paint.style = Paint.Style.STROKE
+            paint.strokeCap = Paint.Cap.BUTT
+            paint.strokeWidth = 20f
+            paint.shader = LinearGradient(
+                167f, 425f, 283f, 425f,
+                intArrayOf(
+                    Color.parseColor("#2A3E42"),
+                    Color.parseColor("#3A412F"),
+                    Color.parseColor("#4B3D1C")
+                ),
+                floatArrayOf(0.0f, 0.5f, 1.0f),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawArc(rect, 73.0f, 34.0f, false, paint)
+            paint.xfermode = null
+            paint.shader = null
+            canvas.restoreToCount(inactiveLayerId)
 
-            // Ícone de bateria dourado inclinado à esquerda (+26°)
+            // Camada 3: Barra ativa em máscara dinâmica (altera a cor somente dentro dos pontos)
+            if (watchBatteryPct > 0) {
+                val activeLayerId = canvas.saveLayer(145f, 400f, 305f, 450f, null)
+                drawMaskDots()
+                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+                paint.style = Paint.Style.STROKE
+                paint.strokeCap = Paint.Cap.BUTT
+                paint.strokeWidth = 20f
+                paint.shader = LinearGradient(
+                    167f, 425f, 283f, 425f,
+                    intArrayOf(
+                        Color.parseColor("#6EC4DB"),
+                        Color.parseColor("#9DE0B7"),
+                        Color.parseColor("#D4E67A"),
+                        Color.parseColor("#F5C438")
+                    ),
+                    floatArrayOf(0.0f, 0.35f, 0.70f, 1.0f),
+                    Shader.TileMode.CLAMP
+                )
+                val sweepDeg = -(32.8f * watchBatteryPct / 100f)
+                canvas.drawArc(rect, 106.4f, sweepDeg, false, paint)
+                paint.xfermode = null
+                paint.shader = null
+                canvas.restoreToCount(activeLayerId)
+            }
+
+            // Ícone de bateria dourado inclinado na curva esquerda (+26°)
             canvas.save()
-            canvas.translate(130f, 408f)
+            canvas.translate(133f, 409f)
             canvas.rotate(26f)
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#F5C438")
-            canvas.drawRoundRect(RectF(-4f, -14f, 4f, -10f), 1.5f, 1.5f, paint)
-            canvas.drawRoundRect(RectF(-8f, -10f, 8f, 12f), 3.5f, 3.5f, paint)
+            canvas.drawRoundRect(RectF(-3f, -14f, 3f, -10f), 1.5f, 1.5f, paint)
+            canvas.drawRoundRect(RectF(-7f, -10f, 7f, 11f), 3.5f, 3.5f, paint)
             canvas.restore()
 
-            // Percentual 62% inclinado à direita (-28°)
-            canvas.save()
-            canvas.translate(324f, 406f)
-            canvas.rotate(-28f)
-            textPaint.color = Color.parseColor("#88D4DC")
-            textPaint.textSize = 21f
-            textPaint.textAlign = Paint.Align.CENTER
-            textPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            canvas.drawText("62%", 0f, 6f, textPaint)
-            canvas.restore()
+            // Percentual da bateria curvado ao longo do bisel direito (157° -> 130° WFF)
+            val batteryTextArcPath = Path().apply {
+                addArc(RectF(15f, 15f, 435f, 435f), 67.0f, -27.0f)
+            }
+            textPaint.color = Color.parseColor("#84D3D2")
+            textPaint.textSize = 22.0f
+            textPaint.textAlign = Paint.Align.LEFT
+            textPaint.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            canvas.drawTextOnPath("${watchBatteryPct}%", batteryTextArcPath, 0f, 7f, textPaint)
 
             canvas.restore()
         }
