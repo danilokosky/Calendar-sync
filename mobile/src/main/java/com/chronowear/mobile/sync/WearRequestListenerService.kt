@@ -29,12 +29,19 @@ class WearRequestListenerService : WearableListenerService() {
                 val prefs = SyncPreferences(applicationContext)
                 prefs.markWatchAppInstalledOnNode(messageEvent.sourceNodeId)
                 applicationContext.sendBroadcast(
-                    Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(applicationContext.packageName)
+                    Intent(SyncPreferences.ACTION_SYNC_COMPLETED)
+                        .setPackage(applicationContext.packageName)
+                        .putExtra("from_watch_pong", true)
                 )
             }
             "/chronowear/request_sync_from_watch" -> {
                 val prefs = SyncPreferences(applicationContext)
                 prefs.markWatchAppInstalledOnNode(messageEvent.sourceNodeId)
+                applicationContext.sendBroadcast(
+                    Intent(SyncPreferences.ACTION_SYNC_COMPLETED)
+                        .setPackage(applicationContext.packageName)
+                        .putExtra("from_watch_pong", true)
+                )
                 scope.launch {
                     CalendarSyncEngine.performFullSyncToWatch(
                         applicationContext,
@@ -56,7 +63,9 @@ class WearRequestListenerService : WearableListenerService() {
                         levelsCsv = json.optString("levelsCsv", "")
                     )
                     applicationContext.sendBroadcast(
-                        Intent(SyncPreferences.ACTION_SYNC_COMPLETED).setPackage(applicationContext.packageName)
+                        Intent(SyncPreferences.ACTION_SYNC_COMPLETED)
+                            .setPackage(applicationContext.packageName)
+                            .putExtra("from_watch_pong", true)
                     )
                 } catch (_: Exception) {
                 }

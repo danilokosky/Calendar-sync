@@ -25,6 +25,7 @@ import android.util.Base64
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
@@ -379,10 +380,13 @@ object CalendarSyncEngine {
         }
 
         val capableNodeIds = try {
-            val capInfo = Wearable.getCapabilityClient(context)
+            val reachableCap = Wearable.getCapabilityClient(context)
                 .getCapability(CAPABILITY_WATCH_APP_INSTALLED, CapabilityClient.FILTER_REACHABLE)
                 .await()
-            capInfo.nodes.map { it.id }.toSet()
+            val allCap = Wearable.getCapabilityClient(context)
+                .getCapability(CAPABILITY_WATCH_APP_INSTALLED, CapabilityClient.FILTER_ALL)
+                .await()
+            (reachableCap.nodes.map { it.id } + allCap.nodes.map { it.id }).toSet()
         } catch (_: Exception) {
             emptySet()
         }
@@ -398,8 +402,26 @@ object CalendarSyncEngine {
             }
         }
 
-        val installedNodes = connectedNodes.filter { node ->
+        var installedNodes = connectedNodes.filter { node ->
             capableNodeIds.contains(node.id) || prefs.isWatchAppVerifiedOnNode(node.id)
+        }
+
+        if (installedNodes.isEmpty()) {
+            repeat(8) {
+                delay(150L)
+                val updatedCapableIds = try {
+                    Wearable.getCapabilityClient(context)
+                        .getCapability(CAPABILITY_WATCH_APP_INSTALLED, CapabilityClient.FILTER_REACHABLE)
+                        .await()
+                        .nodes.map { it.id }.toSet()
+                } catch (_: Exception) {
+                    emptySet()
+                }
+                installedNodes = connectedNodes.filter { node ->
+                    updatedCapableIds.contains(node.id) || prefs.isWatchAppVerifiedOnNode(node.id)
+                }
+                if (installedNodes.isNotEmpty()) return@repeat
+            }
         }
 
         return if (installedNodes.isNotEmpty()) {

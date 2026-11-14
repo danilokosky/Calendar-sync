@@ -186,12 +186,19 @@ class MobileSyncConfigActivity : Activity() {
     private val syncCompletedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (GoogleTasksApiClient.isInteractiveConsentInProgress) return
+            val fromWatchPong = intent?.getBooleanExtra("from_watch_pong", false) == true
+            val needsConnectionReCheck =
+                lastConnectionReport?.state != WearConnectionState.CONNECTED_WITH_APP_INSTALLED
+            if (fromWatchPong && needsConnectionReCheck) {
+                refreshUiState(checkRemoteConnection = true)
+                return
+            }
             if (System.currentTimeMillis() < suppressSyncBroadcastUntilMs) {
                 virtualWatchView.invalidate()
                 refreshWidgetsGridInPlace()
                 return
             }
-            refreshUiState(checkRemoteConnection = false)
+            refreshUiState(checkRemoteConnection = needsConnectionReCheck)
         }
     }
 
