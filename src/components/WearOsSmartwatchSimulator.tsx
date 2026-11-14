@@ -607,21 +607,22 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               />
               <circle cx="18.0" cy="225.0" r="8" fill="#F97316" />
 
-              {/* SLOT 8: Arco Lateral Direito (70°..110°) */}
+              {/* SLOT 8: Lateral Direita SHORT_TEXT / LONG_TEXT centralizado na curvatura + ícone mono */}
               <path
-                d="M 419.5 154.2 A 207 207 0 0 1 419.5 295.8"
+                id="cwRightSideArcPath"
+                d="M 418.7 154.0 A 208 208 0 0 1 405.1 329.0"
                 fill="none"
-                stroke="#25302B"
-                strokeWidth="18"
-                strokeLinecap="round"
               />
-              <path
-                d="M 419.5 154.2 A 207 207 0 0 1 430.5 245.0"
-                fill="none"
-                stroke="#86EFAC"
-                strokeWidth="18"
-                strokeLinecap="round"
-              />
+              <text
+                fill="#CBD5B0"
+                fontSize="16"
+                fontWeight="bold"
+                fontFamily="sans-serif"
+              >
+                <textPath href="#cwRightSideArcPath" startOffset="50%" textAnchor="middle">
+                  Sem lembretes
+                </textPath>
+              </text>
 
               {/* BARRA INFERIOR DE BATERIA EM 3 CAMADAS (Cartucho + 14 pontos com máscara + degradê ativo) */}
               <defs>
@@ -652,9 +653,9 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                       <rect
                         key={i}
                         x={cx - 2.2}
-                        y={cy - 7.2}
+                        y={cy - 11.0}
                         width="4.4"
-                        height="14.4"
+                        height="22.0"
                         rx="2.2"
                         ry="2.2"
                         fill="#FFFFFF"
@@ -678,22 +679,22 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 strokeLinecap="round"
               />
 
-              {/* Camada 2: 14 pontos inativos com degradê sutil */}
+              {/* Camada 2: 14 pontos inativos com mesmo diâmetro radial (22px) do cartucho */}
               <path
                 d="M 164.48 422.96 A 207 207 0 0 0 285.52 422.96"
                 fill="none"
                 stroke="url(#cwBatteryInactiveGrad)"
-                strokeWidth="20"
+                strokeWidth="24"
                 strokeLinecap="butt"
                 mask="url(#cwBatteryDotsMask)"
               />
 
-              {/* Camada 3: Barra ativa em máscara dinâmica (29% padrão visual) */}
+              {/* Camada 3: Barra ativa em máscara dinâmica (mesmo diâmetro radial 22px dentro dos pontos) */}
               <path
                 d="M 166.56 423.58 A 207 207 0 0 0 200.17 430.50"
                 fill="none"
                 stroke="url(#cwBatteryActiveGrad)"
-                strokeWidth="20"
+                strokeWidth="24"
                 strokeLinecap="butt"
                 mask="url(#cwBatteryDotsMask)"
               />
@@ -741,9 +742,6 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               </span>
               <span className="absolute right-6 top-[102px] -rotate-[28deg] w-5 h-5 rounded-full bg-[#F5C438] text-black text-[11px] font-bold flex items-center justify-center z-10">
                 ✓
-              </span>
-              <span className="absolute right-5 top-[278px] rotate-[28deg] text-[13px] font-bold font-mono text-slate-200 z-10">
-                0
               </span>
 
               {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — Toque no Canvas alterna para o próximo contexto (PendingIntent.getBroadcast) */}
@@ -1440,18 +1438,18 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   })()}
               </div>
 
-              {/* DOCK EM CARTUCHO ENVOLVENTE (x=84, y=268, w=282, h=92) COM APENAS 2 COMPLICATIONS MAIORES E CONTORNO FORTE */}
+              {/* DOCK EM CARTUCHO ENVOLVENTE (x=84, y=268, w=282, h=108 — +20% altura ancorada no topo) */}
               <div
-                title="Cartucho Externo Envolvente (x=84, y=268, w=282, h=92, r=46)"
-                className="rounded-full bg-[#161D1C] border-[1.5px] border-[#283533] px-2 py-1.5 flex items-center justify-center gap-2.5 z-10 mt-0.5 mb-10 shadow-inner"
+                title="Cartucho Externo Envolvente (x=84, y=268, w=282, h=108, r=54)"
+                className="rounded-full bg-[#161D1C] border-[1.5px] border-[#283533] px-2 py-1.5 flex items-center justify-center gap-2.5 z-10 mt-0.5 mb-7 shadow-inner"
               >
                 {/* Slot #4: Cartucho Interno Esquerdo */}
                 <div
                   title="Slot #4: Complication Cartucho Esquerdo"
-                  className="w-[104px] h-[56px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
+                  className="w-[104px] h-[68px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
                 >
                   <Footprints className="w-4 h-4 text-[#22C55E]" />
-                  <span className="text-[15px] font-bold text-white leading-tight mt-0.5 tracking-tight">
+                  <span className="text-[17px] font-bold text-white leading-tight mt-0.5 tracking-tight">
                     2.435
                   </span>
                 </div>
@@ -1459,10 +1457,10 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 {/* Slot #5: Cartucho Interno Direito */}
                 <div
                   title="Slot #5: Complication Cartucho Direito"
-                  className="w-[104px] h-[56px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
+                  className="w-[104px] h-[68px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
                 >
                   <Sun className="w-4 h-4 text-[#F97316]" />
-                  <span className="text-[15px] font-bold text-white leading-tight mt-0.5 tracking-tight">
+                  <span className="text-[17px] font-bold text-white leading-tight mt-0.5 tracking-tight">
                     {config.solarSunsetHHMM ?? '17:40'}
                   </span>
                 </div>

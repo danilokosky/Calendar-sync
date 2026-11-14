@@ -3241,38 +3241,28 @@ class MobileSyncConfigActivity : Activity() {
             canvas.drawText("0", 0f, 6f, textPaint)
             canvas.restore()
 
-            // 3. SLOT 8: Arco Lateral Direito (trilho #25302B + progresso verde #86EFAC)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 18f
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.color = Color.parseColor("#25302B")
-            canvas.drawArc(rect, -20f, 40f, false, paint)
-            paint.color = Color.parseColor("#86EFAC")
-            canvas.drawArc(rect, -20f, 26f, false, paint)
-
-            // Ícone superior direito inclinado (-28°) e contador inferior direito (+28°)
+            // 3. SLOT 8: Lateral Direita SHORT_TEXT / LONG_TEXT centralizado na curvatura + ícone mono
             canvas.save()
-            canvas.translate(413f, 118f)
+            canvas.translate(407f, 120f)
             canvas.rotate(-28f)
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#F5C438")
-            canvas.drawCircle(0f, 0f, 11f, paint)
+            canvas.drawCircle(0f, 0f, 10f, paint)
             textPaint.color = Color.BLACK
-            textPaint.textSize = 14f
+            textPaint.textSize = 13f
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-            canvas.drawText("✓", 0f, 5f, textPaint)
+            canvas.drawText("✓", 0f, 4.5f, textPaint)
             canvas.restore()
 
-            canvas.save()
-            canvas.translate(415f, 316f)
-            canvas.rotate(28f)
-            textPaint.color = Color.parseColor("#E2E8F0")
-            textPaint.textSize = 17f
+            val rightSideTextPath = Path().apply {
+                addArc(RectF(17f, 17f, 433f, 433f), -20.0f, 50.0f)
+            }
+            textPaint.color = Color.parseColor("#CBD5B0")
+            textPaint.textSize = 16.0f
             textPaint.textAlign = Paint.Align.CENTER
-            textPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            canvas.drawText("0", 0f, 6f, textPaint)
-            canvas.restore()
+            textPaint.typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
+            canvas.drawTextOnPath("Sem lembretes", rightSideTextPath, 0f, 5f, textPaint)
 
             // 4. TOPO SAMSUNG (Dia da Semana Dourado #F5C438 + Dia do Mês Branco + Relógio 70sp HH:mm:ss)
             val cal = Calendar.getInstance()
@@ -3325,52 +3315,52 @@ class MobileSyncConfigActivity : Activity() {
             rect.set(74f, 110f, 376f, 246f)
             drawContextCanvasInsideRect(canvas, rect, previewMode)
 
-            // 6. CARTUCHO INFERIOR DUPLO DE COMPLICATIONS (x=84, y=268, w=282, h=92 — Slots 4 e 5 do watchface.xml)
-            rect.set(84f, 268f, 366f, 360f)
+            // 6. CARTUCHO INFERIOR DUPLO DE COMPLICATIONS (x=84, y=268, w=282, h=108 — Slots 4 e 5 +20% altura)
+            rect.set(84f, 268f, 366f, 376f)
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#161D1C")
-            canvas.drawRoundRect(rect, 46f, 46f, paint)
+            canvas.drawRoundRect(rect, 54f, 54f, paint)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1.6f
             paint.color = Color.parseColor("#283533")
-            canvas.drawRoundRect(rect, 46f, 46f, paint)
+            canvas.drawRoundRect(rect, 54f, 54f, paint)
 
-            // Slot 4: Cápsula Interna Esquerda (x=92, y=275, w=127, h=78) -> Passos
-            rect.set(92f, 275f, 219f, 353f)
+            // Slot 4: Cápsula Interna Esquerda (x=92, y=275, w=127, h=94) -> Passos
+            rect.set(92f, 275f, 219f, 369f)
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#263230")
-            canvas.drawRoundRect(rect, 39f, 39f, paint)
+            canvas.drawRoundRect(rect, 47f, 47f, paint)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1.8f
             paint.color = Color.parseColor("#455955")
-            canvas.drawRoundRect(rect, 39f, 39f, paint)
+            canvas.drawRoundRect(rect, 47f, 47f, paint)
 
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-            textPaint.textSize = 15f
+            textPaint.textSize = 16.5f
             textPaint.color = Color.parseColor("#88D4DC")
-            canvas.drawText("PASSOS", 155.5f, 304f, textPaint)
-            textPaint.textSize = 21f
+            canvas.drawText("PASSOS", 155.5f, 308f, textPaint)
+            textPaint.textSize = 23.5f
             textPaint.color = Color.WHITE
             val formattedTodaySteps = String.format(Locale("pt", "BR"), "%,d", prefs.getStepsToday())
-            canvas.drawText(formattedTodaySteps, 155.5f, 334f, textPaint)
+            canvas.drawText(formattedTodaySteps, 155.5f, 344f, textPaint)
 
-            // Slot 5: Cápsula Interna Direita (x=231, y=275, w=127, h=78) -> Pôr do Sol
-            rect.set(231f, 275f, 358f, 353f)
+            // Slot 5: Cápsula Interna Direita (x=231, y=275, w=127, h=94) -> Pôr do Sol
+            rect.set(231f, 275f, 358f, 369f)
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#263230")
-            canvas.drawRoundRect(rect, 39f, 39f, paint)
+            canvas.drawRoundRect(rect, 47f, 47f, paint)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1.8f
             paint.color = Color.parseColor("#455955")
-            canvas.drawRoundRect(rect, 39f, 39f, paint)
+            canvas.drawRoundRect(rect, 47f, 47f, paint)
 
-            textPaint.textSize = 15f
+            textPaint.textSize = 16.5f
             textPaint.color = Color.parseColor("#F5C438")
-            canvas.drawText("PÔR DO SOL", 294.5f, 304f, textPaint)
-            textPaint.textSize = 21f
+            canvas.drawText("PÔR DO SOL", 294.5f, 308f, textPaint)
+            textPaint.textSize = 23.5f
             textPaint.color = Color.WHITE
-            canvas.drawText(prefs.getSolarSunsetHHMM(), 294.5f, 334f, textPaint)
+            canvas.drawText(prefs.getSolarSunsetHHMM(), 294.5f, 344f, textPaint)
 
             // 7. BARRA INFERIOR DE BATERIA EM 3 CAMADAS (cópia exata do watchface.xml linhas 130-292)
             val watchBatteryPct = prefs.getWatchBatteryPct().coerceIn(0, 100)
@@ -3393,7 +3383,7 @@ class MobileSyncConfigActivity : Activity() {
             canvas.drawArc(rect, 73.5f, 33.0f, false, paint)
             paint.shader = null
 
-            val dotRect = RectF(-2.2f, -7.2f, 2.2f, 7.2f)
+            val dotRect = RectF(-2.2f, -11.0f, 2.2f, 11.0f)
             val drawMaskDots = {
                 paint.style = Paint.Style.FILL
                 paint.shader = null
@@ -3413,13 +3403,13 @@ class MobileSyncConfigActivity : Activity() {
                 }
             }
 
-            // Camada 2: 14 pontos inativos com bordas arredondadas e degradê sutil (máscara SRC_IN)
+            // Camada 2: 14 pontos inativos com mesmo diâmetro radial (22px) do cartucho
             val inactiveLayerId = canvas.saveLayer(145f, 400f, 305f, 450f, null)
             drawMaskDots()
             paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.BUTT
-            paint.strokeWidth = 20f
+            paint.strokeWidth = 24f
             paint.shader = LinearGradient(
                 167f, 425f, 283f, 425f,
                 intArrayOf(
@@ -3435,14 +3425,14 @@ class MobileSyncConfigActivity : Activity() {
             paint.shader = null
             canvas.restoreToCount(inactiveLayerId)
 
-            // Camada 3: Barra ativa em máscara dinâmica (altera a cor somente dentro dos pontos)
+            // Camada 3: Barra ativa em máscara dinâmica (mesmo diâmetro radial 22px dentro dos pontos)
             if (watchBatteryPct > 0) {
                 val activeLayerId = canvas.saveLayer(145f, 400f, 305f, 450f, null)
                 drawMaskDots()
                 paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
                 paint.style = Paint.Style.STROKE
                 paint.strokeCap = Paint.Cap.BUTT
-                paint.strokeWidth = 20f
+                paint.strokeWidth = 24f
                 paint.shader = LinearGradient(
                     167f, 425f, 283f, 425f,
                     intArrayOf(
