@@ -29,4 +29,10 @@
     <string name="config_bg_aurora_dual">Aurora Ciano &amp; Ouro</string>
     <string name="config_bg_indigo_night">Índigo Noturno (Sono)</string>
     <string name="config_bg_brushed_titanium">Titânio Escovado (Grafite)</string>
+    <string name="config_bg_light_steel_horizon">Azul Aço Claro (Horizonte)</string>
+    <string name="config_bg_light_glacial_cyan">Ciano Glacial Claro (Clima)</string>
+    <string name="config_bg_light_silver_slate">Ardósia Prata Clara (Canvas)</string>
+    <string name="config_bg_light_mint_teal">Verde-Água Luminoso (Passos)</string>
+    <string name="config_bg_light_lavender_steel">Lavanda Aço Claro (Sono)</string>
+    <string name="config_bg_light_aurora_day">Aurora Clara (Ciano &amp; Âmbar)</string>
 </resources>

@@ -160,30 +160,21 @@ object AgendaCardBitmapRenderer {
         return renderEventsCardCanvas(
             headerTitle = "Hoje",
             rows = sampleRows,
-            progressFraction = 0.85f,
-            drawTranslucentCardFill = true
+            progressFraction = 0.85f
         )
     }
 
-    private fun createBaseCardBitmap(drawTranslucentCardFill: Boolean = false): Pair<Bitmap, Canvas> {
+    private fun createBaseCardBitmap(): Pair<Bitmap, Canvas> {
         val bmp = Bitmap.createBitmap(CARD_WIDTH, CARD_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.drawColor(Color.TRANSPARENT)
 
         val cardRect = RectF(2f, 2f, CARD_WIDTH - 2f, CARD_HEIGHT - 2f)
-        if (drawTranslucentCardFill) {
-            val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.FILL
-                color = Color.parseColor("#D9080A0E")
-            }
-            canvas.drawRoundRect(cardRect, 40f, 40f, bgPaint)
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.parseColor("#1A080A0E")
         }
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2.6f
-            color = Color.parseColor("#161D26")
-        }
-        canvas.drawRoundRect(cardRect, 40f, 40f, borderPaint)
+        canvas.drawRoundRect(cardRect, 40f, 40f, bgPaint)
         return bmp to canvas
     }
 
@@ -193,10 +184,9 @@ object AgendaCardBitmapRenderer {
     private fun renderEventsCardCanvas(
         headerTitle: String,
         rows: List<Triple<String, String, String>>,
-        progressFraction: Float,
-        drawTranslucentCardFill: Boolean = false
+        progressFraction: Float
     ): Bitmap {
-        val (bmp, canvas) = createBaseCardBitmap(drawTranslucentCardFill = drawTranslucentCardFill)
+        val (bmp, canvas) = createBaseCardBitmap()
 
         val goldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -205,7 +195,8 @@ object AgendaCardBitmapRenderer {
         val darkCutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 4.5f
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            color = Color.parseColor("#1A080A0E")
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
         }
 
         // Ícone de Calendário Dourado Samsung ampliado
@@ -771,7 +762,8 @@ object AgendaCardBitmapRenderer {
         }
         val darkCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            color = Color.parseColor("#1A080A0E")
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
         }
 
         // Ícone de Lua Crescente no topo esquerdo
@@ -925,7 +917,8 @@ object AgendaCardBitmapRenderer {
             strokeWidth = 4.5f
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            color = Color.parseColor("#1A080A0E")
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
         }
 
         // Ícone de Checklist no topo esquerdo
@@ -1210,7 +1203,8 @@ object AgendaCardBitmapRenderer {
         }
         val dotCenterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            color = Color.parseColor("#1A080A0E")
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
         }
         val valuePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE

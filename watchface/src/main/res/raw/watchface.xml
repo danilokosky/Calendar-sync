@@ -34,6 +34,12 @@
             <ListOption id="5" displayName="config_bg_aurora_dual" />
             <ListOption id="6" displayName="config_bg_indigo_night" />
             <ListOption id="7" displayName="config_bg_brushed_titanium" />
+            <ListOption id="8" displayName="config_bg_light_steel_horizon" />
+            <ListOption id="9" displayName="config_bg_light_glacial_cyan" />
+            <ListOption id="10" displayName="config_bg_light_silver_slate" />
+            <ListOption id="11" displayName="config_bg_light_mint_teal" />
+            <ListOption id="12" displayName="config_bg_light_lavender_steel" />
+            <ListOption id="13" displayName="config_bg_light_aurora_day" />
         </ListConfiguration>
     </UserConfigurations>
 
@@ -172,6 +178,108 @@
                     </Rectangle>
                 </PartDraw>
             </ListOption>
+            <!-- 8: Azul Aço Claro (Horizonte Solar do Canvas) -->
+            <ListOption id="8">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF2C486A">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF1E324A #FF3E638E #FF1A2A3E"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 9: Ciano Glacial Claro (Paleta Clima / Agenda) -->
+            <ListOption id="9">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF20586A">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF164354 #FF2E7A92 #FF133341"
+                                positions="0.0 0.48 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 10: Ardósia Prata Clara (Extensão Clara de #080A0E / #161D26) -->
+            <ListOption id="10">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF354355">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF25303F #FF47586E #FF202A37"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 11: Verde-Água Luminoso (Paleta Passos / Tarefas) -->
+            <ListOption id="11">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF1D584D">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF143E39 #FF267465 #FF12322D"
+                                positions="0.0 0.48 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 12: Lavanda Aço Claro (Paleta Sono) -->
+            <ListOption id="12">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF363668">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF27274E #FF49498A #FF1E203E"
+                                positions="0.0 0.48 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 13: Aurora Clara Ciano & Âmbar (Combina com Clima + Agenda Dourada) -->
+            <ListOption id="13">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF334B5E">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF1E4C5E #FF334B5E #FF5E4A1E"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
         </ListConfiguration>
 
         <!-- ================================================================= -->
@@ -254,7 +362,7 @@
                     height="136"
                     cornerRadiusX="20"
                     cornerRadiusY="20">
-                    <Fill color="#D9080A0E" />
+                    <Fill color="#B3080A0E" />
                 </RoundRectangle>
                 <RoundRectangle
                     x="1"
