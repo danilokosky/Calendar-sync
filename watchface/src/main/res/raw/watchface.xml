@@ -4,7 +4,175 @@
     <Metadata key="PREVIEW_TIME" value="14:04:06" />
     <Metadata key="STEP_GOAL" value="10000" />
 
+    <!-- ================================================================= -->
+    <!-- PERSONALIZAÇÃO NATIVA NO RELÓGIO / GALAXY WEARABLE                -->
+    <!-- 1. Fonte do Relógio Digital (6 estilos refinados)                 -->
+    <!-- 2. Fundo Degradê Horizontal Escuro (8 paletas p/ nossos Canvas)   -->
+    <!-- ================================================================= -->
+    <UserConfigurations>
+        <ListConfiguration
+            id="clock_font"
+            displayName="config_clock_font_label"
+            defaultValue="0">
+            <ListOption id="0" displayName="config_font_modern_light" />
+            <ListOption id="1" displayName="config_font_barlow_light" />
+            <ListOption id="2" displayName="config_font_barlow_medium" />
+            <ListOption id="3" displayName="config_font_jetbrains_mono" />
+            <ListOption id="4" displayName="config_font_chakra_tech" />
+            <ListOption id="5" displayName="config_font_classic_normal" />
+        </ListConfiguration>
+
+        <ListConfiguration
+            id="bg_gradient"
+            displayName="config_bg_gradient_label"
+            defaultValue="0">
+            <ListOption id="0" displayName="config_bg_midnight_slate" />
+            <ListOption id="1" displayName="config_bg_oled_black" />
+            <ListOption id="2" displayName="config_bg_abyssal_cyan" />
+            <ListOption id="3" displayName="config_bg_obsidian_gold" />
+            <ListOption id="4" displayName="config_bg_emerald_night" />
+            <ListOption id="5" displayName="config_bg_aurora_dual" />
+            <ListOption id="6" displayName="config_bg_indigo_night" />
+            <ListOption id="7" displayName="config_bg_brushed_titanium" />
+        </ListConfiguration>
+    </UserConfigurations>
+
     <Scene backgroundColor="#FF000000">
+
+        <!-- ================================================================= -->
+        <!-- 0. FUNDO DEGRADÊ HORIZONTAL ESCURO (PERSONALIZÁVEL)               -->
+        <!--    - Oculto em AMBIENT (alpha=0) para manter preto OLED puro      -->
+        <!-- ================================================================= -->
+        <ListConfiguration id="bg_gradient">
+            <!-- 0: Ardósia Meia-Noite (combina 100% com o Canvas #080A0E / #161D26) -->
+            <ListOption id="0">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF080A0E">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF04060A #FF121C29 #FF05080D"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 1: Preto Puro (OLED) -->
+            <ListOption id="1">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF000000" />
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 2: Oceano Abissal (Ciano Escuro -> Ardósia) -->
+            <ListOption id="2">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF061318">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF051820 #FF0B1F27 #FF04070B"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 3: Ouro & Obsidiana (Âmbar Escuro -> Grafite) -->
+            <ListOption id="3">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF100D05">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF1D1605 #FF14110A #FF05070A"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 4: Esmeralda Noturna (Verde Escuro -> Ardósia) -->
+            <ListOption id="4">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF05120D">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF051910 #FF0B1E17 #FF04070B"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 5: Aurora Ciano & Ouro (Espelha o degradê da barra de bateria) -->
+            <ListOption id="5">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF0B1117">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF061B22 #FF0B1118 #FF1D1606"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 6: Índigo Noturno (Roxo Escuro -> Ardósia) -->
+            <ListOption id="6">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF0D0B18">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF130B24 #FF121327 #FF05070C"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 7: Titânio Escovado (Grafite Simétrico Neutro) -->
+            <ListOption id="7">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF11161D">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF06080B #FF1B232F #FF06080B"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+        </ListConfiguration>
 
         <!-- ================================================================= -->
         <!-- 1. TOPO SAMSUNG (SEX. 06 + 14:04:06) + QUADRO CENTRAL +           -->
@@ -291,43 +459,248 @@
 
         </Group>
 
-        <!-- Relógio Digital Principal no DPI da Samsung (70sp NORMAL) -->
-        <DigitalClock x="35" y="40" width="380" height="72">
-            <TimeText
-                format="hh:mm:ss"
-                hourFormat="SYNC_TO_DEVICE"
-                align="CENTER"
-                x="0"
-                y="0"
-                width="380"
-                height="72"
-                alpha="255">
-                <Variant mode="AMBIENT" target="alpha" value="0" />
-                <Font
-                    family="SYNC_TO_DEVICE"
-                    size="70"
-                    weight="NORMAL"
-                    slant="NORMAL"
-                    color="#FFFFFFFF" />
-            </TimeText>
-            <TimeText
-                format="hh:mm"
-                hourFormat="SYNC_TO_DEVICE"
-                align="CENTER"
-                x="0"
-                y="0"
-                width="380"
-                height="72"
-                alpha="0">
-                <Variant mode="AMBIENT" target="alpha" value="255" />
-                <Font
-                    family="SYNC_TO_DEVICE"
-                    size="70"
-                    weight="THIN"
-                    slant="NORMAL"
-                    color="#FF94A3B8" />
-            </TimeText>
-        </DigitalClock>
+        <!-- Relógio Digital Principal Refinado + 6 Opções de Fonte Personalizáveis -->
+        <ListConfiguration id="clock_font">
+            <!-- 0: Moderna Fina (Padrão — SYNC_TO_DEVICE LIGHT 72sp no estilo One UI) -->
+            <ListOption id="0">
+                <DigitalClock x="35" y="40" width="380" height="72">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="72"
+                            weight="LIGHT"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="72"
+                            weight="THIN"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 1: Barlow Condensada Fina (Alta, esguia e refinada) -->
+            <ListOption id="1">
+                <DigitalClock x="35" y="38" width="380" height="76">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="barlow_condensed_light"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="barlow_condensed_light"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 2: Barlow Condensada Média (Geométrica nítida com maior contraste) -->
+            <ListOption id="2">
+                <DigitalClock x="35" y="38" width="380" height="76">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="barlow_condensed_medium"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="barlow_condensed_medium"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 3: JetBrains Mono Tabular (Dígitos fixos sem oscilação horizontal) -->
+            <ListOption id="3">
+                <DigitalClock x="35" y="42" width="380" height="70">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="70"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="jetbrains_mono_light"
+                            size="58"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="70"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="jetbrains_mono_light"
+                            size="58"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 4: Chakra Tech Cronógrafo (Geométrica moderna esportiva) -->
+            <ListOption id="4">
+                <DigitalClock x="35" y="40" width="380" height="72">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="chakra_petch_medium"
+                            size="66"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="chakra_petch_medium"
+                            size="66"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 5: Clássica do Sistema (SYNC_TO_DEVICE NORMAL 70sp) -->
+            <ListOption id="5">
+                <DigitalClock x="35" y="40" width="380" height="72">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="70"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="70"
+                            weight="THIN"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+        </ListConfiguration>
 
         <!-- ================================================================= -->
         <!-- 2. JANELA DE CONTEXTO INTELIGENTE (CANVAS BITMAP 604x272 @2x)     -->

@@ -1250,20 +1250,59 @@ class SyncPreferences(context: Context) {
         return prefs.getLong(KEY_WEATHER_ALERT_TS_MS, 0L)
     }
 
-    fun markWatchAppInstalledOnNode(nodeId: String) {
-        val current = (prefs.getStringSet(KEY_VERIFIED_WATCH_APP_NODES, emptySet()) ?: emptySet()).toMutableSet()
+    fun markWatchAppInstalledOnNode(nodeId: String, watchModel: String = "") {
+        val current = HashSet(prefs.getStringSet(KEY_VERIFIED_WATCH_APP_NODES, emptySet()) ?: emptySet())
         current.add(nodeId)
-        prefs.edit()
+        val editor = prefs.edit()
             .putStringSet(KEY_VERIFIED_WATCH_APP_NODES, current)
             .putLong("pong_ts_$nodeId", System.currentTimeMillis())
-            .apply()
+        if (watchModel.isNotBlank()) {
+            editor.putString("watch_model_$nodeId", watchModel.trim())
+        }
+        editor.commit()
     }
 
-    fun isWatchAppVerifiedOnNode(nodeId: String): Boolean {
+    fun getWatchPongTimestampMs(nodeId: String): Long {
+        return prefs.getLong("pong_ts_$nodeId", 0L)
+    }
+
+    fun isWatchAppVerifiedOnNode(nodeId: String, maxAgeMs: Long = 12 * 60 * 60 * 1000L): Boolean {
         val set = prefs.getStringSet(KEY_VERIFIED_WATCH_APP_NODES, emptySet()) ?: emptySet()
         if (!set.contains(nodeId)) return false
         val ts = prefs.getLong("pong_ts_$nodeId", 0L)
-        return (System.currentTimeMillis() - ts) < 12 * 60 * 60 * 1000L
+        return (System.currentTimeMillis() - ts) < maxAgeMs
+    }
+
+    fun markSyncAckFromNode(
+        nodeId: String,
+        syncTimestampMs: Long,
+        eventsCount: Int,
+        watchModel: String = ""
+    ) {
+        val editor = prefs.edit()
+            .putLong("sync_ack_ts_$nodeId", syncTimestampMs)
+            .putLong("sync_ack_wall_ms_$nodeId", System.currentTimeMillis())
+            .putInt("sync_ack_events_$nodeId", eventsCount)
+        if (watchModel.isNotBlank()) {
+            editor.putString("watch_model_$nodeId", watchModel.trim())
+        }
+        editor.commit()
+    }
+
+    fun getLastSyncAckTimestampMs(nodeId: String): Long {
+        return prefs.getLong("sync_ack_ts_$nodeId", 0L)
+    }
+
+    fun getWatchModelForNode(nodeId: String): String {
+        return prefs.getString("watch_model_$nodeId", "") ?: ""
+    }
+
+    fun setLastSyncDeliveryConfirmed(confirmed: Boolean) {
+        prefs.edit().putBoolean("last_sync_delivery_confirmed", confirmed).commit()
+    }
+
+    fun wasLastSyncDeliveryConfirmed(): Boolean {
+        return prefs.getBoolean("last_sync_delivery_confirmed", false)
     }
 
     fun recordLastSync(
@@ -1279,7 +1318,7 @@ class SyncPreferences(context: Context) {
             .putInt(KEY_LAST_CAL_COUNT, calendarsCount)
             .putString(KEY_LAST_TRIGGER_SOURCE, triggerSource)
             .putString(KEY_LAST_SYNC_STATUS, status)
-            .apply()
+            .commit()
     }
 
     fun getLastSyncSummary(): SyncLogEntry {

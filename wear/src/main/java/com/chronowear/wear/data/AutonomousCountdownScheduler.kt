@@ -63,6 +63,10 @@ object AutonomousCountdownScheduler {
 
         ioScope.launch {
             try {
+                PhoneDataListenerService.pullLatestDataItemIfNewer(appCtx)
+            } catch (_: Exception) {
+            }
+            try {
                 val nodes = Wearable.getNodeClient(appCtx).connectedNodes.await()
                 val msgClient = Wearable.getMessageClient(appCtx)
                 val payload = "sync_req:$nowMs".toByteArray(Charsets.UTF_8)

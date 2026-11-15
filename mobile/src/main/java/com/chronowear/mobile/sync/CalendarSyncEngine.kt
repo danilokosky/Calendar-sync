@@ -7,21 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.Typeface
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.CalendarContract
 import android.provider.Settings
-import android.text.TextPaint
-import android.text.TextUtils
-import android.util.Base64
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
@@ -29,7 +20,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -82,8 +72,10 @@ object CalendarSyncEngine {
 
     const val DATA_LAYER_PATH = "/chronowear/calendar_horizon_payload"
     const val MESSAGE_FORCE_SYNC_PATH = "/chronowear/force_sync_payload"
+    const val MESSAGE_WAKE_AND_PULL_PATH = "/chronowear/wake_and_pull_data"
     const val MESSAGE_PING_WATCH_APP_PATH = "/chronowear/ping_watch_app"
     const val CAPABILITY_WATCH_APP_INSTALLED = "chronowear_wear_app_installed"
+    private const val MAX_MESSAGE_PAYLOAD_BYTES = 85_000
 
     fun isBluetoothEnabled(context: Context): Boolean {
         return try {
@@ -379,18 +371,25 @@ object CalendarSyncEngine {
             )
         }
 
-        val capableNodeIds = try {
-            val reachableCap = Wearable.getCapabilityClient(context)
+        val reachableCapNodeIds = try {
+            Wearable.getCapabilityClient(context)
                 .getCapability(CAPABILITY_WATCH_APP_INSTALLED, CapabilityClient.FILTER_REACHABLE)
                 .await()
-            val allCap = Wearable.getCapabilityClient(context)
+                .nodes.map { it.id }.toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+        val allCapNodeIds = try {
+            Wearable.getCapabilityClient(context)
                 .getCapability(CAPABILITY_WATCH_APP_INSTALLED, CapabilityClient.FILTER_ALL)
                 .await()
-            (reachableCap.nodes.map { it.id } + allCap.nodes.map { it.id }).toSet()
+                .nodes.map { it.id }.toSet()
         } catch (_: Exception) {
             emptySet()
         }
 
+        val pingStartedAtMs = System.currentTimeMillis()
+        val pingSucceededNodeIds = HashSet<String>()
         for (node in connectedNodes) {
             try {
                 Wearable.getMessageClient(context).sendMessage(
@@ -398,29 +397,41 @@ object CalendarSyncEngine {
                     MESSAGE_PING_WATCH_APP_PATH,
                     ByteArray(0)
                 ).await()
+                pingSucceededNodeIds.add(node.id)
             } catch (_: Exception) {
             }
         }
 
-        var installedNodes = connectedNodes.filter { node ->
-            capableNodeIds.contains(node.id) || prefs.isWatchAppVerifiedOnNode(node.id)
+        fun resolveInstalledNodes(currentReachableIds: Set<String>): List<com.google.android.gms.wearable.Node> {
+            return connectedNodes.filter { node ->
+                val freshPong = prefs.getWatchPongTimestampMs(node.id) >= pingStartedAtMs
+                val recentlyVerified = prefs.isWatchAppVerifiedOnNode(node.id, 12 * 60 * 60 * 1000L)
+                currentReachableIds.contains(node.id) ||
+                    freshPong ||
+                    (allCapNodeIds.contains(node.id) && pingSucceededNodeIds.contains(node.id)) ||
+                    (recentlyVerified && pingSucceededNodeIds.contains(node.id))
+            }
         }
 
-        if (installedNodes.isEmpty()) {
-            repeat(8) {
+        var installedNodes = resolveInstalledNodes(reachableCapNodeIds)
+
+        val anyConnectedMissingFreshVerify = connectedNodes.any { node ->
+            !reachableCapNodeIds.contains(node.id) &&
+                prefs.getWatchPongTimestampMs(node.id) < pingStartedAtMs
+        }
+        if (installedNodes.isEmpty() || (anyConnectedMissingFreshVerify && pingSucceededNodeIds.isNotEmpty())) {
+            repeat(6) {
                 delay(150L)
-                val updatedCapableIds = try {
+                val updatedReachableIds = try {
                     Wearable.getCapabilityClient(context)
                         .getCapability(CAPABILITY_WATCH_APP_INSTALLED, CapabilityClient.FILTER_REACHABLE)
                         .await()
                         .nodes.map { it.id }.toSet()
                 } catch (_: Exception) {
-                    emptySet()
+                    reachableCapNodeIds
                 }
-                installedNodes = connectedNodes.filter { node ->
-                    updatedCapableIds.contains(node.id) || prefs.isWatchAppVerifiedOnNode(node.id)
-                }
-                if (installedNodes.isNotEmpty()) return@repeat
+                installedNodes = resolveInstalledNodes(updatedReachableIds)
+                if (installedNodes.size == connectedNodes.size) return@repeat
             }
         }
 
@@ -950,12 +961,6 @@ object CalendarSyncEngine {
             jsonArray.put(obj)
         }
 
-        val preRenderedCardPngB64 = try {
-            renderAgendaCardPngBase64OnPhone(events, nowMs, progressWindowMinutes)
-        } catch (_: Exception) {
-            ""
-        }
-
         // Atualiza os dados reais de sono via Android Health Connect antes de montar o pacote para o relógio
         try {
             HealthConnectSleepReader.refreshPermissionAndReadTodaySleep(context, nowMs)
@@ -1101,26 +1106,9 @@ object CalendarSyncEngine {
             put("solar_sunrise_hhmm", solarSunriseHHMM)
             put("solar_sunset_hhmm", solarSunsetHHMM)
             put("watch_standalone_solar_enabled", watchStandaloneSolarEnabled)
-            if (preRenderedCardPngB64.isNotBlank()) {
-                put("card_png_b64", preRenderedCardPngB64)
-            }
         }.toString()
 
         try {
-            // 1. ENVIO IMEDIATO AO RELÓGIO (MessageClient em tempo real + DataClient Urgente, sem bloquear na rede!)
-            val nodes = Wearable.getNodeClient(context).connectedNodes.await()
-            val payloadBytes = payloadJson.toByteArray(Charsets.UTF_8)
-            for (node in nodes) {
-                try {
-                    Wearable.getMessageClient(context).sendMessage(
-                        node.id,
-                        MESSAGE_FORCE_SYNC_PATH,
-                        payloadBytes
-                    ).await()
-                } catch (_: Exception) {
-                }
-            }
-
             val putDataMapReq = PutDataMapRequest.create(DATA_LAYER_PATH).apply {
                 dataMap.putString("events_json", jsonArray.toString())
                 dataMap.putLong("sync_timestamp_ms", nowMs)
@@ -1188,25 +1176,100 @@ object CalendarSyncEngine {
                 dataMap.putString("solar_sunrise_hhmm", solarSunriseHHMM)
                 dataMap.putString("solar_sunset_hhmm", solarSunsetHHMM)
                 dataMap.putBoolean("watch_standalone_solar_enabled", watchStandaloneSolarEnabled)
-                if (preRenderedCardPngB64.isNotBlank()) {
-                    dataMap.putString("card_png_b64", preRenderedCardPngB64)
-                }
             }
             Wearable.getDataClient(context)
                 .putDataItem(putDataMapReq.asPutDataRequest().setUrgent())
                 .await()
 
-            val connReport = checkWearConnectionAndAppStatus(context)
-            val nodeStatus = when (connReport.state) {
-                WearConnectionState.CONNECTED_WITH_APP_INSTALLED ->
-                    "Sincronizado com ${connReport.installedAppNodeNames.joinToString()}"
-                WearConnectionState.WEARABLE_CONNECTED_APP_MISSING ->
-                    "Wearable conectado (${connReport.wearableDisplayNames.joinToString()}), mas o app não está instalado no relógio"
-                WearConnectionState.DISCONNECTED ->
-                    if (!connReport.bluetoothEnabled) "Bluetooth desativado no smartphone" else "Nenhum relógio conectado"
+            val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+            val payloadBytes = payloadJson.toByteArray(Charsets.UTF_8)
+            val msgClient = Wearable.getMessageClient(context)
+            val wakeBytes = nowMs.toString().toByteArray(Charsets.UTF_8)
+
+            val sentNodes = HashSet<String>()
+            val failedNodes = LinkedHashMap<String, String>()
+
+            for (node in nodes) {
+                var deliveredDirect = false
+                if (payloadBytes.size <= MAX_MESSAGE_PAYLOAD_BYTES) {
+                    try {
+                        msgClient.sendMessage(
+                            node.id,
+                            MESSAGE_FORCE_SYNC_PATH,
+                            payloadBytes
+                        ).await()
+                        sentNodes.add(node.id)
+                        deliveredDirect = true
+                    } catch (e: Exception) {
+                        failedNodes[node.id] = e.javaClass.simpleName
+                    }
+                }
+                if (!deliveredDirect) {
+                    try {
+                        msgClient.sendMessage(
+                            node.id,
+                            MESSAGE_WAKE_AND_PULL_PATH,
+                            wakeBytes
+                        ).await()
+                        sentNodes.add(node.id)
+                        failedNodes.remove(node.id)
+                    } catch (e: Exception) {
+                        if (!failedNodes.containsKey(node.id)) {
+                            failedNodes[node.id] = e.javaClass.simpleName
+                        }
+                    }
+                }
+            }
+
+            if (nodes.isNotEmpty() && sentNodes.isNotEmpty()) {
+                repeat(8) {
+                    val allAcked = nodes.all { node ->
+                        prefs.getLastSyncAckTimestampMs(node.id) >= nowMs
+                    }
+                    if (allAcked) return@repeat
+                    delay(150L)
+                }
+            }
+
+            val ackedNames = mutableListOf<String>()
+            val pendingAckNames = mutableListOf<String>()
+            val failedNames = mutableListOf<String>()
+            for (node in nodes) {
+                val label = prefs.getWatchModelForNode(node.id).takeIf { it.isNotBlank() } ?: node.displayName
+                when {
+                    prefs.getLastSyncAckTimestampMs(node.id) >= nowMs -> ackedNames.add(label)
+                    sentNodes.contains(node.id) -> pendingAckNames.add(label)
+                    else -> failedNames.add(label)
+                }
+            }
+
+            val connReport = if (nodes.isEmpty() || (ackedNames.isEmpty() && pendingAckNames.isEmpty())) {
+                checkWearConnectionAndAppStatus(context)
+            } else {
+                null
+            }
+            val allConfirmed = nodes.isNotEmpty() && ackedNames.size == nodes.size
+            prefs.setLastSyncDeliveryConfirmed(allConfirmed || (ackedNames.isNotEmpty() && failedNames.isEmpty()))
+
+            val nodeStatus = when {
+                nodes.isEmpty() -> {
+                    if (connReport != null && !connReport.bluetoothEnabled) "Bluetooth desativado no smartphone"
+                    else "Nenhum relógio conectado"
+                }
+                ackedNames.isNotEmpty() && pendingAckNames.isEmpty() && failedNames.isEmpty() ->
+                    "Confirmado por ${ackedNames.joinToString()}"
+                ackedNames.isNotEmpty() ->
+                    "Confirmado: ${ackedNames.joinToString()} • Pendente/Falha: ${(pendingAckNames + failedNames).joinToString()}"
+                pendingAckNames.isNotEmpty() && failedNames.isEmpty() ->
+                    "Enviado para ${pendingAckNames.joinToString()} (aguardando confirmação do app no relógio)"
+                connReport?.state == WearConnectionState.WEARABLE_CONNECTED_APP_MISSING ->
+                    "Wearable conectado (${connReport.wearableDisplayNames.joinToString()}), mas o app não respondeu no relógio"
+                else ->
+                    "Falha ao enviar para ${(failedNames + pendingAckNames).joinToString()}"
             }
             prefs.recordLastSync(nowMs, events.size, selectedCalendarsCount, triggerSource, nodeStatus)
         } catch (_: Exception) {
+            prefs.setLastSyncDeliveryConfirmed(false)
             prefs.recordLastSync(
                 nowMs,
                 events.size,
@@ -1276,157 +1339,5 @@ object CalendarSyncEngine {
             return header to allFuture.filter { isSameCalendarDay(firstNext.startEpochMs, it.startEpochMs) }.take(3)
         }
         return "Hoje" to emptyList()
-    }
-
-    /**
-     * Pré-renderiza no processador do Smartphone o Bitmap transparente 604x272px (@2x Retina para 302x136px)
-     * com cabeçalho dinâmico ("Hoje", "Amanhã" ou próximo dia com agenda) e barra de progresso 0% -> 100%.
-     */
-    private fun renderAgendaCardPngBase64OnPhone(
-        events: List<LocalCalendarEvent>,
-        nowMs: Long,
-        progressWindowMinutes: Int
-    ): String {
-        val (dayHeader, dayEvents) = resolveDayHeaderAndEvents(events, nowMs)
-
-        val primary = dayEvents.firstOrNull()
-        val windowMs = TimeUnit.MINUTES.toMillis(progressWindowMinutes.coerceAtLeast(1).toLong())
-        val progressFraction = if (primary == null) {
-            0f
-        } else {
-            val remMs = primary.startEpochMs - nowMs
-            when {
-                remMs <= 0L -> 1f
-                remMs >= windowMs -> 0f
-                else -> ((windowMs - remMs).toFloat() / windowMs.toFloat()).coerceIn(0f, 1f)
-            }
-        }
-
-        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-        fun formatRemaining(startMs: Long): String {
-            val diffMs = (startMs - nowMs).coerceAtLeast(0L)
-            val totalMinutes = TimeUnit.MILLISECONDS.toMinutes(diffMs)
-            val days = totalMinutes / (24 * 60)
-            val hours = (totalMinutes % (24 * 60)) / 60
-            val mins = totalMinutes % 60
-            return when {
-                days > 0 -> "${days}d ${hours}h"
-                hours > 0 -> "${hours}h ${mins}m"
-                else -> "${mins}m"
-            }
-        }
-
-        val w = 604
-        val h = 272
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawColor(Color.TRANSPARENT)
-
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.parseColor("#080A0E")
-        }
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2.6f
-            color = Color.parseColor("#161D26")
-        }
-        val cardRect = RectF(2f, 2f, w - 2f, h - 2f)
-        canvas.drawRoundRect(cardRect, 40f, 40f, bgPaint)
-        canvas.drawRoundRect(cardRect, 40f, 40f, borderPaint)
-
-        val goldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.parseColor("#F5C438")
-        }
-        val darkCutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 4.5f
-            color = Color.parseColor("#080A0E")
-        }
-        canvas.drawRoundRect(RectF(30f, 14f, 37f, 26f), 2.5f, 2.5f, goldPaint)
-        canvas.drawRoundRect(RectF(51f, 14f, 58f, 26f), 2.5f, 2.5f, goldPaint)
-        canvas.drawRoundRect(RectF(24f, 21f, 64f, 55f), 7f, 7f, goldPaint)
-        canvas.drawLine(31f, 33f, 57f, 33f, darkCutPaint)
-        canvas.drawLine(31f, 44f, 50f, 44f, darkCutPaint)
-
-        val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#F5C438")
-            textSize = 42f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        canvas.drawText(dayHeader, 78f, 51f, headerPaint)
-
-        val timePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 44f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#F5C438")
-            textSize = 44f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val countdownPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#67E8F9")
-            textSize = 35f
-            textAlign = Paint.Align.RIGHT
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-
-        val emptySlotPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#263344")
-            textSize = 36f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val emptyDayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#64748B")
-            textSize = 38f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        }
-
-        val ev0 = dayEvents.getOrNull(0)
-        if (ev0 != null) {
-            canvas.drawText(sdf.format(Date(ev0.startEpochMs)), 24f, 105f, timePaint)
-            val t0 = TextUtils.ellipsize(ev0.title, titlePaint, 290f, TextUtils.TruncateAt.END).toString()
-            canvas.drawText(t0, 150f, 105f, titlePaint)
-            canvas.drawText(formatRemaining(ev0.startEpochMs), w - 24f, 103f, countdownPaint)
-        } else {
-            canvas.drawText("Sem compromissos", 24f, 105f, emptyDayPaint)
-        }
-
-        val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.parseColor("#252E3A")
-        }
-        val barLeft = 24f
-        val barRight = w - 24f
-        canvas.drawRoundRect(RectF(barLeft, 117f, barRight, 130f), 6.5f, 6.5f, trackPaint)
-        if (progressFraction > 0f) {
-            val fillWidth = ((barRight - barLeft) * progressFraction).coerceAtLeast(10f)
-            canvas.drawRoundRect(RectF(barLeft, 117f, barLeft + fillWidth, 130f), 6.5f, 6.5f, goldPaint)
-        }
-
-        val ev1 = dayEvents.getOrNull(1)
-        if (ev1 != null) {
-            canvas.drawText(sdf.format(Date(ev1.startEpochMs)), 24f, 188f, timePaint)
-            val t1 = TextUtils.ellipsize(ev1.title, titlePaint, 430f, TextUtils.TruncateAt.END).toString()
-            canvas.drawText(t1, 150f, 188f, titlePaint)
-        } else {
-            canvas.drawText("•", 24f, 188f, emptySlotPaint)
-        }
-
-        val ev2 = dayEvents.getOrNull(2)
-        if (ev2 != null) {
-            canvas.drawText(sdf.format(Date(ev2.startEpochMs)), 24f, 250f, timePaint)
-            val t2 = TextUtils.ellipsize(ev2.title, titlePaint, 430f, TextUtils.TruncateAt.END).toString()
-            canvas.drawText(t2, 150f, 250f, titlePaint)
-        } else {
-            canvas.drawText("•", 24f, 250f, emptySlotPaint)
-        }
-
-        val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
-        return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 }

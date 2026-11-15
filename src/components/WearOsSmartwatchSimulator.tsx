@@ -66,6 +66,8 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
   onResetTime,
 }) => {
   const [watchScreenMode, setWatchScreenMode] = useState<'wff' | 'tile' | 'cache'>('wff');
+  const [watchClockFontId, setWatchClockFontId] = useState<string>('0');
+  const [watchBgGradientId, setWatchBgGradientId] = useState<string>('0');
   const [tapOverrideState, setTapOverrideState] = useState<{
     mode: 'EVENTS' | 'TASKS' | 'WEATHER' | 'SUN' | 'STEPS' | 'SLEEP' | 'BATTERY';
     startedAtWatchMs: number;
@@ -578,10 +580,69 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
         )}
       </div>
 
+      {/* Seletor de Personalização Watchface (Fonte do Relógio + Degradê Horizontal Escuro) */}
+      {watchScreenMode === 'wff' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/75 border border-slate-800/80 rounded-xl px-3 py-1.5 text-[11px] mb-1">
+          <label className="flex items-center gap-1.5 text-slate-300">
+            <span className="font-mono text-slate-400">Fonte Relógio:</span>
+            <select
+              aria-label="Fonte do Relógio Digital"
+              value={watchClockFontId}
+              onChange={(e) => setWatchClockFontId(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-slate-100 text-[11px] focus:outline-none focus:border-amber-400"
+            >
+              <option value="0">Moderna Fina (Padrão)</option>
+              <option value="1">Barlow Condensada Fina</option>
+              <option value="2">Barlow Condensada Média</option>
+              <option value="3">JetBrains Mono Tabular</option>
+              <option value="4">Chakra Tech Cronógrafo</option>
+              <option value="5">Clássica Sistema</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-1.5 text-slate-300">
+            <span className="font-mono text-slate-400">Fundo Horizontal:</span>
+            <select
+              aria-label="Fundo Degradê Horizontal"
+              value={watchBgGradientId}
+              onChange={(e) => setWatchBgGradientId(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-slate-100 text-[11px] focus:outline-none focus:border-amber-400"
+            >
+              <option value="0">Ardósia Meia-Noite</option>
+              <option value="1">Preto Puro (OLED)</option>
+              <option value="2">Oceano Abissal (Ciano)</option>
+              <option value="3">Ouro &amp; Obsidiana (Âmbar)</option>
+              <option value="4">Esmeralda Noturna (Verde)</option>
+              <option value="5">Aurora Ciano &amp; Ouro</option>
+              <option value="6">Índigo Noturno (Sono)</option>
+              <option value="7">Titânio Escovado</option>
+            </select>
+          </label>
+        </div>
+      )}
+
       {/* Center Circular Watch Bezel (450x450 logical representation) */}
       <div className="flex flex-col items-center justify-center my-1">
         <div
           data-testid="wear-watch-face"
+          style={{
+            background:
+              watchScreenMode !== 'wff' || watchBgGradientId === '1'
+                ? '#000000'
+                : watchBgGradientId === '2'
+                ? 'linear-gradient(90deg, #051820 0%, #0B1F27 45%, #04070B 100%)'
+                : watchBgGradientId === '3'
+                ? 'linear-gradient(90deg, #1D1605 0%, #14110A 45%, #05070A 100%)'
+                : watchBgGradientId === '4'
+                ? 'linear-gradient(90deg, #051910 0%, #0B1E17 45%, #04070B 100%)'
+                : watchBgGradientId === '5'
+                ? 'linear-gradient(90deg, #061B22 0%, #0B1118 50%, #1D1606 100%)'
+                : watchBgGradientId === '6'
+                ? 'linear-gradient(90deg, #130B24 0%, #121327 45%, #05070C 100%)'
+                : watchBgGradientId === '7'
+                ? 'linear-gradient(90deg, #06080B 0%, #1B232F 50%, #06080B 100%)'
+                : 'linear-gradient(90deg, #04060A 0%, #121C29 50%, #05080D 100%)',
+          }}
           className="relative w-[376px] h-[376px] sm:w-[396px] sm:h-[396px] rounded-full bg-black border-[8px] border-[#18202C] shadow-2xl flex flex-col items-center justify-between py-2.5 px-7 select-none overflow-hidden"
         >
           {/* SVG Overlay Renderizando os Arcos Laterais, Ícones Inclinados e a Barra Inferior Estilo Tubo de Ensaio */}
@@ -725,7 +786,21 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
               <span className="text-[#F5C438]">{weekdayUpper}</span>
               <span className="text-white">{dayOfMonth}</span>
             </div>
-            <div className="text-[50px] font-normal font-mono tabular-nums tracking-tight text-white leading-none mt-0.5">
+            <div
+              className={`tabular-nums text-white leading-none mt-0.5 ${
+                watchClockFontId === '1'
+                  ? 'text-[54px] font-extralight tracking-tight scale-x-90'
+                  : watchClockFontId === '2'
+                  ? 'text-[54px] font-medium tracking-tight scale-x-90'
+                  : watchClockFontId === '3'
+                  ? 'text-[44px] font-light font-mono tracking-tighter'
+                  : watchClockFontId === '4'
+                  ? 'text-[48px] font-medium font-mono tracking-wide'
+                  : watchClockFontId === '5'
+                  ? 'text-[50px] font-normal tracking-tight'
+                  : 'text-[52px] font-light tracking-tight'
+              }`}
+            >
               {timeHHMMSS}
             </div>
           </div>

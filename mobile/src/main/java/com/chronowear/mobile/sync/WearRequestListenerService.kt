@@ -26,13 +26,43 @@ class WearRequestListenerService : WearableListenerService() {
         super.onMessageReceived(messageEvent)
         when (messageEvent.path) {
             "/chronowear/pong_watch_app" -> {
+                val raw = try {
+                    String(messageEvent.data, Charsets.UTF_8)
+                } catch (_: Exception) {
+                    ""
+                }
+                val model = raw.substringAfter("|", "").trim()
                 val prefs = SyncPreferences(applicationContext)
-                prefs.markWatchAppInstalledOnNode(messageEvent.sourceNodeId)
+                prefs.markWatchAppInstalledOnNode(messageEvent.sourceNodeId, model)
                 applicationContext.sendBroadcast(
                     Intent(SyncPreferences.ACTION_SYNC_COMPLETED)
                         .setPackage(applicationContext.packageName)
                         .putExtra("from_watch_pong", true)
                 )
+            }
+            "/chronowear/sync_ack" -> {
+                try {
+                    val json = org.json.JSONObject(String(messageEvent.data, Charsets.UTF_8))
+                    val syncTs = json.optLong("sync_timestamp_ms", 0L)
+                    val eventsCount = json.optInt("events_count", 0)
+                    val model = json.optString("watch_model", "").trim()
+                    val prefs = SyncPreferences(applicationContext)
+                    prefs.markWatchAppInstalledOnNode(messageEvent.sourceNodeId, model)
+                    if (syncTs > 0L) {
+                        prefs.markSyncAckFromNode(
+                            nodeId = messageEvent.sourceNodeId,
+                            syncTimestampMs = syncTs,
+                            eventsCount = eventsCount,
+                            watchModel = model
+                        )
+                    }
+                    applicationContext.sendBroadcast(
+                        Intent(SyncPreferences.ACTION_SYNC_COMPLETED)
+                            .setPackage(applicationContext.packageName)
+                            .putExtra("from_watch_sync_ack", true)
+                    )
+                } catch (_: Exception) {
+                }
             }
             "/chronowear/request_sync_from_watch" -> {
                 val prefs = SyncPreferences(applicationContext)

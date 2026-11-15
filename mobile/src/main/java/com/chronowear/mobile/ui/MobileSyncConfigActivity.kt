@@ -1974,7 +1974,13 @@ class MobileSyncConfigActivity : Activity() {
                     showStatusToast("Tarefas atualizadas no telefone (relógio desconectado).")
                 }
                 else -> {
-                    showStatusToast("Agenda e tarefas sincronizadas com o relógio.")
+                    val lastSummary = prefs.getLastSyncSummary()
+                    val msg = if (lastSummary.status.isNotBlank()) {
+                        lastSummary.status
+                    } else {
+                        "Agenda e tarefas sincronizadas com o relógio."
+                    }
+                    showStatusToast(msg)
                 }
             }
 
@@ -2118,7 +2124,15 @@ class MobileSyncConfigActivity : Activity() {
                     val nodeNames = report.installedAppNodeNames.joinToString().ifBlank { "Wear OS" }
                     connectionDotView.background = ovalDrawable("#10B981")
                     connectionHeadlineText.text = "Conectado • $nodeNames"
-                    connectionDetailText.text = "Bluetooth ativo e app ChronoWear conectado no relógio."
+                    val lastStatus = prefs.getLastSyncSummary().status
+                    connectionDetailText.text = if (
+                        lastStatus.isNotBlank() &&
+                        lastStatus != "Aguardando ativação pelo usuário"
+                    ) {
+                        lastStatus
+                    } else {
+                        "Bluetooth ativo e app ChronoWear conectado no relógio."
+                    }
                     watchAppBadgeText.text = "App Wear: Instalado"
                     watchAppBadgeText.setTextColor(Color.parseColor("#34D399"))
                 }
@@ -3193,10 +3207,20 @@ class MobileSyncConfigActivity : Activity() {
             canvas.translate((width - size) / 2f, (height - size) / 2f)
             canvas.scale(scale, scale)
 
-            // 1. Mostrador circular AMOLED preto + borda externa (#18202C)
+            // 1. Mostrador circular com fundo degradê horizontal escuro padrão (Ardósia Meia-Noite) + borda (#18202C)
             paint.style = Paint.Style.FILL
-            paint.color = Color.BLACK
+            paint.shader = LinearGradient(
+                0f, 225f, 450f, 225f,
+                intArrayOf(
+                    Color.parseColor("#04060A"),
+                    Color.parseColor("#121C29"),
+                    Color.parseColor("#05080D")
+                ),
+                floatArrayOf(0.0f, 0.5f, 1.0f),
+                Shader.TileMode.CLAMP
+            )
             canvas.drawCircle(225f, 225f, 221f, paint)
+            paint.shader = null
 
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 8f
@@ -3287,11 +3311,13 @@ class MobileSyncConfigActivity : Activity() {
             textPaint.color = Color.WHITE
             canvas.drawText(dayNum, 232f, 36f, textPaint)
 
-            textPaint.textSize = 62f
-            textPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            textPaint.textSize = 66f
+            textPaint.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            textPaint.fontFeatureSettings = "tnum"
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.color = Color.WHITE
             canvas.drawText(hhmmss, 225f, 104f, textPaint)
+            textPaint.fontFeatureSettings = null
 
             // 5. JANELA DE CONTEXTO CENTRAL (x=74, y=120, w=302, h=136) — Cópia idêntica do Canvas 604x272 @2x
             val previewMode = resolveEffectivePreviewMode()

@@ -66,6 +66,13 @@
                     android:host="*"
                     android:pathPrefix="/chronowear/ping_watch_app" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/chronowear/wake_and_pull_data" />
+            </intent-filter>
         </service>
 
         <!-- COMPLICATION ÚNICA: Janela de Contexto Inteligente (Canvas Bitmap SMALL_IMAGE / PHOTO_IMAGE) -->

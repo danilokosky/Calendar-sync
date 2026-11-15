@@ -405,11 +405,23 @@ class WearMainActivity : Activity() {
                     emptyList()
                 }
             }
-            if (nodes.isNotEmpty()) {
-                connectionStatusText.text = "Conectado • ${nodes.first().displayName}"
-                connectionStatusText.setTextColor(Color.parseColor("#4ADE80"))
+            val lastSyncMs = repo.getLastSyncTimestampMs()
+            val syncTimeLabel = if (lastSyncMs > 0L) {
+                java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date(lastSyncMs))
             } else {
-                connectionStatusText.text = "Offline • Cache (${repo.getHorizonDays()}d)"
+                null
+            }
+            if (nodes.isNotEmpty()) {
+                if (syncTimeLabel != null) {
+                    connectionStatusText.text = "Conectado • ${nodes.first().displayName} • Sync $syncTimeLabel"
+                    connectionStatusText.setTextColor(Color.parseColor("#4ADE80"))
+                } else {
+                    connectionStatusText.text = "Conectado • ${nodes.first().displayName} (Aguardando sync)"
+                    connectionStatusText.setTextColor(Color.parseColor("#FBBF24"))
+                }
+            } else {
+                val cacheTag = if (syncTimeLabel != null) "Sync $syncTimeLabel" else "Sem sync"
+                connectionStatusText.text = "Offline • $cacheTag (${repo.getHorizonDays()}d)"
                 connectionStatusText.setTextColor(Color.parseColor("#FBBF24"))
             }
         }
@@ -465,12 +477,20 @@ class WearMainActivity : Activity() {
             } catch (_: Exception) {
             }
             try {
+                PhoneDataListenerService.pullLatestDataItemIfNewer(
+                    context = this@WearMainActivity,
+                    forceAckIfAlreadyApplied = false
+                )
+            } catch (_: Exception) {
+            }
+            try {
                 val nodes = Wearable.getNodeClient(this@WearMainActivity).connectedNodes.await()
+                val pongBytes = "installed:1.2.1-wear|${Build.MODEL}".toByteArray(Charsets.UTF_8)
                 for (node in nodes) {
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,
                         "/chronowear/pong_watch_app",
-                        "installed:1.2.1-wear".toByteArray(Charsets.UTF_8)
+                        pongBytes
                     ).await()
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,
