@@ -744,12 +744,12 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 ✓
               </span>
 
-              {/* ÚNICO QUADRO CENTRAL (x=74, y=110, w=302, h=136) — Toque no Canvas alterna para o próximo contexto (PendingIntent.getBroadcast) */}
+              {/* ÚNICO QUADRO CENTRAL (x=74, y=120, w=302, h=136) — Toque no Canvas alterna para o próximo contexto (PendingIntent.getBroadcast) */}
               <div
                 data-testid="watch-context-canvas"
                 onClick={handleTapCanvasToCycle}
                 title="Toque no Canvas para alternar para o próximo contexto (Agenda → Clima → Sol → Passos → Sono)"
-                className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#161D26] hover:border-amber-400/50 active:scale-[0.99] transition-all cursor-pointer select-none px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
+                className="w-[82%] h-[112px] rounded-[16px] bg-[#080A0E] border border-[#161D26] hover:border-amber-400/50 active:scale-[0.99] transition-all cursor-pointer select-none px-3 py-1.5 flex flex-col justify-between z-10 mt-1 overflow-hidden"
               >
                 {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — Título dinâmico "Hoje" ou "Amanhã" + Barra de Progresso 0% → 100%) */}
                 {effectiveMode === 'EVENTS' && (
@@ -1438,10 +1438,10 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   })()}
               </div>
 
-              {/* DOCK EM CARTUCHO ENVOLVENTE (x=74, y=268, w=302, h=116 — mesma largura e cores do Canvas) */}
+              {/* DOCK EM CARTUCHO ENVOLVENTE (x=74, y=272, w=302, h=116 — espaçamento igual Relógio/Canvas/Cartucho) */}
               <div
-                title="Cartucho Externo Envolvente (x=74, y=268, w=302, h=116, r=58)"
-                className="w-[82%] h-[94px] rounded-full bg-[#080A0E] border border-[#161D26] p-[7px] flex items-center justify-center gap-3 z-10 mt-0.5 mb-7 shadow-inner"
+                title="Cartucho Externo Envolvente (x=74, y=272, w=302, h=116, r=58)"
+                className="w-[82%] h-[92px] rounded-full bg-[#080A0E] border border-[#161D26] p-[7px] flex items-center justify-center gap-3 z-10 mb-6 shadow-inner"
               >
                 {/* Slot #4: Cartucho Interno Esquerdo */}
                 <div

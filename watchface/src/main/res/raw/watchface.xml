@@ -75,9 +75,9 @@
                 </Text>
             </PartText>
 
-            <!-- MOLDURA BASE DA JANELA DE CONTEXTO CENTRAL (x=74, y=110, w=302, h=136) -->
+            <!-- MOLDURA BASE DA JANELA DE CONTEXTO CENTRAL (x=74, y=120, w=302, h=136) -->
             <!-- O cabeçalho (Hoje / Clima / Passos) e os gráficos são renderizados 100% pelo Canvas Bitmap! -->
-            <PartDraw x="74" y="110" width="302" height="136">
+            <PartDraw x="74" y="120" width="302" height="136">
                 <Variant mode="AMBIENT" target="alpha" value="110" />
                 <RoundRectangle
                     x="0"
@@ -102,9 +102,9 @@
             <!-- ============================================================= -->
             <!-- CARTUCHO EXTERNO MODERNO QUE ENGLOBA AS 2 COMPLICATIONS       -->
             <!-- Exatamente na mesma largura e cores do Canvas (302px, x=74)   -->
-            <!-- Proporcional: w=302, h=116, r=58 · Fundo #080A0E / Borda #161D26 -->
+            <!-- Espaçamento vertical equilibrado: y=272, h=116 (16px abaixo do Canvas) -->
             <!-- ============================================================= -->
-            <PartDraw x="74" y="268" width="302" height="116">
+            <PartDraw x="74" y="272" width="302" height="116">
                 <Variant mode="AMBIENT" target="alpha" value="120" />
                 <RoundRectangle
                     x="0"
@@ -340,7 +340,7 @@
 
         <ComplicationSlot
             x="74"
-            y="110"
+            y="120"
             width="302"
             height="136"
             slotId="1"
@@ -382,10 +382,10 @@
         <!--    - Cápsulas internas levemente mais claras (#121821 / #222D3A)  -->
         <!-- ================================================================= -->
 
-        <!-- SLOT 4: Cartucho Interno Esquerdo (x=82, y=276, w=136, h=100, r=50) -->
+        <!-- SLOT 4: Cartucho Interno Esquerdo (x=82, y=280, w=136, h=100, r=50) -->
         <ComplicationSlot
             x="82"
-            y="276"
+            y="280"
             width="136"
             height="100"
             slotId="4"
@@ -565,10 +565,10 @@
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 5: Cartucho Interno Direito (x=232, y=276, w=136, h=100, r=50 — separado por 14px do Slot 4) -->
+        <!-- SLOT 5: Cartucho Interno Direito (x=232, y=280, w=136, h=100, r=50 — separado por 14px do Slot 4) -->
         <ComplicationSlot
             x="232"
-            y="276"
+            y="280"
             width="136"
             height="100"
             slotId="5"
