@@ -3541,9 +3541,9 @@ class MobileSyncConfigActivity : Activity() {
         val nowMs = System.currentTimeMillis()
         val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
 
-        // Base escura arredondada (604x272, raio 38)
+        // Base escura arredondada (604x272, raio 38 — 85% cor / 15% transparência)
         paint.style = Paint.Style.FILL
-        paint.color = Color.parseColor("#080A0E")
+        paint.color = Color.parseColor("#D9080A0E")
         canvas.drawRoundRect(RectF(0f, 0f, cardW, cardH), 38f, 38f, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2.4f

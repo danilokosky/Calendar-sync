@@ -254,7 +254,7 @@
                     height="136"
                     cornerRadiusX="20"
                     cornerRadiusY="20">
-                    <Fill color="#FF080A0E" />
+                    <Fill color="#D9080A0E" />
                 </RoundRectangle>
                 <RoundRectangle
                     x="1"
