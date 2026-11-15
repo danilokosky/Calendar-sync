@@ -101,28 +101,28 @@
 
             <!-- ============================================================= -->
             <!-- CARTUCHO EXTERNO MODERNO QUE ENGLOBA AS 2 COMPLICATIONS       -->
-            <!-- Estilo One UI 7 / Samsung Health Dock (x=84, y=268, 282x108)  -->
-            <!-- Ancorado em y=268 e expandido para baixo (+20% área útil)     -->
+            <!-- Exatamente na mesma largura e cores do Canvas (302px, x=74)   -->
+            <!-- Proporcional: w=302, h=116, r=58 · Fundo #080A0E / Borda #161D26 -->
             <!-- ============================================================= -->
-            <PartDraw x="84" y="268" width="282" height="108">
+            <PartDraw x="74" y="268" width="302" height="116">
                 <Variant mode="AMBIENT" target="alpha" value="120" />
                 <RoundRectangle
                     x="0"
                     y="0"
-                    width="282"
-                    height="108"
-                    cornerRadiusX="54"
-                    cornerRadiusY="54">
-                    <Fill color="#FF161D1C" />
+                    width="302"
+                    height="116"
+                    cornerRadiusX="58"
+                    cornerRadiusY="58">
+                    <Fill color="#FF080A0E" />
                 </RoundRectangle>
                 <RoundRectangle
                     x="1"
                     y="1"
-                    width="280"
-                    height="106"
-                    cornerRadiusX="53"
-                    cornerRadiusY="53">
-                    <Stroke color="#FF283533" thickness="1.6" />
+                    width="300"
+                    height="114"
+                    cornerRadiusX="57"
+                    cornerRadiusY="57">
+                    <Stroke color="#FF161D26" thickness="1.3" />
                 </RoundRectangle>
             </PartDraw>
 
@@ -376,25 +376,18 @@
         </ComplicationSlot>
 
         <!-- ================================================================= -->
-        <!-- 3. OS 3 CÍRCULOS ALINHADOS NA MESMA LINHA (y=260, 88x88px)        -->
-        <!--    Exatamente como na print 14:04:06 da Samsung (x=80, 181, 282), -->
-        <!--    sem jamais encostar nos textos das barras laterais!            -->
-        <!--    Suporte completo a SMALL_IMAGE, MONOCHROMATIC_IMAGE,           -->
-        <!--    PHOTO_IMAGE, RANGED_VALUE e SHORT_TEXT!                        -->
-        <!-- ================================================================= -->
-
-        <!-- ================================================================= -->
         <!-- 3. DUAS COMPLICATIONS EM CARTUCHOS CIRCULARES (SLOTS 4 E 5)       -->
-        <!--    - Ancoradas em y=275 e expandidas para baixo (+20%: h=94px)    -->
-        <!--    - Áreas de texto e ícones ampliadas p/ preencher espaço útil   -->
+        <!--    - Escala proporcional para largura total do Canvas (302x116)   -->
+        <!--    - Cartucho externo #080A0E/#161D26 (idêntico ao Canvas)        -->
+        <!--    - Cápsulas internas levemente mais claras (#121821 / #222D3A)  -->
         <!-- ================================================================= -->
 
-        <!-- SLOT 4: Cartucho Interno Esquerdo (x=92, y=275, w=127, h=94) -->
+        <!-- SLOT 4: Cartucho Interno Esquerdo (x=82, y=276, w=136, h=100, r=50) -->
         <ComplicationSlot
-            x="92"
-            y="275"
-            width="127"
-            height="94"
+            x="82"
+            y="276"
+            width="136"
+            height="100"
             slotId="4"
             displayName="slot_circle_left_label"
             supportedTypes="SHORT_TEXT RANGED_VALUE MONOCHROMATIC_IMAGE SMALL_IMAGE PHOTO_IMAGE EMPTY">
@@ -406,18 +399,18 @@
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="127"
-                height="94"
+                width="136"
+                height="100"
                 outlinePadding="0.0"
-                cornerRadius="47" />
+                cornerRadius="50" />
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47">
-                        <Fill color="#FF263230" />
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50">
+                        <Fill color="#FF121821" />
                     </RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46">
-                        <Stroke color="#FF455955" thickness="1.8" />
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49">
+                        <Stroke color="#FF222D3A" thickness="1.6" />
                     </RoundRectangle>
                 </PartDraw>
                 <Condition>
@@ -427,22 +420,38 @@
                         <Expression name="has_title">[COMPLICATION.TITLE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_small_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Compare expression="has_mono_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="has_title">
+                        <PartText x="10" y="18" width="116" height="24">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.5" weight="BOLD" color="#FF88D4DC">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="10" y="47" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                                 <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
@@ -450,26 +459,10 @@
                             </Text>
                         </PartText>
                     </Compare>
-                    <Compare expression="has_title">
-                        <PartText x="8" y="16" width="111" height="24">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FF88D4DC">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                        <PartText x="8" y="44" width="111" height="36">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="24.0" weight="BOLD" color="#FFFFFFFF">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                    </Compare>
                     <Default>
-                        <PartText x="8" y="29" width="111" height="36">
+                        <PartText x="10" y="31" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="27.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
@@ -479,12 +472,12 @@
             </Complication>
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47">
-                        <Fill color="#FF263230" />
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50">
+                        <Fill color="#FF121821" />
                     </RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46">
-                        <Stroke color="#FF455955" thickness="1.8" />
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49">
+                        <Stroke color="#FF222D3A" thickness="1.6" />
                     </RoundRectangle>
                 </PartDraw>
                 <Condition>
@@ -494,22 +487,38 @@
                         <Expression name="rv_title">[COMPLICATION.TITLE] != null</Expression>
                     </Expressions>
                     <Compare expression="rv_small_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Compare expression="rv_mono_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rv_title">
+                        <PartText x="10" y="18" width="116" height="24">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.5" weight="BOLD" color="#FF88D4DC">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="10" y="47" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                                 <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
@@ -517,26 +526,10 @@
                             </Text>
                         </PartText>
                     </Compare>
-                    <Compare expression="rv_title">
-                        <PartText x="8" y="16" width="111" height="24">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FF88D4DC">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                        <PartText x="8" y="44" width="111" height="36">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="24.0" weight="BOLD" color="#FFFFFFFF">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                    </Compare>
                     <Default>
-                        <PartText x="8" y="29" width="111" height="36">
+                        <PartText x="10" y="31" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="27.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
@@ -546,38 +539,38 @@
             </Complication>
 
             <Complication type="MONOCHROMATIC_IMAGE">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47"><Fill color="#FF263230" /></RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46"><Stroke color="#FF455955" thickness="1.8" /></RoundRectangle>
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50"><Fill color="#FF121821" /></RoundRectangle>
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49"><Stroke color="#FF222D3A" thickness="1.6" /></RoundRectangle>
                 </PartDraw>
-                <PartImage x="42" y="26" width="42" height="42">
+                <PartImage x="46" y="28" width="44" height="44">
                     <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="SMALL_IMAGE">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47"><Fill color="#FF263230" /></RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46"><Stroke color="#FF455955" thickness="1.8" /></RoundRectangle>
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50"><Fill color="#FF121821" /></RoundRectangle>
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49"><Stroke color="#FF222D3A" thickness="1.6" /></RoundRectangle>
                 </PartDraw>
-                <PartImage x="40" y="23" width="48" height="48">
+                <PartImage x="43" y="25" width="50" height="50">
                     <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="PHOTO_IMAGE">
-                <PartImage x="0" y="0" width="127" height="94">
+                <PartImage x="0" y="0" width="136" height="100">
                     <Image resource="[COMPLICATION.PHOTO_IMAGE]" />
                 </PartImage>
             </Complication>
         </ComplicationSlot>
 
-        <!-- SLOT 5: Cartucho Interno Direito (x=231, y=275, w=127, h=94 — separado por 12px do Slot 4!) -->
+        <!-- SLOT 5: Cartucho Interno Direito (x=232, y=276, w=136, h=100, r=50 — separado por 14px do Slot 4) -->
         <ComplicationSlot
-            x="231"
-            y="275"
-            width="127"
-            height="94"
+            x="232"
+            y="276"
+            width="136"
+            height="100"
             slotId="5"
             displayName="slot_circle_right_label"
             supportedTypes="SHORT_TEXT RANGED_VALUE MONOCHROMATIC_IMAGE SMALL_IMAGE PHOTO_IMAGE EMPTY">
@@ -589,18 +582,18 @@
             <BoundingRoundBox
                 x="0"
                 y="0"
-                width="127"
-                height="94"
+                width="136"
+                height="100"
                 outlinePadding="0.0"
-                cornerRadius="47" />
+                cornerRadius="50" />
 
             <Complication type="SHORT_TEXT">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47">
-                        <Fill color="#FF263230" />
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50">
+                        <Fill color="#FF121821" />
                     </RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46">
-                        <Stroke color="#FF455955" thickness="1.8" />
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49">
+                        <Stroke color="#FF222D3A" thickness="1.6" />
                     </RoundRectangle>
                 </PartDraw>
                 <Condition>
@@ -610,22 +603,38 @@
                         <Expression name="has_title">[COMPLICATION.TITLE] != null</Expression>
                     </Expressions>
                     <Compare expression="has_small_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Compare expression="has_mono_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="has_title">
+                        <PartText x="10" y="18" width="116" height="24">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.5" weight="BOLD" color="#FFF5C438">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="10" y="47" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                                 <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
@@ -633,26 +642,10 @@
                             </Text>
                         </PartText>
                     </Compare>
-                    <Compare expression="has_title">
-                        <PartText x="8" y="16" width="111" height="24">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFF5C438">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                        <PartText x="8" y="44" width="111" height="36">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="24.0" weight="BOLD" color="#FFFFFFFF">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                    </Compare>
                     <Default>
-                        <PartText x="8" y="29" width="111" height="36">
+                        <PartText x="10" y="31" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="27.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
@@ -662,12 +655,12 @@
             </Complication>
 
             <Complication type="RANGED_VALUE">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47">
-                        <Fill color="#FF263230" />
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50">
+                        <Fill color="#FF121821" />
                     </RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46">
-                        <Stroke color="#FF455955" thickness="1.8" />
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49">
+                        <Stroke color="#FF222D3A" thickness="1.6" />
                     </RoundRectangle>
                 </PartDraw>
                 <Condition>
@@ -677,22 +670,38 @@
                         <Expression name="rv_title">[COMPLICATION.TITLE] != null</Expression>
                     </Expressions>
                     <Compare expression="rv_small_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
                         </PartText>
                     </Compare>
                     <Compare expression="rv_mono_img">
-                        <PartImage x="46" y="10" width="35" height="35">
+                        <PartImage x="50" y="12" width="36" height="36">
                             <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                         </PartImage>
-                        <PartText x="8" y="48" width="111" height="36">
+                        <PartText x="10" y="51" width="116" height="37">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rv_title">
+                        <PartText x="10" y="18" width="116" height="24">
+                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.5" weight="BOLD" color="#FFF5C438">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="10" y="47" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
                                 <Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
@@ -700,26 +709,10 @@
                             </Text>
                         </PartText>
                     </Compare>
-                    <Compare expression="rv_title">
-                        <PartText x="8" y="16" width="111" height="24">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFF5C438">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TITLE]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                        <PartText x="8" y="44" width="111" height="36">
-                            <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="24.0" weight="BOLD" color="#FFFFFFFF">
-                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                                </Font>
-                            </Text>
-                        </PartText>
-                    </Compare>
                     <Default>
-                        <PartText x="8" y="29" width="111" height="36">
+                        <PartText x="10" y="31" width="116" height="38">
                             <Text align="CENTER" maxLines="1" ellipsis="TRUE">
-                                <Font family="SYNC_TO_DEVICE" size="26.0" weight="BOLD" color="#FFFFFFFF">
+                                <Font family="SYNC_TO_DEVICE" size="27.0" weight="BOLD" color="#FFFFFFFF">
                                     <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
                                 </Font>
                             </Text>
@@ -729,27 +722,27 @@
             </Complication>
 
             <Complication type="MONOCHROMATIC_IMAGE">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47"><Fill color="#FF263230" /></RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46"><Stroke color="#FF455955" thickness="1.8" /></RoundRectangle>
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50"><Fill color="#FF121821" /></RoundRectangle>
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49"><Stroke color="#FF222D3A" thickness="1.6" /></RoundRectangle>
                 </PartDraw>
-                <PartImage x="42" y="26" width="42" height="42">
+                <PartImage x="46" y="28" width="44" height="44">
                     <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="SMALL_IMAGE">
-                <PartDraw x="0" y="0" width="127" height="94">
-                    <RoundRectangle x="0" y="0" width="127" height="94" cornerRadiusX="47" cornerRadiusY="47"><Fill color="#FF263230" /></RoundRectangle>
-                    <RoundRectangle x="1" y="1" width="125" height="92" cornerRadiusX="46" cornerRadiusY="46"><Stroke color="#FF455955" thickness="1.8" /></RoundRectangle>
+                <PartDraw x="0" y="0" width="136" height="100">
+                    <RoundRectangle x="0" y="0" width="136" height="100" cornerRadiusX="50" cornerRadiusY="50"><Fill color="#FF121821" /></RoundRectangle>
+                    <RoundRectangle x="1" y="1" width="134" height="98" cornerRadiusX="49" cornerRadiusY="49"><Stroke color="#FF222D3A" thickness="1.6" /></RoundRectangle>
                 </PartDraw>
-                <PartImage x="40" y="23" width="48" height="48">
+                <PartImage x="43" y="25" width="50" height="50">
                     <Image resource="[COMPLICATION.SMALL_IMAGE]" />
                 </PartImage>
             </Complication>
 
             <Complication type="PHOTO_IMAGE">
-                <PartImage x="0" y="0" width="127" height="94">
+                <PartImage x="0" y="0" width="136" height="100">
                     <Image resource="[COMPLICATION.PHOTO_IMAGE]" />
                 </PartImage>
             </Complication>

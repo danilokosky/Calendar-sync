@@ -3315,52 +3315,52 @@ class MobileSyncConfigActivity : Activity() {
             rect.set(74f, 110f, 376f, 246f)
             drawContextCanvasInsideRect(canvas, rect, previewMode)
 
-            // 6. CARTUCHO INFERIOR DUPLO DE COMPLICATIONS (x=84, y=268, w=282, h=108 — Slots 4 e 5 +20% altura)
-            rect.set(84f, 268f, 366f, 376f)
+            // 6. CARTUCHO INFERIOR DUPLO DE COMPLICATIONS (x=74, y=268, w=302, h=116 — mesma largura e cores do Canvas)
+            rect.set(74f, 268f, 376f, 384f)
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#161D1C")
-            canvas.drawRoundRect(rect, 54f, 54f, paint)
+            paint.color = Color.parseColor("#080A0E")
+            canvas.drawRoundRect(rect, 58f, 58f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.3f
+            paint.color = Color.parseColor("#161D26")
+            canvas.drawRoundRect(rect, 58f, 58f, paint)
+
+            // Slot 4: Cápsula Interna Esquerda (x=82, y=276, w=136, h=100, r=50) -> Passos
+            rect.set(82f, 276f, 218f, 376f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#121821")
+            canvas.drawRoundRect(rect, 50f, 50f, paint)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1.6f
-            paint.color = Color.parseColor("#283533")
-            canvas.drawRoundRect(rect, 54f, 54f, paint)
-
-            // Slot 4: Cápsula Interna Esquerda (x=92, y=275, w=127, h=94) -> Passos
-            rect.set(92f, 275f, 219f, 369f)
-            paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#263230")
-            canvas.drawRoundRect(rect, 47f, 47f, paint)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.8f
-            paint.color = Color.parseColor("#455955")
-            canvas.drawRoundRect(rect, 47f, 47f, paint)
+            paint.color = Color.parseColor("#222D3A")
+            canvas.drawRoundRect(rect, 50f, 50f, paint)
 
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.typeface = Typeface.create("sans-serif-bold", Typeface.BOLD)
-            textPaint.textSize = 16.5f
+            textPaint.textSize = 17f
             textPaint.color = Color.parseColor("#88D4DC")
-            canvas.drawText("PASSOS", 155.5f, 308f, textPaint)
-            textPaint.textSize = 23.5f
+            canvas.drawText("PASSOS", 150f, 311f, textPaint)
+            textPaint.textSize = 24.5f
             textPaint.color = Color.WHITE
             val formattedTodaySteps = String.format(Locale("pt", "BR"), "%,d", prefs.getStepsToday())
-            canvas.drawText(formattedTodaySteps, 155.5f, 344f, textPaint)
+            canvas.drawText(formattedTodaySteps, 150f, 348f, textPaint)
 
-            // Slot 5: Cápsula Interna Direita (x=231, y=275, w=127, h=94) -> Pôr do Sol
-            rect.set(231f, 275f, 358f, 369f)
+            // Slot 5: Cápsula Interna Direita (x=232, y=276, w=136, h=100, r=50) -> Pôr do Sol
+            rect.set(232f, 276f, 368f, 376f)
             paint.style = Paint.Style.FILL
-            paint.color = Color.parseColor("#263230")
-            canvas.drawRoundRect(rect, 47f, 47f, paint)
+            paint.color = Color.parseColor("#121821")
+            canvas.drawRoundRect(rect, 50f, 50f, paint)
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.8f
-            paint.color = Color.parseColor("#455955")
-            canvas.drawRoundRect(rect, 47f, 47f, paint)
+            paint.strokeWidth = 1.6f
+            paint.color = Color.parseColor("#222D3A")
+            canvas.drawRoundRect(rect, 50f, 50f, paint)
 
-            textPaint.textSize = 16.5f
+            textPaint.textSize = 17f
             textPaint.color = Color.parseColor("#F5C438")
-            canvas.drawText("PÔR DO SOL", 294.5f, 308f, textPaint)
-            textPaint.textSize = 23.5f
+            canvas.drawText("PÔR DO SOL", 300f, 311f, textPaint)
+            textPaint.textSize = 24.5f
             textPaint.color = Color.WHITE
-            canvas.drawText(prefs.getSolarSunsetHHMM(), 294.5f, 344f, textPaint)
+            canvas.drawText(prefs.getSolarSunsetHHMM(), 300f, 348f, textPaint)
 
             // 7. BARRA INFERIOR DE BATERIA EM 3 CAMADAS (cópia exata do watchface.xml linhas 130-292)
             val watchBatteryPct = prefs.getWatchBatteryPct().coerceIn(0, 100)

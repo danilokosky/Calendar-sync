@@ -749,7 +749,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 data-testid="watch-context-canvas"
                 onClick={handleTapCanvasToCycle}
                 title="Toque no Canvas para alternar para o próximo contexto (Agenda → Clima → Sol → Passos → Sono)"
-                className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#1B2430] hover:border-amber-400/50 active:scale-[0.99] transition-all cursor-pointer select-none px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
+                className="w-[82%] h-[116px] rounded-[16px] bg-[#080A0E] border border-[#161D26] hover:border-amber-400/50 active:scale-[0.99] transition-all cursor-pointer select-none px-3 py-1.5 flex flex-col justify-between z-10 -mt-1.5 overflow-hidden"
               >
                 {/* MODO 1: PRÓXIMOS EVENTOS (EVENTS — Título dinâmico "Hoje" ou "Amanhã" + Barra de Progresso 0% → 100%) */}
                 {effectiveMode === 'EVENTS' && (
@@ -1438,15 +1438,15 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                   })()}
               </div>
 
-              {/* DOCK EM CARTUCHO ENVOLVENTE (x=84, y=268, w=282, h=108 — +20% altura ancorada no topo) */}
+              {/* DOCK EM CARTUCHO ENVOLVENTE (x=74, y=268, w=302, h=116 — mesma largura e cores do Canvas) */}
               <div
-                title="Cartucho Externo Envolvente (x=84, y=268, w=282, h=108, r=54)"
-                className="rounded-full bg-[#161D1C] border-[1.5px] border-[#283533] px-2 py-1.5 flex items-center justify-center gap-2.5 z-10 mt-0.5 mb-7 shadow-inner"
+                title="Cartucho Externo Envolvente (x=74, y=268, w=302, h=116, r=58)"
+                className="w-[82%] h-[94px] rounded-full bg-[#080A0E] border border-[#161D26] p-[7px] flex items-center justify-center gap-3 z-10 mt-0.5 mb-7 shadow-inner"
               >
                 {/* Slot #4: Cartucho Interno Esquerdo */}
                 <div
                   title="Slot #4: Complication Cartucho Esquerdo"
-                  className="w-[104px] h-[68px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
+                  className="flex-1 h-full rounded-full bg-[#121821] border-[1.5px] border-[#222D3A] flex flex-col items-center justify-center px-2"
                 >
                   <Footprints className="w-4 h-4 text-[#22C55E]" />
                   <span className="text-[17px] font-bold text-white leading-tight mt-0.5 tracking-tight">
@@ -1457,7 +1457,7 @@ export const WearOsSmartwatchSimulator: React.FC<WearOsSmartwatchSimulatorProps>
                 {/* Slot #5: Cartucho Interno Direito */}
                 <div
                   title="Slot #5: Complication Cartucho Direito"
-                  className="w-[104px] h-[68px] rounded-full bg-[#263230] border-[1.8px] border-[#455955] flex flex-col items-center justify-center px-2"
+                  className="flex-1 h-full rounded-full bg-[#121821] border-[1.5px] border-[#222D3A] flex flex-col items-center justify-center px-2"
                 >
                   <Sun className="w-4 h-4 text-[#F97316]" />
                   <span className="text-[17px] font-bold text-white leading-tight mt-0.5 tracking-tight">
