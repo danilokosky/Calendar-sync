@@ -51,7 +51,7 @@ object ContextPillBitmapRenderer {
 
     private val cacheLock = Any()
 
-    private enum class WeatherVisualKind {
+    enum class WeatherVisualKind {
         STORM,
         HEAVY_RAIN,
         DRIZZLE_RAIN,
