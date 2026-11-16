@@ -176,35 +176,36 @@ object ContextPillBitmapRenderer {
         val pillRect = RectF(0f, 0f, PILL_WIDTH.toFloat(), PILL_HEIGHT.toFloat())
         val radius = PILL_HEIGHT / 2f
 
+        // 25% de opacidade (0x40) na cor de fundo para harmonizar com o fundo do relógio e o canvas principal
         val gradientColors = when (state.visualKind) {
             WeatherVisualKind.STORM -> intArrayOf(
-                Color.parseColor("#FF3E4B6E"),
-                Color.parseColor("#FF354060"),
-                Color.parseColor("#FF2B3552")
+                Color.parseColor("#403E4B6E"),
+                Color.parseColor("#40354060"),
+                Color.parseColor("#402B3552")
             )
             WeatherVisualKind.HEAVY_RAIN,
             WeatherVisualKind.DRIZZLE_RAIN -> intArrayOf(
-                Color.parseColor("#FF3F757C"),
-                Color.parseColor("#FF3C7E84"),
-                Color.parseColor("#FF346B72")
+                Color.parseColor("#403F757C"),
+                Color.parseColor("#403C7E84"),
+                Color.parseColor("#40346B72")
             )
             WeatherVisualKind.CLEAR_NIGHT,
             WeatherVisualKind.PARTLY_NIGHT -> intArrayOf(
-                Color.parseColor("#FF152452"),
-                Color.parseColor("#FF192C61"),
-                Color.parseColor("#FF1F3673")
+                Color.parseColor("#40152452"),
+                Color.parseColor("#40192C61"),
+                Color.parseColor("#401F3673")
             )
             WeatherVisualKind.OVERCAST_FOG,
             WeatherVisualKind.SNOW -> intArrayOf(
-                Color.parseColor("#FF4A5F78"),
-                Color.parseColor("#FF3E526A"),
-                Color.parseColor("#FF32445A")
+                Color.parseColor("#404A5F78"),
+                Color.parseColor("#403E526A"),
+                Color.parseColor("#4032445A")
             )
             WeatherVisualKind.CLOUDY_DAY,
             WeatherVisualKind.CLEAR_DAY -> intArrayOf(
-                Color.parseColor("#FF3A6FBA"),
-                Color.parseColor("#FF467CC6"),
-                Color.parseColor("#FF5187CE")
+                Color.parseColor("#403A6FBA"),
+                Color.parseColor("#40467CC6"),
+                Color.parseColor("#405187CE")
             )
         }
 
@@ -234,42 +235,55 @@ object ContextPillBitmapRenderer {
             rimPaint
         )
 
-        // Ícone Climático Rico à Esquerda (cx ≈ 160, cy = 116)
+        // Circunferência esquerda perfeita: centro (116, 116), raio 116 (0..232)
+        // Ícone climático preenchido e contido dentro desse círculo limite
+        val iconCx = 116f
+        val iconCy = 116f
         when (state.visualKind) {
-            WeatherVisualKind.STORM -> drawStormIcon(canvas, 160f, 116f)
-            WeatherVisualKind.HEAVY_RAIN -> drawHeavyRainIcon(canvas, 160f, 116f)
-            WeatherVisualKind.DRIZZLE_RAIN -> drawDrizzleStreaksIcon(canvas, 160f, 116f)
-            WeatherVisualKind.CLOUDY_DAY -> drawSunBehindCloudIcon(canvas, 160f, 116f)
-            WeatherVisualKind.CLEAR_DAY -> drawSunIcon(canvas, 160f, 116f)
-            WeatherVisualKind.PARTLY_NIGHT -> drawNightMoonCloudsIcon(canvas, 160f, 116f, withClouds = true)
-            WeatherVisualKind.CLEAR_NIGHT -> drawNightMoonCloudsIcon(canvas, 160f, 116f, withClouds = false)
-            WeatherVisualKind.OVERCAST_FOG -> drawOvercastCloudIcon(canvas, 160f, 116f)
-            WeatherVisualKind.SNOW -> drawSnowIcon(canvas, 160f, 116f)
+            WeatherVisualKind.STORM -> drawStormIcon(canvas, iconCx, iconCy)
+            WeatherVisualKind.HEAVY_RAIN -> drawHeavyRainIcon(canvas, iconCx, iconCy)
+            WeatherVisualKind.DRIZZLE_RAIN -> drawDrizzleStreaksIcon(canvas, iconCx, iconCy)
+            WeatherVisualKind.CLOUDY_DAY -> drawSunBehindCloudIcon(canvas, iconCx, iconCy)
+            WeatherVisualKind.CLEAR_DAY -> drawSunIcon(canvas, iconCx, iconCy)
+            WeatherVisualKind.PARTLY_NIGHT -> drawNightMoonCloudsIcon(canvas, iconCx, iconCy, withClouds = true)
+            WeatherVisualKind.CLEAR_NIGHT -> drawNightMoonCloudsIcon(canvas, iconCx, iconCy, withClouds = false)
+            WeatherVisualKind.OVERCAST_FOG -> drawOvercastCloudIcon(canvas, iconCx, iconCy)
+            WeatherVisualKind.SNOW -> drawSnowIcon(canvas, iconCx, iconCy)
         }
 
-        // Lado Direito: Temperatura em destaque + Pin + Cidade
-        val textStartX = 264f
+        // Informações justificadas à esquerda logo após o círculo esquerdo (x=216..376),
+        // mantendo livre toda a circunferência direita (complication circular em x=388..588).
+        val textStartX = 216f
+        val maxContentRightX = 376f
+
         val tempPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 78f
+            textSize = 74f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
         }
-        canvas.drawText("${state.tempC}°", textStartX, 116f, tempPaint)
+        canvas.drawText("${state.tempC}°", textStartX, 115f, tempPaint)
 
-        drawLocationPinIcon(canvas, textStartX + 12f, 154f)
+        drawLocationPinIcon(canvas, textStartX + 10f, 152f, scale = 0.92f)
 
+        val cityStartX = textStartX + 28f
+        val availableCityWidth = (maxContentRightX - cityStartX).coerceAtLeast(80f)
         val cityPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#DDE6F3")
-            textSize = 33f
+            textSize = 30f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textAlign = Paint.Align.LEFT
+        }
+        while (cityPaint.textSize > 24f && cityPaint.measureText(state.cityShort) > availableCityWidth) {
+            cityPaint.textSize -= 1f
         }
         val ellipsizedCity = TextUtils.ellipsize(
             state.cityShort,
             cityPaint,
-            240f,
+            availableCityWidth,
             TextUtils.TruncateAt.END
         ).toString()
-        canvas.drawText(ellipsizedCity, textStartX + 34f, 166f, cityPaint)
+        canvas.drawText(ellipsizedCity, cityStartX, 162f, cityPaint)
 
         return bmp
     }
@@ -314,11 +328,12 @@ object ContextPillBitmapRenderer {
     }
 
     private fun drawStormIcon(canvas: Canvas, cx: Float, cy: Float) {
+        val s = 1.18f
         drawCloudShape(
             canvas = canvas,
             cx = cx,
-            cy = cy - 16f,
-            scale = 1.0f,
+            cy = cy - 18f * s,
+            scale = s,
             mainColor = Color.parseColor("#FF7A8089"),
             shadowLobeColor = Color.parseColor("#FF666C75")
         )
@@ -329,13 +344,13 @@ object ContextPillBitmapRenderer {
             color = Color.parseColor("#FFFAE042")
         }
         val boltPath = Path().apply {
-            moveTo(cx - 18f, cy + 6f)
-            lineTo(cx - 2f, cy + 6f)
-            lineTo(cx - 10f, cy + 28f)
-            lineTo(cx + 4f, cy + 28f)
-            lineTo(cx - 26f, cy + 68f)
-            lineTo(cx - 16f, cy + 36f)
-            lineTo(cx - 28f, cy + 36f)
+            moveTo(cx - 18f * s, cy + 5f * s)
+            lineTo(cx - 2f * s, cy + 5f * s)
+            lineTo(cx - 10f * s, cy + 28f * s)
+            lineTo(cx + 4f * s, cy + 28f * s)
+            lineTo(cx - 26f * s, cy + 70f * s)
+            lineTo(cx - 16f * s, cy + 37f * s)
+            lineTo(cx - 28f * s, cy + 37f * s)
             close()
         }
         canvas.drawPath(boltPath, boltPaint)
@@ -343,38 +358,40 @@ object ContextPillBitmapRenderer {
         // Gotas brancas diagonais
         val dropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 8.5f
+            strokeWidth = 8.5f * s
             strokeCap = Paint.Cap.ROUND
             color = Color.parseColor("#FFF8FAFC")
         }
-        canvas.drawLine(cx + 18f, cy + 38f, cx + 8f, cy + 54f, dropPaint)
-        canvas.drawLine(cx + 42f, cy + 38f, cx + 32f, cy + 54f, dropPaint)
+        canvas.drawLine(cx + 18f * s, cy + 38f * s, cx + 8f * s, cy + 55f * s, dropPaint)
+        canvas.drawLine(cx + 42f * s, cy + 38f * s, cx + 32f * s, cy + 55f * s, dropPaint)
     }
 
     private fun drawHeavyRainIcon(canvas: Canvas, cx: Float, cy: Float) {
+        val s = 1.24f
         drawCloudShape(
             canvas = canvas,
             cx = cx,
-            cy = cy - 16f,
-            scale = 1.0f,
+            cy = cy - 16f * s,
+            scale = s,
             mainColor = Color.parseColor("#FFCBD5E1"),
             shadowLobeColor = Color.parseColor("#FFB4C0D0")
         )
         val dropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 8f
+            strokeWidth = 8f * s
             strokeCap = Paint.Cap.ROUND
             color = Color.parseColor("#FF93E5FF")
         }
-        canvas.drawLine(cx - 24f, cy + 34f, cx - 34f, cy + 54f, dropPaint)
-        canvas.drawLine(cx + 2f, cy + 34f, cx - 8f, cy + 54f, dropPaint)
-        canvas.drawLine(cx + 28f, cy + 34f, cx + 18f, cy + 54f, dropPaint)
+        canvas.drawLine(cx - 24f * s, cy + 34f * s, cx - 34f * s, cy + 54f * s, dropPaint)
+        canvas.drawLine(cx + 2f * s, cy + 34f * s, cx - 8f * s, cy + 54f * s, dropPaint)
+        canvas.drawLine(cx + 28f * s, cy + 34f * s, cx + 18f * s, cy + 54f * s, dropPaint)
     }
 
     private fun drawDrizzleStreaksIcon(canvas: Canvas, cx: Float, cy: Float) {
+        val s = 1.42f
         val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 11f
+            strokeWidth = 10.5f * s
             strokeCap = Paint.Cap.ROUND
             color = Color.WHITE
         }
@@ -382,17 +399,18 @@ object ContextPillBitmapRenderer {
             style = Paint.Style.FILL
             color = Color.WHITE
         }
-        // 3 traços diagonais com pontos no estilo exato da imagem One UI (teal)
-        canvas.drawLine(cx - 20f, cy - 22f, cx - 40f, cy - 2f, streakPaint)
-        canvas.drawCircle(cx - 56f, cy + 14f, 5.5f, dotPaint)
+        // 3 traços diagonais com pontos no estilo One UI (teal)
+        canvas.drawLine(cx - 20f * s, cy - 22f * s, cx - 40f * s, cy - 2f * s, streakPaint)
+        canvas.drawCircle(cx - 56f * s, cy + 14f * s, 5.5f * s, dotPaint)
 
-        canvas.drawLine(cx + 14f, cy - 22f, cx - 10f, cy + 2f, streakPaint)
+        canvas.drawLine(cx + 14f * s, cy - 22f * s, cx - 10f * s, cy + 2f * s, streakPaint)
 
-        canvas.drawLine(cx + 30f, cy + 2f, cx + 2f, cy + 30f, streakPaint)
-        canvas.drawCircle(cx + 44f, cy - 12f, 5.5f, dotPaint)
+        canvas.drawLine(cx + 30f * s, cy + 2f * s, cx + 2f * s, cy + 30f * s, streakPaint)
+        canvas.drawCircle(cx + 44f * s, cy - 12f * s, 5.5f * s, dotPaint)
     }
 
     private fun drawSunBehindCloudIcon(canvas: Canvas, cx: Float, cy: Float) {
+        val s = 1.28f
         val sunRimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = Color.parseColor("#FFE09F24")
@@ -401,20 +419,21 @@ object ContextPillBitmapRenderer {
             style = Paint.Style.FILL
             color = Color.parseColor("#FFF8CA47")
         }
-        canvas.drawCircle(cx + 22f, cy - 22f, 29f, sunRimPaint)
-        canvas.drawCircle(cx + 22f, cy - 22f, 24f, sunCorePaint)
+        canvas.drawCircle(cx + 22f * s, cy - 22f * s, 29f * s, sunRimPaint)
+        canvas.drawCircle(cx + 22f * s, cy - 22f * s, 24f * s, sunCorePaint)
 
         drawCloudShape(
             canvas = canvas,
-            cx = cx - 4f,
-            cy = cy + 6f,
-            scale = 1.0f,
+            cx = cx - 4f * s,
+            cy = cy + 6f * s,
+            scale = s,
             mainColor = Color.WHITE,
             shadowLobeColor = Color.parseColor("#FFEBEEF3")
         )
     }
 
     private fun drawSunIcon(canvas: Canvas, cx: Float, cy: Float) {
+        val s = 1.45f
         val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = Color.parseColor("#44FACC15")
@@ -427,14 +446,15 @@ object ContextPillBitmapRenderer {
             style = Paint.Style.FILL
             color = Color.parseColor("#FFFBD04C")
         }
-        canvas.drawCircle(cx, cy, 48f, glowPaint)
-        canvas.drawCircle(cx, cy, 38f, rimPaint)
-        canvas.drawCircle(cx, cy, 32f, corePaint)
+        canvas.drawCircle(cx, cy, 48f * s, glowPaint)
+        canvas.drawCircle(cx, cy, 38f * s, rimPaint)
+        canvas.drawCircle(cx, cy, 32f * s, corePaint)
     }
 
     private fun drawNightMoonCloudsIcon(canvas: Canvas, cx: Float, cy: Float, withClouds: Boolean) {
+        val s = 1.30f
         // Desenha lua crescente em layer isolado para o recorte DST_OUT não apagar o degradê de fundo
-        val saveCount = canvas.saveLayer(cx - 80f, cy - 80f, cx + 80f, cy + 80f, null)
+        val saveCount = canvas.saveLayer(cx - 104f, cy - 104f, cx + 104f, cy + 104f, null)
         val moonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = Color.parseColor("#FFC6DAE9")
@@ -443,10 +463,10 @@ object ContextPillBitmapRenderer {
             style = Paint.Style.FILL
             xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
         }
-        val moonCx = if (withClouds) cx - 4f else cx
-        val moonCy = if (withClouds) cy - 6f else cy
-        canvas.drawCircle(moonCx, moonCy, 42f, moonPaint)
-        canvas.drawCircle(moonCx + 22f, moonCy - 18f, 36f, cutPaint)
+        val moonCx = if (withClouds) cx - 4f * s else cx
+        val moonCy = if (withClouds) cy - 6f * s else cy
+        canvas.drawCircle(moonCx, moonCy, 42f * s, moonPaint)
+        canvas.drawCircle(moonCx + 22f * s, moonCy - 18f * s, 36f * s, cutPaint)
         canvas.restoreToCount(saveCount)
 
         if (withClouds) {
@@ -460,50 +480,52 @@ object ContextPillBitmapRenderer {
             }
             // Nuvem pequena à esquerda
             canvas.drawRoundRect(
-                RectF(cx - 58f, cy - 2f, cx - 22f, cy + 22f),
-                12f,
-                12f,
+                RectF(cx - 58f * s, cy - 2f * s, cx - 22f * s, cy + 22f * s),
+                12f * s,
+                12f * s,
                 cloudWhite
             )
-            canvas.drawCircle(cx - 42f, cy - 4f, 15f, cloudWhite)
+            canvas.drawCircle(cx - 42f * s, cy - 4f * s, 15f * s, cloudWhite)
 
             // Nuvem média à direita inferior
             canvas.drawRoundRect(
-                RectF(cx - 4f, cy + 12f, cx + 52f, cy + 44f),
-                16f,
-                16f,
+                RectF(cx - 4f * s, cy + 12f * s, cx + 52f * s, cy + 44f * s),
+                16f * s,
+                16f * s,
                 cloudWhite
             )
-            canvas.drawCircle(cx + 16f, cy + 12f, 20f, cloudWhite)
-            canvas.drawCircle(cx + 38f, cy + 26f, 14f, cloudSoft)
+            canvas.drawCircle(cx + 16f * s, cy + 12f * s, 20f * s, cloudWhite)
+            canvas.drawCircle(cx + 38f * s, cy + 26f * s, 14f * s, cloudSoft)
         }
     }
 
     private fun drawOvercastCloudIcon(canvas: Canvas, cx: Float, cy: Float) {
+        val s = 1.24f
         drawCloudShape(
             canvas = canvas,
-            cx = cx - 12f,
-            cy = cy - 10f,
-            scale = 0.85f,
+            cx = cx - 12f * s,
+            cy = cy - 10f * s,
+            scale = 0.85f * s,
             mainColor = Color.parseColor("#FF94A3B8"),
             shadowLobeColor = Color.parseColor("#FF7C8B9F")
         )
         drawCloudShape(
             canvas = canvas,
-            cx = cx + 6f,
-            cy = cy + 12f,
-            scale = 0.95f,
+            cx = cx + 6f * s,
+            cy = cy + 12f * s,
+            scale = 0.95f * s,
             mainColor = Color.WHITE,
             shadowLobeColor = Color.parseColor("#FFE2E8F0")
         )
     }
 
     private fun drawSnowIcon(canvas: Canvas, cx: Float, cy: Float) {
+        val s = 1.24f
         drawCloudShape(
             canvas = canvas,
             cx = cx,
-            cy = cy - 16f,
-            scale = 1.0f,
+            cy = cy - 16f * s,
+            scale = s,
             mainColor = Color.WHITE,
             shadowLobeColor = Color.parseColor("#FFE2E8F0")
         )
@@ -511,32 +533,42 @@ object ContextPillBitmapRenderer {
             style = Paint.Style.FILL
             color = Color.parseColor("#FFE0F2FE")
         }
-        canvas.drawCircle(cx - 26f, cy + 44f, 6f, flakePaint)
-        canvas.drawCircle(cx + 2f, cy + 52f, 6f, flakePaint)
-        canvas.drawCircle(cx + 30f, cy + 42f, 6f, flakePaint)
+        canvas.drawCircle(cx - 26f * s, cy + 44f * s, 6f * s, flakePaint)
+        canvas.drawCircle(cx + 2f * s, cy + 52f * s, 6f * s, flakePaint)
+        canvas.drawCircle(cx + 30f * s, cy + 42f * s, 6f * s, flakePaint)
     }
 
-    private fun drawLocationPinIcon(canvas: Canvas, centerX: Float, centerY: Float) {
+    private fun drawLocationPinIcon(
+        canvas: Canvas,
+        centerX: Float,
+        centerY: Float,
+        scale: Float = 1.0f
+    ) {
         val pinPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 2.6f
+            strokeWidth = 2.5f * scale
             strokeJoin = Paint.Join.ROUND
             strokeCap = Paint.Cap.ROUND
             color = Color.parseColor("#FFD2DCEB")
         }
-        val r = 10f
+        val r = 10f * scale
         val pinPath = Path().apply {
             arcTo(
-                RectF(centerX - r, centerY - r - 3f, centerX + r, centerY + r - 3f),
+                RectF(
+                    centerX - r,
+                    centerY - r - 3f * scale,
+                    centerX + r,
+                    centerY + r - 3f * scale
+                ),
                 155f,
                 230f,
                 false
             )
-            lineTo(centerX, centerY + 13f)
+            lineTo(centerX, centerY + 13f * scale)
             close()
         }
         canvas.drawPath(pinPath, pinPaint)
-        canvas.drawCircle(centerX, centerY - 3f, 3.6f, pinPaint)
+        canvas.drawCircle(centerX, centerY - 3f * scale, 3.6f * scale, pinPaint)
     }
 }
 

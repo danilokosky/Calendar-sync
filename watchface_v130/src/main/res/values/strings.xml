@@ -3,6 +3,7 @@
     <string name="watch_face_name">ChronoWear Agenda 1.3</string>
     <string name="slot_event_1_text_label">Canvas</string>
     <string name="slot_pill_context_label">Cartucho</string>
+    <string name="slot_circle_right_label">Círculo Direito</string>
     <string name="slot_event_1_timer_label">Timer &amp; Barra do Evento #1</string>
     <string name="slot_event_2_label">Próximo Evento #2</string>
     <string name="slot_event_3_label">Próximo Evento #3</string>
