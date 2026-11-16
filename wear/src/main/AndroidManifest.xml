@@ -91,7 +91,7 @@
                 android:value="SMALL_IMAGE,PHOTO_IMAGE" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="60" />
+                android:value="0" />
         </service>
 
         <!-- SEGUNDO CANVAS (CARTUCHO INFERIOR 302x116): Clima/Contexto com atualização por Assinatura de Estado -->
@@ -109,7 +109,7 @@
                 android:value="SMALL_IMAGE,PHOTO_IMAGE" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="1800" />
+                android:value="0" />
         </service>
 
         <!-- Wear OS Tile para os Próximos 3 Eventos -->
@@ -133,6 +133,7 @@
                 <action android:name="com.chronowear.wear.ACTION_TAP_CYCLE_CONTEXT" />
                 <action android:name="com.chronowear.wear.ACTION_TAP_CYCLE_PILL_CONTEXT" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

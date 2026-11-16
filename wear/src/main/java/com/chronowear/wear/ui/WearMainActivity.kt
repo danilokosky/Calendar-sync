@@ -17,13 +17,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.wear.tiles.TileService
 import com.chronowear.wear.complication.ChronoWearComplicationUpdater
 import com.chronowear.wear.data.AutonomousCountdownScheduler
 import com.chronowear.wear.data.CachedWearEvent
 import com.chronowear.wear.data.PhoneDataListenerService
 import com.chronowear.wear.data.WatchAutonomousRepository
-import com.chronowear.wear.tile.UpNextThreeEventsTileService
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -504,9 +502,7 @@ class WearMainActivity : Activity() {
     }
 
     private fun forceUpdateComplicationsAndTile() {
-        ChronoWearComplicationUpdater.requestUpdateAllSlots(this)
-
-        TileService.getUpdater(this)
-            .requestUpdate(UpNextThreeEventsTileService::class.java)
+        ChronoWearComplicationUpdater.requestUpdateAllSlots(this, force = true)
+        ChronoWearComplicationUpdater.requestUpdateTileIfChanged(this, force = true)
     }
 }

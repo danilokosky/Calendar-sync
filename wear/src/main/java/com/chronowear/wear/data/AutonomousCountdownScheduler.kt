@@ -14,10 +14,8 @@ import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.LocationManager
 import android.os.Build
-import androidx.wear.tiles.TileService
 import com.chronowear.wear.R
 import com.chronowear.wear.complication.ChronoWearComplicationUpdater
-import com.chronowear.wear.tile.UpNextThreeEventsTileService
 import com.chronowear.wear.ui.WearMainActivity
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
@@ -46,10 +44,13 @@ object AutonomousCountdownScheduler {
     private const val CHANNEL_CANVAS_SHIFT_ID = "chronowear_canvas_shift_channel"
     private const val NOTIF_ID_CANVAS_SHIFT = 4102
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val receiverLock = Any()
     private var screenWakeReceiverRegistered = false
     private var lastScreenWakeUpdateMs = 0L
     @Volatile
     private var lastPhoneSyncRequestMs = 0L
+    @Volatile
+    private var weatherFetchInFlight = false
 
     /**
      * Solicita imediatamente ao smartphone conectado uma sincronização completa
@@ -265,41 +266,87 @@ object AutonomousCountdownScheduler {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action ?: return
             val repo = WatchAutonomousRepository.getInstance(context)
+            if (!repo.hasAnyActiveComplicationSlot()) {
+                pauseAllBackgroundSchedules(context)
+                return
+            }
             val nowMs = System.currentTimeMillis()
 
             if (action == Intent.ACTION_TIME_TICK) {
+                if (ChronoWearComplicationUpdater.isDisplayTotallyOff(context)) {
+                    return
+                }
                 repo.recordWatchBatterySampleOnPeriodicUpdate(nowMs)
                 runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
                 requestPhoneSyncIfDue(context)
                 notifyWatchOnForcedCanvasChangeIfNeeded(context)
                 ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
+                ChronoWearComplicationUpdater.requestUpdateTileIfChanged(context)
                 scheduleNextTransition(context)
                 return
             }
 
             if (action != Intent.ACTION_SCREEN_ON) return
+            ChronoWearComplicationUpdater.flushPendingOnScreenWake(context)
+            ChronoWearComplicationUpdater.requestUpdateTileIfChanged(context)
             if (!repo.isUpdateOnScreenWakeEnabled()) return
 
             if (nowMs - lastScreenWakeUpdateMs >= 15_000L) {
                 lastScreenWakeUpdateMs = nowMs
+                repo.recordWatchBatterySampleOnPeriodicUpdate(nowMs)
                 requestPhoneSyncForActiveCanvasIfDue(context)
-                ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
                 scheduleNextTransition(context)
             }
         }
     }
 
     fun ensureScreenWakeListenerRegistered(context: Context) {
-        if (screenWakeReceiverRegistered) return
+        synchronized(receiverLock) {
+            if (screenWakeReceiverRegistered) return
+            try {
+                val appCtx = context.applicationContext
+                val filter = IntentFilter().apply {
+                    addAction(Intent.ACTION_SCREEN_ON)
+                    addAction(Intent.ACTION_TIME_TICK)
+                }
+                appCtx.registerReceiver(screenOnReceiver, filter)
+                screenWakeReceiverRegistered = true
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun cancelPendingTransitionAlarm(context: Context) {
         try {
             val appCtx = context.applicationContext
-            val filter = IntentFilter().apply {
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_TIME_TICK)
+            val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val intent = Intent(appCtx, AutonomousTransitionReceiver::class.java).apply {
+                action = ACTION_TRANSITION
             }
-            appCtx.registerReceiver(screenOnReceiver, filter)
-            screenWakeReceiverRegistered = true
+            val pendingIntent = PendingIntent.getBroadcast(
+                appCtx,
+                2001,
+                intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+            }
         } catch (_: Exception) {
+        }
+    }
+
+    fun pauseAllBackgroundSchedules(context: Context) {
+        cancelPendingTransitionAlarm(context)
+        synchronized(receiverLock) {
+            if (!screenWakeReceiverRegistered) return
+            try {
+                context.applicationContext.unregisterReceiver(screenOnReceiver)
+            } catch (_: Exception) {
+            } finally {
+                screenWakeReceiverRegistered = false
+            }
         }
     }
 
@@ -421,23 +468,36 @@ object AutonomousCountdownScheduler {
         val repo = WatchAutonomousRepository.getInstance(appCtx)
         if (!forceRefresh && !repo.isWatchStandaloneWeatherEnabled()) return
 
-        val (lat, lon) = resolveWatchCoordinates(appCtx)
-        // Sempre recalcula astronomicamente os horários de Nascer e Pôr do Sol com base na mesma localização do Clima
-        val (astroRise, astroSet) = calculateAstronomicalSunriseSunset(lat, lon)
-        repo.saveSolarTimes(astroRise, astroSet)
-
         val nowMs = System.currentTimeMillis()
+        val todayDayKey = WatchAutonomousRepository.formatIsoDateLocal(nowMs)
+        val needsDailySolarAstro = repo.isWatchStandaloneSolarEnabled() &&
+            repo.getLastSolarAstroDayKey() != todayDayKey
+
         val intervalMs = TimeUnit.MINUTES.toMillis(repo.getWatchStandaloneWeatherIntervalMinutes().toLong())
         val lastFetch = repo.getLastStandaloneWeatherFetchMs()
-        if (!forceRefresh && lastFetch > 0L && (nowMs - lastFetch) < intervalMs) return
+        val weatherDue = forceRefresh || lastFetch <= 0L || (nowMs - lastFetch) >= intervalMs
+
+        if (!weatherDue && !needsDailySolarAstro) return
+
+        val (lat, lon) = resolveWatchCoordinates(appCtx)
+        if (needsDailySolarAstro || forceRefresh) {
+            val (astroRise, astroSet) = calculateAstronomicalSunriseSunset(lat, lon)
+            repo.saveSolarTimes(astroRise, astroSet)
+            repo.saveLastSolarAstroDayKey(todayDayKey)
+        }
+
+        if (!weatherDue) return
+        if (!forceRefresh && weatherFetchInFlight) return
+        weatherFetchInFlight = true
 
         ioScope.launch {
+            var conn: HttpURLConnection? = null
             try {
                 val urlStr =
                     "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
                         "&hourly=temperature_2m,precipitation_probability,weather_code" +
                         "&daily=sunrise,sunset&forecast_days=2&timezone=auto"
-                val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 4500
                     readTimeout = 4500
@@ -517,13 +577,16 @@ object AutonomousCountdownScheduler {
                         }
 
                         ChronoWearComplicationUpdater.requestUpdatePillSlotIfChanged(appCtx)
+                        ChronoWearComplicationUpdater.requestUpdateMainSlot(
+                            appCtx,
+                            force = forceRefresh || shiftDetected
+                        )
 
                         if (forceRefresh ||
                             shiftDetected ||
                             repo.getContextWindowMode() == WatchAutonomousRepository.MODE_WEATHER ||
                             repo.getContextWindowMode() == WatchAutonomousRepository.MODE_SUN
                         ) {
-                            ChronoWearComplicationUpdater.requestUpdateAllSlots(appCtx)
                             appCtx.sendBroadcast(
                                 Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
                                     .setPackage(appCtx.packageName)
@@ -531,21 +594,69 @@ object AutonomousCountdownScheduler {
                         }
                     }
                 }
-                conn.disconnect()
             } catch (_: Exception) {
+            } finally {
+                try {
+                    conn?.disconnect()
+                } catch (_: Exception) {
+                }
+                weatherFetchInFlight = false
             }
         }
     }
 
-    fun scheduleNextTransition(context: Context) {
-        ensureScreenWakeListenerRegistered(context)
+    private fun computeNextSolarTriggerBoundaryMs(repo: WatchAutonomousRepository, nowMs: Long): Long {
+        if (!repo.isAutoTriggerSunEnabled()) return Long.MAX_VALUE
+        val solar = repo.getSolarSnapshot(nowMs)
+        val sunLeadMin = repo.getAutoTriggerSunLeadMin()
+        val holdMin = repo.getUnifiedCanvasHoldMinutes()
 
-        val repo = WatchAutonomousRepository.getInstance(context)
+        val dayStartMs = Calendar.getInstance().apply {
+            timeInMillis = nowMs
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val boundaries = longArrayOf(
+            dayStartMs + TimeUnit.MINUTES.toMillis((solar.sunriseMinutesOfDay - sunLeadMin).toLong()),
+            dayStartMs + TimeUnit.MINUTES.toMillis((solar.sunriseMinutesOfDay - sunLeadMin + holdMin + 1).toLong()),
+            dayStartMs + TimeUnit.MINUTES.toMillis((solar.sunsetMinutesOfDay - sunLeadMin).toLong()),
+            dayStartMs + TimeUnit.MINUTES.toMillis((solar.sunsetMinutesOfDay - sunLeadMin + holdMin + 1).toLong()),
+            dayStartMs + TimeUnit.MINUTES.toMillis((1440 + solar.sunriseMinutesOfDay - sunLeadMin).toLong())
+        )
+        var best = Long.MAX_VALUE
+        for (b in boundaries) {
+            if (b > nowMs + 1000L && b < best) {
+                best = b
+            }
+        }
+        return best
+    }
+
+    fun scheduleNextTransition(context: Context) {
+        val appCtx = context.applicationContext
+        val repo = WatchAutonomousRepository.getInstance(appCtx)
+        if (!repo.hasAnyActiveComplicationSlot()) {
+            cancelPendingTransitionAlarm(appCtx)
+            return
+        }
+
+        ensureScreenWakeListenerRegistered(appCtx)
+
         val nowMs = System.currentTimeMillis()
-        val nextEvent = repo.getNextThreeUpcomingEvents(nowMs).firstOrNull()
+        val upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
+        val nextEvent = upcomingThree.firstOrNull()
 
         val standaloneWeatherWakeMs = if (repo.isWatchStandaloneWeatherEnabled() || repo.isWatchStandaloneSolarEnabled()) {
-            nowMs + TimeUnit.MINUTES.toMillis(repo.getWatchStandaloneWeatherIntervalMinutes().toLong())
+            val weatherIntervalMs = TimeUnit.MINUTES.toMillis(repo.getWatchStandaloneWeatherIntervalMinutes().toLong())
+            val lastFetch = repo.getLastStandaloneWeatherFetchMs()
+            if (lastFetch > 0L) {
+                (lastFetch + weatherIntervalMs).coerceAtLeast(nowMs + 60_000L)
+            } else {
+                nowMs + weatherIntervalMs
+            }
         } else {
             Long.MAX_VALUE
         }
@@ -559,36 +670,59 @@ object AutonomousCountdownScheduler {
         }
 
         val tapOverrideReturnMs = repo.getTapOverrideExpiryEpochMs(nowMs)
+        val pillTapOverrideReturnMs = repo.getPillTapOverrideExpiryEpochMs(nowMs)
+        val solarTriggerBoundaryMs = computeNextSolarTriggerBoundaryMs(repo, nowMs)
 
-        // Sempre que houver compromissos futuros sincronizados no cache do relógio,
-        // desperta a cada 1 minuto (e exatamente na transição de início do compromisso)
-        // para avançar a contagem regressiva e substituir compromissos encerrados sem depender de nova sincronização!
+        // Agenda inteligente:
+        // - Sempre agenda transições exatas de fronteira (entrada na antecedência de alerta, início, fim da tolerância de 15m).
+        // - Só desperta a cada virada exata de minuto quando a tela NÃO está totalmente apagada (interativo ou AOD visível)
+        //   E o Canvas Principal está exibindo Agenda (evitando acordar a CPU em Deep Doze quando a tela está OFF ou em Clima/Sono/Passos).
+        val effectiveMode = repo.resolveEffectiveContextMode(nowMs, upcomingThree)
+        val displayTotallyOff = ChronoWearComplicationUpdater.isDisplayTotallyOff(appCtx)
+        val nextMinuteAlignedMs = ((nowMs / 60_000L) + 1L) * 60_000L + 250L
+
         val eventWakeUpMs = if (nextEvent == null) {
             Long.MAX_VALUE
         } else {
-            val fifteenMinBeforeMs = nextEvent.startEpochMs - TimeUnit.MINUTES.toMillis(15L)
-            val nextMinuteTickMs = nowMs + 60_000L
-            val exactEventBoundaryMs = (nextEvent.startEpochMs + 500L).coerceAtLeast(nowMs + 1000L)
+            val leadMin = repo.getAutoTriggerAgendaTasksLeadMin().toLong()
+            val leadEntryMs = nextEvent.startEpochMs - TimeUnit.MINUTES.toMillis(leadMin)
+            val startBoundaryMs = nextEvent.startEpochMs + 500L
+            val graceEndBoundaryMs = minOf(
+                nextEvent.startEpochMs + TimeUnit.MINUTES.toMillis(15L) + 500L,
+                nextEvent.endEpochMs + 500L
+            )
 
-            if (nowMs < fifteenMinBeforeMs && fifteenMinBeforeMs < nextMinuteTickMs) {
-                fifteenMinBeforeMs
+            var earliestBoundary = Long.MAX_VALUE
+            if (leadEntryMs > nowMs + 500L) earliestBoundary = minOf(earliestBoundary, leadEntryMs)
+            if (startBoundaryMs > nowMs + 500L) earliestBoundary = minOf(earliestBoundary, startBoundaryMs)
+            if (graceEndBoundaryMs > nowMs + 500L) earliestBoundary = minOf(earliestBoundary, graceEndBoundaryMs)
+
+            val shouldTickPerMinute = !displayTotallyOff &&
+                effectiveMode == WatchAutonomousRepository.MODE_EVENTS &&
+                (nextEvent.startEpochMs - nowMs) <= TimeUnit.HOURS.toMillis(24L)
+
+            if (shouldTickPerMinute) {
+                minOf(nextMinuteAlignedMs, earliestBoundary)
             } else {
-                minOf(nextMinuteTickMs, exactEventBoundaryMs)
+                earliestBoundary
             }
         }
 
         val nextWakeUpMs = minOf(
             minOf(eventWakeUpMs, universalPeriodicWakeMs),
-            minOf(standaloneWeatherWakeMs, tapOverrideReturnMs)
+            minOf(
+                minOf(standaloneWeatherWakeMs, solarTriggerBoundaryMs),
+                minOf(tapOverrideReturnMs, pillTapOverrideReturnMs)
+            )
         )
         if (nextWakeUpMs == Long.MAX_VALUE) return
 
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, AutonomousTransitionReceiver::class.java).apply {
+        val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(appCtx, AutonomousTransitionReceiver::class.java).apply {
             action = ACTION_TRANSITION
         }
         val pendingIntent = PendingIntent.getBroadcast(
-            context,
+            appCtx,
             2001,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -612,7 +746,16 @@ object AutonomousCountdownScheduler {
 
 class AutonomousTransitionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_CONTEXT) {
+        val action = intent.action
+        if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            AutonomousCountdownScheduler.ensureScreenWakeListenerRegistered(context)
+            AutonomousCountdownScheduler.scheduleNextTransition(context)
+            ChronoWearComplicationUpdater.requestUpdateAllSlots(context, force = true)
+            ChronoWearComplicationUpdater.requestUpdateTileIfChanged(context, force = true)
+            return
+        }
+
+        if (action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_CONTEXT) {
             // Toque direto na imagem do Canvas na Watch Face: avança imediatamente para o próximo Canvas
             // e agenda o retorno automático ao Canvas Padrão Principal após o Tempo Unificado configurado!
             val repo = WatchAutonomousRepository.getInstance(context)
@@ -622,7 +765,7 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
             if (repo.isUpdateOnCanvasTapEnabled()) {
                 AutonomousCountdownScheduler.requestPhoneSyncForActiveCanvasIfDue(context)
             }
-            ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
+            ChronoWearComplicationUpdater.requestUpdateMainSlot(context, force = true)
             AutonomousCountdownScheduler.scheduleNextTransition(context)
             context.sendBroadcast(
                 Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
@@ -631,7 +774,7 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
             return
         }
 
-        if (intent.action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_PILL_CONTEXT) {
+        if (action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_PILL_CONTEXT) {
             // Toque direto no Cartucho Inferior (2º Canvas): avança para o próximo contexto do cartucho
             // quando houver múltiplos modos configurados, ou verifica atualização climática devida.
             val repo = WatchAutonomousRepository.getInstance(context)
@@ -653,10 +796,7 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
         AutonomousCountdownScheduler.notifyWatchOnForcedCanvasChangeIfNeeded(context)
 
         ChronoWearComplicationUpdater.requestUpdateAllSlots(context)
-
-        TileService.getUpdater(context)
-            .requestUpdate(UpNextThreeEventsTileService::class.java)
-
+        ChronoWearComplicationUpdater.requestUpdateTileIfChanged(context)
         AutonomousCountdownScheduler.scheduleNextTransition(context)
     }
 }

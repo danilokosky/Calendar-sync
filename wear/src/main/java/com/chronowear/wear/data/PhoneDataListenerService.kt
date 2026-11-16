@@ -3,9 +3,7 @@ package com.chronowear.wear.data
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.wear.tiles.TileService
 import com.chronowear.wear.complication.ChronoWearComplicationUpdater
-import com.chronowear.wear.tile.UpNextThreeEventsTileService
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMap
@@ -730,12 +728,7 @@ class PhoneDataListenerService : WearableListenerService() {
             AutonomousCountdownScheduler.scheduleNextTransition(appCtx)
 
             ChronoWearComplicationUpdater.requestUpdateAllSlots(appCtx)
-
-            try {
-                TileService.getUpdater(appCtx)
-                    .requestUpdate(UpNextThreeEventsTileService::class.java)
-            } catch (_: Exception) {
-            }
+            ChronoWearComplicationUpdater.requestUpdateTileIfChanged(appCtx)
 
             appCtx.sendBroadcast(
                 Intent(ACTION_WEAR_CACHE_UPDATED).setPackage(appCtx.packageName)

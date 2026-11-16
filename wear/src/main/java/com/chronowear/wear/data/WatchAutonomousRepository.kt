@@ -12,6 +12,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -25,8 +26,7 @@ data class CachedWearEvent(
     val endEpochMs: Long
 ) {
     fun formatStartHHMM(): String {
-        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-        return sdf.format(Date(startEpochMs))
+        return WatchAutonomousRepository.formatHHMM(startEpochMs)
     }
 
     fun formatRemaining(nowMs: Long): String {
@@ -125,6 +125,44 @@ class WatchAutonomousRepository private constructor(context: Context) :
         "chronowear_wear_prefs",
         Context.MODE_PRIVATE
     )
+
+    @Volatile
+    private var eventsGeneration: Long = 0L
+
+    @Volatile
+    private var cachedFutureEventsGen: Long = -1L
+
+    @Volatile
+    private var cachedFutureEventsFloorMs: Long = 0L
+
+    @Volatile
+    private var cachedFutureEventsList: List<CachedWearEvent> = emptyList()
+
+    private val eventsCacheLock = Any()
+
+    @Volatile
+    private var cachedTasksLookupKey: String? = null
+
+    @Volatile
+    private var cachedParsedTasks: List<CachedWearTask> = emptyList()
+
+    @Volatile
+    private var cachedTasksCompletedCount: Int = 0
+
+    private val tasksCacheLock = Any()
+
+    private val lifecycleLock = Any()
+    private var lifecycleCacheInitialized = false
+    private val activeMainInstanceIds = mutableSetOf<Int>()
+    private val activePillInstanceIds = mutableSetOf<Int>()
+    private var mainLifecycleTracked = false
+    private var pillLifecycleTracked = false
+
+    private fun invalidateDataCaches() {
+        eventsGeneration++
+        cachedFutureEventsGen = -1L
+        cachedTasksLookupKey = null
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -382,7 +420,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 ?: prefs.getString("auto_trigger_steps_milestone", "100")
                 ?: "100"
             if (stepsTriggerOn && cleanSteps > 0) {
-                val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(syncTimestampMs))
+                val todayIso = formatIsoDateRoot(syncTimestampMs)
                 val hit80 = cleanSteps >= (effectiveGoal * 0.80).toInt()
                 val hit100 = cleanSteps >= effectiveGoal
                 val prev80Date = prefs.getString("steps_80_triggered_date", "") ?: ""
@@ -506,6 +544,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         } finally {
             db.endTransaction()
         }
+        invalidateDataCaches()
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -698,6 +737,14 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 status == BatteryManager.BATTERY_STATUS_FULL
 
             val prevPct = prefs.getInt("watch_battery_last_pct", -1)
+            val prevCharging = prefs.getBoolean("watch_battery_is_charging", false)
+            val lastSampleMs = prefs.getLong("watch_battery_last_sample_ms", 0L)
+
+            // Evita split/ordenação de 96 pontos e gravações em disco quando % e estado de carga não mudaram há menos de 5 min
+            if (prevPct == pct && prevCharging == isCharging && lastSampleMs > 0L && (nowMs - lastSampleMs) < 300_000L) {
+                return
+            }
+
             val rawCsv = prefs.getString("watch_battery_history_csv", "") ?: ""
             val cutoff24h = nowMs - TimeUnit.HOURS.toMillis(24L)
             val points = rawCsv.split(",")
@@ -716,7 +763,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
             val lastPoint = points.lastOrNull()
             val shouldAppend = lastPoint == null ||
-                (nowMs - lastPoint.epochMs) >= 60_000L ||
+                (nowMs - lastPoint.epochMs) >= 300_000L ||
                 lastPoint.levelPct != pct
 
             if (shouldAppend) {
@@ -732,12 +779,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 points
             }
 
-            val updatedCsv = compacted.joinToString(",") { "${it.epochMs}:${it.levelPct}" }
             val editor = prefs.edit()
                 .putInt("watch_battery_last_pct", pct)
                 .putBoolean("watch_battery_is_charging", isCharging)
                 .putLong("watch_battery_last_sample_ms", nowMs)
-                .putString("watch_battery_history_csv", updatedCsv)
+
+            if (shouldAppend || compacted.size != points.size) {
+                val updatedCsv = compacted.joinToString(",") { "${it.epochMs}:${it.levelPct}" }
+                editor.putString("watch_battery_history_csv", updatedCsv)
+            }
 
             // Avalia gatilho automático de bateria (<= 20%, <= 15% ou 100% carregado)
             if (isAutoTriggerBatteryEnabled()) {
@@ -833,19 +883,17 @@ class WatchAutonomousRepository private constructor(context: Context) :
             }
         }
 
-        val sdfHHMM = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val sdfHour = SimpleDateFormat("HH'h'", Locale.getDefault())
         val useHourFormat = spanMinutes >= 180 // >= 3h usa "08h", "10h"; < 3h usa "HH:mm" nominal (ex: 5 min, 10 min)
 
         val labels = sampledPoints.mapIndexed { idx, pt ->
             if (idx == sampledPoints.lastIndex) {
                 "Agora"
             } else if (spanMinutes < 2 && idx == 0) {
-                sdfHHMM.format(Date(pt.epochMs))
+                formatHHMM(pt.epochMs)
             } else if (useHourFormat) {
-                sdfHour.format(Date(pt.epochMs))
+                formatHourLabel(pt.epochMs)
             } else {
-                sdfHHMM.format(Date(pt.epochMs))
+                formatHHMM(pt.epochMs)
             }
         }
         val levels = sampledPoints.map { it.levelPct }
@@ -1042,10 +1090,22 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun saveSolarTimes(sunriseHHMM: String, sunsetHHMM: String) {
+        val curRise = prefs.getString("solar_sunrise_hhmm", null)
+        val curSet = prefs.getString("solar_sunset_hhmm", null)
+        if (curRise == sunriseHHMM && curSet == sunsetHHMM) return
         prefs.edit()
             .putString("solar_sunrise_hhmm", sunriseHHMM)
             .putString("solar_sunset_hhmm", sunsetHHMM)
             .apply()
+    }
+
+    fun getLastSolarAstroDayKey(): String {
+        return prefs.getString("solar_last_astro_day_key", "") ?: ""
+    }
+
+    fun saveLastSolarAstroDayKey(dayKey: String) {
+        if (prefs.getString("solar_last_astro_day_key", "") == dayKey) return
+        prefs.edit().putString("solar_last_astro_day_key", dayKey).apply()
     }
 
     fun getSolarSnapshot(nowMs: Long): SolarSnapshot {
@@ -1117,7 +1177,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
         val shiftDetected = shiftFromPreviousFetch || rainJumpFromPrevious || weatherConditionChanged
 
-        val updatedHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nowMs))
+        val updatedHHMM = formatHHMM(nowMs)
         val editor = prefs.edit()
             .putString("weather_temps_csv", tempsCsv)
             .putString("weather_hours_csv", hoursCsv)
@@ -1188,7 +1248,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             .takeIf { it > 0L }
             ?: prefs.getLong("last_sync_ms", nowMs).takeIf { it > 0L }
             ?: nowMs
-        val fallbackHHMM = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(fallbackTs))
+        val fallbackHHMM = formatHHMM(fallbackTs)
         val updatedTimeHHMM = prefs.getString("weather_updated_hhmm", fallbackHHMM) ?: fallbackHHMM
         val tempsStr = prefs.getString("weather_temps_csv", "28,28,27,27,27") ?: "28,28,27,27,27"
         val hoursStr = prefs.getString("weather_hours_csv", "Agora,23h,01h,03h,05h") ?: "Agora,23h,01h,03h,05h"
@@ -1254,8 +1314,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         nowMs: Long = System.currentTimeMillis()
     ) {
         val currentTasks = getTasksSnapshot(nowMs).tasks.toMutableList()
-        val sdfHHMM = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val formattedDue = dueHHMM.trim().ifBlank { sdfHHMM.format(Date(nowMs)) }
+        val formattedDue = dueHHMM.trim().ifBlank { formatHHMM(nowMs) }
         val cleanTitle = title.trim().ifBlank { "Lembrete pendente" }
         currentTasks.removeAll { it.title.equals(cleanTitle, ignoreCase = true) }
         currentTasks.add(
@@ -1291,6 +1350,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             .remove("tap_override_context_mode")
             .putLong("tap_override_timestamp_ms", 0L)
             .apply()
+        cachedTasksLookupKey = null
     }
 
     fun hasActiveTaskAlertOverride(
@@ -1314,81 +1374,94 @@ class WatchAutonomousRepository private constructor(context: Context) :
      */
     fun getTasksSnapshot(nowMs: Long = System.currentTimeMillis()): TasksSnapshot {
         val rawJson = prefs.getString("cached_tasks_json", "") ?: ""
-        val parsed = mutableListOf<CachedWearTask>()
-        var totalCompletedCount = 0
-        if (rawJson.isNotBlank()) {
-            try {
-                val arr = JSONArray(rawJson)
-                val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val todayDateIso = sdfIso.format(Date(nowMs))
-                val tomorrowDateIso = sdfIso.format(Date(nowMs + TimeUnit.DAYS.toMillis(1L)))
-                val thirtyDaysAgoIso = sdfIso.format(Date(nowMs - TimeUnit.DAYS.toMillis(30L)))
-                val timeRegex = Regex("(\\d{1,2}:\\d{2})")
+        val todayDateIso = formatIsoDateLocal(nowMs)
+        val cacheKey = "$rawJson|$todayDateIso"
 
-                for (i in 0 until arr.length()) {
-                    val obj = arr.optJSONObject(i) ?: continue
-                    val title = obj.optString("title", "").trim()
-                    if (title.isBlank()) continue
-                    val isDone = obj.optBoolean("completed", false)
-                    if (isDone) {
-                        totalCompletedCount++
-                        continue
-                    }
-                    val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(Locale.ROOT)
-                    val dueDateIso = obj.optString("dueDateIso", "").trim()
-                    // Regra estrita: tarefas com mais de 1 mês (30 dias) no passado nunca são sincronizadas
-                    if (dueDateIso.isNotBlank() && dueDateIso < thirtyDaysAgoIso) continue
+        val candidateList: List<CachedWearTask>
+        val totalCompletedCount: Int
+        synchronized(tasksCacheLock) {
+            if (cachedTasksLookupKey == cacheKey) {
+                candidateList = cachedParsedTasks
+                totalCompletedCount = cachedTasksCompletedCount
+            } else {
+                val parsed = mutableListOf<CachedWearTask>()
+                var completedCounter = 0
+                if (rawJson.isNotBlank()) {
+                    try {
+                        val arr = JSONArray(rawJson)
+                        val tomorrowDateIso = formatIsoDateLocal(nowMs + TimeUnit.DAYS.toMillis(1L))
+                        val thirtyDaysAgoIso = formatIsoDateLocal(nowMs - TimeUnit.DAYS.toMillis(30L))
 
-                    val rawDue = obj.optString("dueHHMM", "").trim()
-                    val rawLower = rawDue.lowercase(Locale.ROOT)
-                    val explicitOverdue = obj.optBoolean("isOverdue", false)
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.optJSONObject(i) ?: continue
+                            val title = obj.optString("title", "").trim()
+                            if (title.isBlank()) continue
+                            val isDone = obj.optBoolean("completed", false)
+                            if (isDone) {
+                                completedCounter++
+                                continue
+                            }
+                            val explicitCat = obj.optString("scheduleCategory", "").trim().uppercase(Locale.ROOT)
+                            val dueDateIso = obj.optString("dueDateIso", "").trim()
+                            // Regra estrita: tarefas com mais de 1 mês (30 dias) no passado nunca são sincronizadas
+                            if (dueDateIso.isNotBlank() && dueDateIso < thirtyDaysAgoIso) continue
 
-                    val resolvedCategory = when {
-                        dueDateIso.isNotBlank() && dueDateIso < todayDateIso -> "OVERDUE"
-                        dueDateIso == todayDateIso -> "TODAY"
-                        dueDateIso == tomorrowDateIso -> "TOMORROW"
-                        explicitCat in setOf("TODAY", "TOMORROW", "UNDATED", "OVERDUE") -> explicitCat
-                        explicitOverdue ||
-                            rawLower.contains("atras") ||
-                            rawLower.contains("ontem") ||
-                            rawLower.contains("vencid") -> "OVERDUE"
-                        rawLower.contains("amanh") -> "TOMORROW"
-                        dueDateIso.isBlank() && (
-                            rawDue.isBlank() ||
-                                rawLower == "sem data" ||
-                                rawLower == "sem horário" ||
-                                rawLower == "sem horario" ||
-                                rawLower == "hoje"
-                            ) -> "UNDATED"
-                        dueDateIso.isBlank() -> {
-                            if (timeRegex.containsMatchIn(rawDue)) "TODAY" else "UNDATED"
+                            val rawDue = obj.optString("dueHHMM", "").trim()
+                            val rawLower = rawDue.lowercase(Locale.ROOT)
+                            val explicitOverdue = obj.optBoolean("isOverdue", false)
+
+                            val resolvedCategory = when {
+                                dueDateIso.isNotBlank() && dueDateIso < todayDateIso -> "OVERDUE"
+                                dueDateIso == todayDateIso -> "TODAY"
+                                dueDateIso == tomorrowDateIso -> "TOMORROW"
+                                explicitCat in setOf("TODAY", "TOMORROW", "UNDATED", "OVERDUE") -> explicitCat
+                                explicitOverdue ||
+                                    rawLower.contains("atras") ||
+                                    rawLower.contains("ontem") ||
+                                    rawLower.contains("vencid") -> "OVERDUE"
+                                rawLower.contains("amanh") -> "TOMORROW"
+                                dueDateIso.isBlank() && (
+                                    rawDue.isBlank() ||
+                                        rawLower == "sem data" ||
+                                        rawLower == "sem horário" ||
+                                        rawLower == "sem horario" ||
+                                        rawLower == "hoje"
+                                    ) -> "UNDATED"
+                                dueDateIso.isBlank() -> {
+                                    if (TASK_TIME_REGEX.containsMatchIn(rawDue)) "TODAY" else "UNDATED"
+                                }
+                                else -> continue
+                            }
+
+                            val matchedTime = TASK_TIME_REGEX.find(rawDue)?.groupValues?.getOrNull(1) ?: ""
+                            val formattedTime = when (resolvedCategory) {
+                                "TODAY", "TOMORROW" -> if (matchedTime.isNotBlank()) matchedTime.padStart(5, '0') else ""
+                                else -> "" // Sem data e atrasadas NÃO apresentam data nem hora
+                            }
+
+                            parsed.add(
+                                CachedWearTask(
+                                    id = obj.optString("id", "t-$i"),
+                                    title = title,
+                                    dueHHMM = formattedTime,
+                                    sourceLabel = obj.optString("sourceLabel", "Tasks"),
+                                    completed = false,
+                                    isTodayOrTimeless = true,
+                                    scheduleCategory = resolvedCategory,
+                                    isOverdue = resolvedCategory == "OVERDUE" || explicitOverdue
+                                )
+                            )
                         }
-                        else -> continue
+                    } catch (_: Exception) {
                     }
-
-                    val matchedTime = timeRegex.find(rawDue)?.groupValues?.getOrNull(1) ?: ""
-                    val formattedTime = when (resolvedCategory) {
-                        "TODAY", "TOMORROW" -> if (matchedTime.isNotBlank()) matchedTime.padStart(5, '0') else ""
-                        else -> "" // Sem data e atrasadas NÃO apresentam data nem hora
-                    }
-
-                    parsed.add(
-                        CachedWearTask(
-                            id = obj.optString("id", "t-$i"),
-                            title = title,
-                            dueHHMM = formattedTime,
-                            sourceLabel = obj.optString("sourceLabel", "Tasks"),
-                            completed = false,
-                            isTodayOrTimeless = true,
-                            scheduleCategory = resolvedCategory,
-                            isOverdue = resolvedCategory == "OVERDUE" || explicitOverdue
-                        )
-                    )
                 }
-            } catch (_: Exception) {
+                cachedParsedTasks = parsed
+                cachedTasksCompletedCount = completedCounter
+                cachedTasksLookupKey = cacheKey
+                candidateList = parsed
+                totalCompletedCount = completedCounter
             }
         }
-        val candidateList = parsed
 
         val todayTasks = candidateList.filter { it.scheduleCategory == "TODAY" }
         if (todayTasks.isNotEmpty()) {
@@ -1552,7 +1625,100 @@ class WatchAutonomousRepository private constructor(context: Context) :
     }
 
     fun savePillLastSignature(signature: String) {
+        if ((prefs.getString("pill_last_state_signature", "") ?: "") == signature) return
         prefs.edit().putString("pill_last_state_signature", signature).apply()
+    }
+
+    fun getPillTapOverrideExpiryEpochMs(nowMs: Long): Long {
+        if (getPillSupportedModes().size <= 1) return Long.MAX_VALUE
+        val ts = prefs.getLong("pill_tap_override_timestamp_ms", 0L)
+        if (ts <= 0L) return Long.MAX_VALUE
+        val holdMs = TimeUnit.MINUTES.toMillis(getUnifiedCanvasHoldMinutes().toLong())
+        val expiry = ts + holdMs
+        return if (expiry > nowMs) expiry else Long.MAX_VALUE
+    }
+
+    private fun ensureLifecycleCacheLoadedLocked() {
+        if (lifecycleCacheInitialized) return
+        mainLifecycleTracked = prefs.getBoolean("main_lifecycle_tracked", false)
+        pillLifecycleTracked = prefs.getBoolean("pill_lifecycle_tracked", false)
+        val mainCsv = prefs.getString("active_main_slot_ids", "") ?: ""
+        mainCsv.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { activeMainInstanceIds.add(it) }
+        val pillCsv = prefs.getString("active_pill_slot_ids", "") ?: ""
+        pillCsv.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { activePillInstanceIds.add(it) }
+        lifecycleCacheInitialized = true
+    }
+
+    fun markComplicationSlotActivated(slotKind: String, instanceId: Int) {
+        synchronized(lifecycleLock) {
+            ensureLifecycleCacheLoadedLocked()
+            val targetSet = if (slotKind == SLOT_PILL) activePillInstanceIds else activeMainInstanceIds
+            val trackedFlagBefore = if (slotKind == SLOT_PILL) pillLifecycleTracked else mainLifecycleTracked
+            val added = targetSet.add(instanceId)
+            if (slotKind == SLOT_PILL) {
+                pillLifecycleTracked = true
+            } else {
+                mainLifecycleTracked = true
+            }
+            if (!added && trackedFlagBefore) return
+            val keyIds = if (slotKind == SLOT_PILL) "active_pill_slot_ids" else "active_main_slot_ids"
+            val keyTracked = if (slotKind == SLOT_PILL) "pill_lifecycle_tracked" else "main_lifecycle_tracked"
+            prefs.edit()
+                .putBoolean(keyTracked, true)
+                .putString(keyIds, targetSet.joinToString(","))
+                .apply()
+        }
+    }
+
+    fun markComplicationSlotDeactivated(slotKind: String, instanceId: Int) {
+        synchronized(lifecycleLock) {
+            ensureLifecycleCacheLoadedLocked()
+            val targetSet = if (slotKind == SLOT_PILL) activePillInstanceIds else activeMainInstanceIds
+            val trackedFlagBefore = if (slotKind == SLOT_PILL) pillLifecycleTracked else mainLifecycleTracked
+            val removed = targetSet.remove(instanceId)
+            if (slotKind == SLOT_PILL) {
+                pillLifecycleTracked = true
+            } else {
+                mainLifecycleTracked = true
+            }
+            if (!removed && trackedFlagBefore) return
+            val keyIds = if (slotKind == SLOT_PILL) "active_pill_slot_ids" else "active_main_slot_ids"
+            val keyTracked = if (slotKind == SLOT_PILL) "pill_lifecycle_tracked" else "main_lifecycle_tracked"
+            prefs.edit()
+                .putBoolean(keyTracked, true)
+                .putString(keyIds, targetSet.joinToString(","))
+                .apply()
+        }
+    }
+
+    fun isMainSlotActiveOrUnknown(): Boolean {
+        synchronized(lifecycleLock) {
+            ensureLifecycleCacheLoadedLocked()
+            return !mainLifecycleTracked || activeMainInstanceIds.isNotEmpty()
+        }
+    }
+
+    fun isPillSlotActiveOrUnknown(): Boolean {
+        synchronized(lifecycleLock) {
+            ensureLifecycleCacheLoadedLocked()
+            return !pillLifecycleTracked || activePillInstanceIds.isNotEmpty()
+        }
+    }
+
+    fun hasAnyActiveComplicationSlot(): Boolean {
+        synchronized(lifecycleLock) {
+            ensureLifecycleCacheLoadedLocked()
+            if (!mainLifecycleTracked && !pillLifecycleTracked) return true
+            return activeMainInstanceIds.isNotEmpty() || activePillInstanceIds.isNotEmpty()
+        }
+    }
+
+    fun computeTileSignature(nowMs: Long): String {
+        val nextThree = getNextThreeUpcomingEvents(nowMs)
+        val first = nextThree.firstOrNull() ?: return "EMPTY"
+        val rem = first.formatRemaining(nowMs)
+        val rows = nextThree.take(3).joinToString(";") { "${it.id}:${it.startEpochMs}:${it.title}" }
+        return "$rem|$rows"
     }
 
     fun getLastNotifiedForcedContext(): String {
@@ -1789,33 +1955,53 @@ class WatchAutonomousRepository private constructor(context: Context) :
      * (até 15 min após o início) ou em andamento (end_epoch_ms > nowMs) alinhados com o smartphone.
      */
     fun getAllUpcomingHorizonEvents(nowMs: Long, limit: Int = 20): List<CachedWearEvent> {
-        val list = mutableListOf<CachedWearEvent>()
         val graceStartMs = nowMs - 15 * 60_000L
-        val db = readableDatabase
-        db.query(
-            "cached_events",
-            arrayOf("id", "calendar_id", "title", "location", "start_epoch_ms", "end_epoch_ms"),
-            "(start_epoch_ms > ? OR (end_epoch_ms - start_epoch_ms >= 50000000)) AND end_epoch_ms > ?",
-            arrayOf(graceStartMs.toString(), nowMs.toString()),
-            null,
-            null,
-            "start_epoch_ms ASC",
-            limit.toString()
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                list.add(
-                    CachedWearEvent(
-                        id = cursor.getString(0),
-                        calendarId = cursor.getString(1),
-                        title = cursor.getString(2),
-                        location = cursor.getString(3),
-                        startEpochMs = cursor.getLong(4),
-                        endEpochMs = cursor.getLong(5)
-                    )
-                )
+        synchronized(eventsCacheLock) {
+            val gen = eventsGeneration
+            if (cachedFutureEventsGen == gen &&
+                nowMs >= cachedFutureEventsFloorMs &&
+                cachedFutureEventsList.size < 250
+            ) {
+                return cachedFutureEventsList
+                    .asSequence()
+                    .filter {
+                        (it.startEpochMs > graceStartMs || (it.endEpochMs - it.startEpochMs >= 50_000_000L)) &&
+                            it.endEpochMs > nowMs
+                    }
+                    .take(limit)
+                    .toList()
             }
+
+            val loaded = mutableListOf<CachedWearEvent>()
+            val db = readableDatabase
+            db.query(
+                "cached_events",
+                arrayOf("id", "calendar_id", "title", "location", "start_epoch_ms", "end_epoch_ms"),
+                "(start_epoch_ms > ? OR (end_epoch_ms - start_epoch_ms >= 50000000)) AND end_epoch_ms > ?",
+                arrayOf(graceStartMs.toString(), nowMs.toString()),
+                null,
+                null,
+                "start_epoch_ms ASC",
+                "250"
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    loaded.add(
+                        CachedWearEvent(
+                            id = cursor.getString(0),
+                            calendarId = cursor.getString(1),
+                            title = cursor.getString(2),
+                            location = cursor.getString(3),
+                            startEpochMs = cursor.getLong(4),
+                            endEpochMs = cursor.getLong(5)
+                        )
+                    )
+                }
+            }
+            cachedFutureEventsGen = gen
+            cachedFutureEventsFloorMs = nowMs
+            cachedFutureEventsList = loaded
+            return if (loaded.size <= limit) loaded else loaded.take(limit)
         }
-        return list
     }
 
     /**
@@ -1838,10 +2024,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
         if (allFuture.isNotEmpty()) {
             val firstNext = allFuture.first()
-            val header = SimpleDateFormat("EEE, dd", Locale("pt", "BR"))
-                .format(Date(firstNext.startEpochMs))
+            val header = formatWeekdayDayPt(firstNext.startEpochMs)
                 .replace(".", "")
-                .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+                .replaceFirstChar { if (it.isLowerCase()) it.titlecase(LOCALE_PT_BR) else it.toString() }
             return header to allFuture.filter { isSameCalendarDay(firstNext.startEpochMs, it.startEpochMs) }.take(3)
         }
         return "Hoje" to emptyList()
@@ -1878,12 +2063,45 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val MODE_SLEEP = "SLEEP"
         const val MODE_BATTERY = "BATTERY"
 
+        const val SLOT_MAIN = "MAIN"
+        const val SLOT_PILL = "PILL"
+
         // Etapa inicial do Cartucho (2º Canvas): apenas Clima/Temperatura.
         // Expansão futura: adicionar novos contextos aqui sem alterar o XML da Watch Face 1.3.0.
         val PILL_SUPPORTED_MODES = listOf(MODE_WEATHER)
 
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"
+
+        private val LOCALE_PT_BR = Locale("pt", "BR")
+        private val COMBINING_MARKS_REGEX = Regex("\\p{InCombiningDiacriticalMarks}+")
+        private val STATE_PREFIX_REGEX = Regex("\\b(state of|estado d[eao]|provincia d[eao]|brasil|brazil|br)\\b")
+        private val NON_ALPHA_SPACE_REGEX = Regex("[^a-z\\s]")
+        private val MULTI_SPACE_REGEX = Regex("\\s+")
+        private val TASK_TIME_REGEX = Regex("(\\d{1,2}:\\d{2})")
+        private val COMPACT_LOCATION_CACHE = ConcurrentHashMap<String, String>()
+
+        private val SDF_HHMM = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue(): SimpleDateFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        }
+        private val SDF_HOUR = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue(): SimpleDateFormat = SimpleDateFormat("HH'h'", Locale.getDefault())
+        }
+        private val SDF_ISO_DATE_LOCAL = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue(): SimpleDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        }
+        private val SDF_ISO_DATE_ROOT = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue(): SimpleDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+        }
+        private val SDF_EEE_DD_PT = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue(): SimpleDateFormat = SimpleDateFormat("EEE, dd", LOCALE_PT_BR)
+        }
+
+        fun formatHHMM(epochMs: Long): String = SDF_HHMM.get()!!.format(Date(epochMs))
+        fun formatHourLabel(epochMs: Long): String = SDF_HOUR.get()!!.format(Date(epochMs))
+        fun formatIsoDateLocal(epochMs: Long): String = SDF_ISO_DATE_LOCAL.get()!!.format(Date(epochMs))
+        fun formatIsoDateRoot(epochMs: Long): String = SDF_ISO_DATE_ROOT.get()!!.format(Date(epochMs))
+        fun formatWeekdayDayPt(epochMs: Long): String = SDF_EEE_DD_PT.get()!!.format(Date(epochMs))
 
         private val OFFICIAL_IBGE_UFS = setOf(
             "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO",
@@ -1922,6 +2140,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
             "acre" to "AC",
             "para" to "PA"
         )
+
+        private val ORDERED_STATE_BOUNDARY_REGEXES = ORDERED_BRAZIL_STATE_UF_LIST.map { (name, uf) ->
+            Triple(name, Regex("\\b${Regex.escape(name)}\\b"), uf)
+        }
 
         private val KNOWN_CITY_OFFICIAL_UF_MAP = mapOf(
             "sao paulo" to "SP",
@@ -1980,7 +2202,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
         private fun stripAccents(input: String): String {
             return java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
-                .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+                .replace(COMBINING_MARKS_REGEX, "")
         }
 
         fun isSameCalendarDay(epochA: Long, epochB: Long): Boolean {
@@ -2016,9 +2238,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
         fun resolveOfficialBrazilStateUf(rawState: String, rawCity: String = ""): String {
             val cleanState = stripAccents(rawState)
                 .lowercase(Locale.ROOT)
-                .replace(Regex("\\b(state of|estado d[eao]|provincia d[eao]|brasil|brazil|br)\\b"), " ")
-                .replace(Regex("[^a-z\\s]"), " ")
-                .replace(Regex("\\s+"), " ")
+                .replace(STATE_PREFIX_REGEX, " ")
+                .replace(NON_ALPHA_SPACE_REGEX, " ")
+                .replace(MULTI_SPACE_REGEX, " ")
                 .trim()
 
             if (cleanState.length == 2) {
@@ -2027,8 +2249,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
             }
 
             if (cleanState.isNotBlank()) {
-                for ((stateName, uf) in ORDERED_BRAZIL_STATE_UF_LIST) {
-                    if (cleanState == stateName || Regex("\\b${Regex.escape(stateName)}\\b").containsMatchIn(cleanState)) {
+                for ((stateName, boundaryRegex, uf) in ORDERED_STATE_BOUNDARY_REGEXES) {
+                    if (cleanState == stateName || boundaryRegex.containsMatchIn(cleanState)) {
                         return uf
                     }
                 }
@@ -2039,8 +2261,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
             val cleanCity = stripAccents(rawCity)
                 .lowercase(Locale.ROOT)
-                .replace(Regex("[^a-z\\s]"), " ")
-                .replace(Regex("\\s+"), " ")
+                .replace(NON_ALPHA_SPACE_REGEX, " ")
+                .replace(MULTI_SPACE_REGEX, " ")
                 .trim()
             if (cleanCity.isNotBlank()) {
                 KNOWN_CITY_OFFICIAL_UF_MAP[cleanCity]?.let { return it }
@@ -2053,64 +2275,70 @@ class WatchAutonomousRepository private constructor(context: Context) :
         }
 
         /**
-         * Formata o nome do local para o subtítulo do Canvas de Clima:
-         * 1. Converte o nome do estado para a sigla UF OFICIAL de 2 letras do IBGE
-         *    (ex: "São Paulo" -> "SP", "Maranhão" -> "MA", "Paraná" -> "PR").
-         * 2. Se o nome da cidade for extenso (> 12 caracteres) e ocupar mais da metade do quadro,
-         *    mantém a primeira palavra inteira e metade da segunda com reticências (ex: "São Bernardo do Campo" -> "São Bern..."),
-         *    ou abrevia palavras únicas muito longas (ex: "Pindamonhangaba" -> "Pindamonh...").
+         * Formata o nome do local para o subtítulo do Canvas de Clima (com cache em memória O(1)).
          */
         fun formatCompactWeatherLocation(rawCityOrCombined: String, rawState: String = ""): String {
+            val cacheKey = "$rawCityOrCombined|$rawState"
+            COMPACT_LOCATION_CACHE[cacheKey]?.let { return it }
+
             val cleaned = rawCityOrCombined.trim()
-            if (cleaned.isBlank()) return "São Paulo, SP"
-
-            val cityPart: String
-            val statePart: String
-            if (rawState.isNotBlank()) {
-                cityPart = cleaned
-                statePart = rawState.trim()
-            } else if (cleaned.contains(",")) {
-                cityPart = cleaned.substringBeforeLast(",").trim()
-                statePart = cleaned.substringAfterLast(",").trim()
-            } else if (cleaned.contains(" - ")) {
-                cityPart = cleaned.substringBeforeLast(" - ").trim()
-                statePart = cleaned.substringAfterLast(" - ").trim()
+            val formatted = if (cleaned.isBlank()) {
+                "São Paulo, SP"
             } else {
-                cityPart = cleaned
-                statePart = ""
-            }
+                val cityPart: String
+                val statePart: String
+                if (rawState.isNotBlank()) {
+                    cityPart = cleaned
+                    statePart = rawState.trim()
+                } else if (cleaned.contains(",")) {
+                    cityPart = cleaned.substringBeforeLast(",").trim()
+                    statePart = cleaned.substringAfterLast(",").trim()
+                } else if (cleaned.contains(" - ")) {
+                    cityPart = cleaned.substringBeforeLast(" - ").trim()
+                    statePart = cleaned.substringAfterLast(" - ").trim()
+                } else {
+                    cityPart = cleaned
+                    statePart = ""
+                }
 
-            val ufSigla = resolveOfficialBrazilStateUf(statePart, cityPart)
+                val ufSigla = resolveOfficialBrazilStateUf(statePart, cityPart)
 
-            val cleanCity = cityPart.trim().removeSuffix("...")
-            val compactCity = if (cityPart.trim().endsWith("...") && cityPart.trim().length <= 16) {
-                cityPart.trim()
-            } else if (cleanCity.length > 12) {
-                val words = cleanCity.split(Regex("\\s+")).filter { it.isNotBlank() }
-                if (words.size >= 2) {
-                    val firstWord = words[0]
-                    val secondIsConnector = words[1].lowercase(Locale.ROOT) in setOf("de", "da", "do", "das", "dos")
-                    if (secondIsConnector && words.size >= 3) {
-                        val thirdWord = words[2]
-                        val halfThird = thirdWord.take(((thirdWord.length + 1) / 2).coerceAtLeast(2))
-                        "$firstWord ${words[1]} ${halfThird}..."
+                val cleanCity = cityPart.trim().removeSuffix("...")
+                val compactCity = if (cityPart.trim().endsWith("...") && cityPart.trim().length <= 16) {
+                    cityPart.trim()
+                } else if (cleanCity.length > 12) {
+                    val words = cleanCity.split(MULTI_SPACE_REGEX).filter { it.isNotBlank() }
+                    if (words.size >= 2) {
+                        val firstWord = words[0]
+                        val secondIsConnector = words[1].lowercase(Locale.ROOT) in setOf("de", "da", "do", "das", "dos")
+                        if (secondIsConnector && words.size >= 3) {
+                            val thirdWord = words[2]
+                            val halfThird = thirdWord.take(((thirdWord.length + 1) / 2).coerceAtLeast(2))
+                            "$firstWord ${words[1]} ${halfThird}..."
+                        } else {
+                            val secondWord = words[1]
+                            val halfSecond = secondWord.take(((secondWord.length + 1) / 2).coerceAtLeast(2))
+                            "$firstWord ${halfSecond}..."
+                        }
                     } else {
-                        val secondWord = words[1]
-                        val halfSecond = secondWord.take(((secondWord.length + 1) / 2).coerceAtLeast(2))
-                        "$firstWord ${halfSecond}..."
+                        "${cleanCity.take(9)}..."
                     }
                 } else {
-                    "${cleanCity.take(9)}..."
+                    cleanCity
                 }
-            } else {
-                cleanCity
+
+                if (ufSigla.isNotBlank()) {
+                    "$compactCity, $ufSigla"
+                } else {
+                    compactCity
+                }
             }
 
-            return if (ufSigla.isNotBlank()) {
-                "$compactCity, $ufSigla"
-            } else {
-                compactCity
+            if (COMPACT_LOCATION_CACHE.size > 64) {
+                COMPACT_LOCATION_CACHE.clear()
             }
+            COMPACT_LOCATION_CACHE[cacheKey] = formatted
+            return formatted
         }
 
         @Volatile
