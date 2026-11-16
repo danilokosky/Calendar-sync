@@ -44,7 +44,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 object ChronoWearComplicationUpdater {
-    fun requestUpdateAllSlots(context: Context) {
+    fun requestUpdateMainSlot(context: Context) {
         try {
             ComplicationDataSourceUpdateRequester.create(
                 context,
@@ -52,6 +52,30 @@ object ChronoWearComplicationUpdater {
             ).requestUpdateAll()
         } catch (_: Exception) {
         }
+    }
+
+    fun requestUpdatePillSlotIfChanged(context: Context, force: Boolean = false) {
+        try {
+            val appCtx = context.applicationContext
+            val repo = WatchAutonomousRepository.getInstance(appCtx)
+            val nowMs = System.currentTimeMillis()
+            val newSignature = ContextPillBitmapRenderer.computeStateSignature(repo, nowMs)
+            val lastSignature = repo.getPillLastSignature()
+            if (!force && newSignature == lastSignature) {
+                return
+            }
+            repo.savePillLastSignature(newSignature)
+            ComplicationDataSourceUpdateRequester.create(
+                appCtx,
+                ComponentName(appCtx, ContextPillComplicationService::class.java)
+            ).requestUpdateAll()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun requestUpdateAllSlots(context: Context) {
+        requestUpdateMainSlot(context)
+        requestUpdatePillSlotIfChanged(context, force = false)
     }
 }
 
@@ -1261,7 +1285,7 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
 
         AutonomousCountdownScheduler.scheduleNextTransition(applicationContext)
 
-        val contentDesc = PlainComplicationText.Builder("ChronoWear Janela de Contexto (Toque p/ Alternar)").build()
+        val contentDesc = PlainComplicationText.Builder("ChronoWear").build()
 
         val cardBitmap = AgendaCardBitmapRenderer.getOrRenderCardBitmap(
             repo = repo,
@@ -1289,7 +1313,7 @@ class NextEventComplicationService : SuspendingComplicationDataSourceService() {
     }
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? {
-        val sampleText = PlainComplicationText.Builder("ChronoWear Janela de Contexto").build()
+        val sampleText = PlainComplicationText.Builder("ChronoWear").build()
         val icon = Icon.createWithBitmap(AgendaCardBitmapRenderer.renderPreviewBitmap())
 
         return when (type) {

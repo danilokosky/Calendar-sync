@@ -39,7 +39,7 @@ jobs:
           keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey
 
       - name: Assemble Mobile, Wear OS and Watch Face APKs
-        run: gradle :mobile:assembleDebug :wear:assembleDebug :watchface:assembleDebug --stacktrace
+        run: gradle :mobile:assembleDebug :wear:assembleDebug :watchface:assembleDebug :watchface_v130:assembleDebug --stacktrace
 
       - name: Upload Smartphone APK (:mobile)
         uses: actions/upload-artifact@v4
@@ -53,8 +53,14 @@ jobs:
           name: chronowear-wear-apk
           path: wear/build/outputs/apk/debug/*.apk
 
-      - name: Upload WFF Watch Face APK (:watchface)
+      - name: Upload WFF Watch Face v1.2.1 APK (:watchface)
         uses: actions/upload-artifact@v4
         with:
           name: chronowear-watchface-wff-apk
           path: watchface/build/outputs/apk/debug/*.apk
+
+      - name: Upload WFF Watch Face v1.3.0 APK (:watchface_v130)
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronowear-watchface-v130-wff-apk
+          path: watchface_v130/build/outputs/apk/debug/*.apk

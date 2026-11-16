@@ -1504,6 +1504,57 @@ class WatchAutonomousRepository private constructor(context: Context) :
         return prefs.getString("tap_override_context_mode", null)?.takeIf { it.isNotBlank() }
     }
 
+    /**
+     * Fundação para o 2º Canvas (Cartucho inferior em pílula):
+     * - Etapa 1: exibe apenas Clima/Temperatura (baixa frequência de atualização p/ economia).
+     * - Expansão futura: basta acrescentar novos modos em PILL_SUPPORTED_MODES para o toque
+     *   alternar entre contextos leves no cartucho, com retorno automático após o Tempo Unificado.
+     */
+    fun getPillSupportedModes(): List<String> = PILL_SUPPORTED_MODES
+
+    fun getPillContextMode(nowMs: Long): String {
+        val supported = getPillSupportedModes()
+        if (supported.size <= 1) return supported.firstOrNull() ?: MODE_WEATHER
+
+        val holdMinutes = getUnifiedCanvasHoldMinutes().toLong()
+        val tapTs = prefs.getLong("pill_tap_override_timestamp_ms", 0L)
+        if (tapTs > 0L && (nowMs - tapTs) in 0..TimeUnit.MINUTES.toMillis(holdMinutes)) {
+            val tapMode = prefs.getString("pill_tap_override_context_mode", null)
+            if (tapMode != null && tapMode in supported) return tapMode
+        }
+        return prefs.getString("pill_primary_context_mode", MODE_WEATHER)
+            ?.takeIf { it in supported }
+            ?: MODE_WEATHER
+    }
+
+    fun cycleNextPillCanvasOnTap(nowMs: Long): String {
+        val supported = getPillSupportedModes()
+        if (supported.size <= 1) {
+            val single = supported.firstOrNull() ?: MODE_WEATHER
+            prefs.edit()
+                .putString("pill_tap_override_context_mode", single)
+                .putLong("pill_tap_override_timestamp_ms", nowMs)
+                .commit()
+            return single
+        }
+        val current = getPillContextMode(nowMs)
+        val currentIdx = supported.indexOf(current).takeIf { it >= 0 } ?: 0
+        val nextMode = supported[(currentIdx + 1) % supported.size]
+        prefs.edit()
+            .putString("pill_tap_override_context_mode", nextMode)
+            .putLong("pill_tap_override_timestamp_ms", nowMs)
+            .commit()
+        return nextMode
+    }
+
+    fun getPillLastSignature(): String {
+        return prefs.getString("pill_last_state_signature", "") ?: ""
+    }
+
+    fun savePillLastSignature(signature: String) {
+        prefs.edit().putString("pill_last_state_signature", signature).apply()
+    }
+
     fun getLastNotifiedForcedContext(): String {
         return prefs.getString("last_notified_forced_context", "") ?: ""
     }
@@ -1543,7 +1594,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             if (nextEvent != null) {
                 val remMs = nextEvent.startEpochMs - nowMs
                 if (remMs in 1..leadMs) {
-                    return MODE_EVENTS to "Faltam ${nextEvent.formatRemaining(nowMs)} para ${nextEvent.title} (${nextEvent.formatStartHHMM()})"
+                    return MODE_EVENTS to "${nextEvent.title} em ${nextEvent.formatRemaining(nowMs)} (${nextEvent.formatStartHHMM()})"
                 }
             }
 
@@ -1564,7 +1615,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                         diffMins in 0..leadMin
                     }
                     if (imminentTask != null) {
-                        return MODE_TASKS to "${imminentTask.sourceLabel}: ${imminentTask.title} (${imminentTask.dueHHMM})"
+                        return MODE_TASKS to "${imminentTask.title} (${imminentTask.dueHHMM})"
                     }
 
                     val taskAlertTs = prefs.getLong("tasks_alert_timestamp_ms", 0L)
@@ -1572,7 +1623,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                         val firstPending = tasksSnap.tasks.firstOrNull()
                         val detail = if (firstPending != null) {
                             val suffix = if (tasksSnap.showTime && firstPending.dueHHMM.isNotBlank()) " (${firstPending.dueHHMM})" else ""
-                            "${firstPending.sourceLabel}: ${firstPending.title}$suffix"
+                            "${firstPending.title}$suffix"
                         } else {
                             "${tasksSnap.pendingCount} tarefa(s) pendente(s)"
                         }
@@ -1598,7 +1649,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 else -> weatherAlertTs > 0L && (nowMs - weatherAlertTs) in 0..unifiedHoldMs
             }
             if (shouldTriggerWeather) {
-                return MODE_WEATHER to "${snap.weatherConditionLabel} (${snap.locationName}) • ${snap.alertHeadline}"
+                return MODE_WEATHER to "${snap.weatherConditionLabel} • ${snap.locationName}"
             }
         }
 
@@ -1611,10 +1662,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
             val sunsetStart = solar.sunsetMinutesOfDay - sunLeadMin
             val sunsetEnd = sunsetStart + unifiedHoldMin
             if (solar.currentMinutesOfDay in sunriseStart..sunriseEnd) {
-                return MODE_SUN to "Nascer do Sol às ${solar.sunriseHHMM} (${sunLeadMin}m antes)"
+                return MODE_SUN to "Nascer do sol às ${solar.sunriseHHMM}"
             }
             if (solar.currentMinutesOfDay in sunsetStart..sunsetEnd) {
-                return MODE_SUN to "Pôr do Sol às ${solar.sunsetHHMM} (${sunLeadMin}m antes)"
+                return MODE_SUN to "Pôr do sol às ${solar.sunsetHHMM}"
             }
         }
 
@@ -1624,9 +1675,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             val h = sleep.durationMinutes / 60
             val m = sleep.durationMinutes % 60
             val summaryText = if (sleep.showScore && sleep.sleepScore > 0) {
-                "Sono ${h}h ${m}m (${sleep.sleepScore} pts) • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
+                "${h}h ${m}m (${sleep.sleepScore} pts)"
             } else {
-                "Sono ${h}h ${m}m • ${sleep.bedtimeHHMM} → ${sleep.wakeHHMM}"
+                "${h}h ${m}m"
             }
             return MODE_SLEEP to summaryText
         }
@@ -1637,7 +1688,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             if (stepsAlertTs > 0L && (nowMs - stepsAlertTs) in 0..unifiedHoldMs) {
                 val stepsSnap = getWeeklyStepsSnapshot()
                 val pct = ((stepsSnap.todaySteps * 100f) / stepsSnap.dailyGoal.coerceAtLeast(1)).toInt()
-                return MODE_STEPS to "Meta de passos (${pct}%): ${stepsSnap.todaySteps} / ${stepsSnap.dailyGoal}"
+                return MODE_STEPS to "${pct}% da meta (${stepsSnap.todaySteps} passos)"
             }
         }
 
@@ -1647,9 +1698,9 @@ class WatchAutonomousRepository private constructor(context: Context) :
             if (batteryAlertTs > 0L && (nowMs - batteryAlertTs) in 0..unifiedHoldMs) {
                 val batSnap = getWatchBatterySnapshot(nowMs)
                 val statusText = if (batSnap.isCharging && batSnap.currentPct >= 100) {
-                    "Bateria carregada (100%)"
+                    "Carga completa (100%)"
                 } else {
-                    "Bateria do relógio em ${batSnap.currentPct}% (${batSnap.rateLabel})"
+                    "Bateria em ${batSnap.currentPct}%"
                 }
                 return MODE_BATTERY to statusText
             }
@@ -1826,6 +1877,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val MODE_SUN = "SUN"
         const val MODE_SLEEP = "SLEEP"
         const val MODE_BATTERY = "BATTERY"
+
+        // Etapa inicial do Cartucho (2º Canvas): apenas Clima/Temperatura.
+        // Expansão futura: adicionar novos contextos aqui sem alterar o XML da Watch Face 1.3.0.
+        val PILL_SUPPORTED_MODES = listOf(MODE_WEATHER)
 
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"

@@ -42,6 +42,7 @@ object AutonomousCountdownScheduler {
 
     const val ACTION_TRANSITION = "com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION"
     const val ACTION_TAP_CYCLE_CONTEXT = "com.chronowear.wear.ACTION_TAP_CYCLE_CONTEXT"
+    const val ACTION_TAP_CYCLE_PILL_CONTEXT = "com.chronowear.wear.ACTION_TAP_CYCLE_PILL_CONTEXT"
     private const val CHANNEL_CANVAS_SHIFT_ID = "chronowear_canvas_shift_channel"
     private const val NOTIF_ID_CANVAS_SHIFT = 4102
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -204,42 +205,26 @@ object AutonomousCountdownScheduler {
         repo.recordNotifiedForcedContext(notificationDedupKey, nowMs)
 
         val modeTitle = when (forcedMode) {
-            WatchAutonomousRepository.MODE_WEATHER -> "Canvas • Clima"
-            WatchAutonomousRepository.MODE_EVENTS -> "Canvas • Agenda (15 min)"
-            WatchAutonomousRepository.MODE_TASKS -> "Canvas • Tarefas"
-            WatchAutonomousRepository.MODE_SUN -> "Canvas • Nascer e Pôr do Sol"
-            WatchAutonomousRepository.MODE_SLEEP -> "Canvas • Sono"
-            WatchAutonomousRepository.MODE_STEPS -> "Canvas • Passos"
-            WatchAutonomousRepository.MODE_BATTERY -> "Canvas • Bateria"
-            else -> "Canvas Atualizado"
-        }
-        val holdMins = if (forcedMode == WatchAutonomousRepository.MODE_EVENTS) {
-            15
-        } else {
-            repo.getUnifiedCanvasHoldMinutes()
-        }
-        val primaryLabel = when (repo.getAutoPrimaryContext()) {
+            WatchAutonomousRepository.MODE_WEATHER -> "Clima"
             WatchAutonomousRepository.MODE_EVENTS -> "Agenda"
             WatchAutonomousRepository.MODE_TASKS -> "Tarefas"
-            WatchAutonomousRepository.MODE_WEATHER -> "Clima"
             WatchAutonomousRepository.MODE_SUN -> "Sol"
-            WatchAutonomousRepository.MODE_STEPS -> "Passos"
             WatchAutonomousRepository.MODE_SLEEP -> "Sono"
+            WatchAutonomousRepository.MODE_STEPS -> "Passos"
             WatchAutonomousRepository.MODE_BATTERY -> "Bateria"
-            else -> "Padrão"
+            else -> "ChronoWear"
         }
-        val bodyText = (explicitReasonOverride ?: autoReason) +
-            " • Fixo por ${holdMins}m (retorna p/ $primaryLabel)"
+        val bodyText = explicitReasonOverride ?: autoReason
 
         try {
             val nm = appCtx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
                     CHANNEL_CANVAS_SHIFT_ID,
-                    "Mudança Prioritária do Canvas",
+                    "Alertas do Canvas",
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    description = "Avulso quando Clima, Agenda (15m), Sol ou Sono assumem o Canvas do relógio"
+                    description = "Alertas de Agenda, Clima, Sol, Sono, Passos e Bateria"
                     enableVibration(true)
                 }
                 nm.createNotificationChannel(channel)
@@ -531,6 +516,8 @@ object AutonomousCountdownScheduler {
                             notifyWatchOnForcedCanvasChangeIfNeeded(appCtx)
                         }
 
+                        ChronoWearComplicationUpdater.requestUpdatePillSlotIfChanged(appCtx)
+
                         if (forceRefresh ||
                             shiftDetected ||
                             repo.getContextWindowMode() == WatchAutonomousRepository.MODE_WEATHER ||
@@ -641,6 +628,22 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
                 Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
                     .setPackage(context.packageName)
             )
+            return
+        }
+
+        if (intent.action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_PILL_CONTEXT) {
+            // Toque direto no Cartucho Inferior (2º Canvas): avança para o próximo contexto do cartucho
+            // quando houver múltiplos modos configurados, ou verifica atualização climática devida.
+            val repo = WatchAutonomousRepository.getInstance(context)
+            val nowMs = System.currentTimeMillis()
+            repo.cycleNextPillCanvasOnTap(nowMs)
+            if (repo.isUpdateOnCanvasTapEnabled()) {
+                AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+                AutonomousCountdownScheduler.requestPhoneSyncForActiveCanvasIfDue(context)
+            }
+            val forceRedraw = repo.getPillSupportedModes().size > 1
+            ChronoWearComplicationUpdater.requestUpdatePillSlotIfChanged(context, force = forceRedraw)
+            AutonomousCountdownScheduler.scheduleNextTransition(context)
             return
         }
 

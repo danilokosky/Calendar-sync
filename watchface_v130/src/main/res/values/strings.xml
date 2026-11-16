@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_face_name">ChronoWear Agenda 1.3</string>
+    <string name="slot_event_1_text_label">Canvas</string>
+    <string name="slot_pill_context_label">Cartucho</string>
+    <string name="slot_event_1_timer_label">Timer &amp; Barra do Evento #1</string>
+    <string name="slot_event_2_label">Próximo Evento #2</string>
+    <string name="slot_event_3_label">Próximo Evento #3</string>
+    <string name="slot_side_left_label">Arco Lateral Esquerdo</string>
+    <string name="slot_side_right_label">Arco Lateral Direito</string>
+    <string name="slot_bottom_bar_label">Arco Inferior (Bateria / Range)</string>
+
+    <string name="config_clock_font_label">Fonte do Relógio Digital</string>
+    <string name="config_font_modern_light">Moderna Fina (Padrão)</string>
+    <string name="config_font_barlow_light">Barlow Condensada Fina</string>
+    <string name="config_font_barlow_medium">Barlow Condensada Média</string>
+    <string name="config_font_jetbrains_mono">JetBrains Mono Tabular</string>
+    <string name="config_font_chakra_tech">Chakra Tech Cronógrafo</string>
+    <string name="config_font_classic_normal">Clássica do Sistema</string>
+
+    <string name="config_bg_gradient_label">Fundo Degradê Horizontal</string>
+    <string name="config_bg_midnight_slate">Ardósia Meia-Noite (Canvas)</string>
+    <string name="config_bg_oled_black">Preto Puro (OLED)</string>
+    <string name="config_bg_abyssal_cyan">Oceano Abissal (Ciano)</string>
+    <string name="config_bg_obsidian_gold">Ouro &amp; Obsidiana (Âmbar)</string>
+    <string name="config_bg_emerald_night">Esmeralda Noturna (Verde)</string>
+    <string name="config_bg_aurora_dual">Aurora Ciano &amp; Ouro</string>
+    <string name="config_bg_indigo_night">Índigo Noturno (Sono)</string>
+    <string name="config_bg_brushed_titanium">Titânio Escovado (Grafite)</string>
+    <string name="config_bg_light_steel_horizon">Azul Aço Claro (Horizonte)</string>
+    <string name="config_bg_light_glacial_cyan">Ciano Glacial Claro (Clima)</string>
+    <string name="config_bg_light_silver_slate">Ardósia Prata Clara (Canvas)</string>
+    <string name="config_bg_light_mint_teal">Verde-Água Luminoso (Passos)</string>
+    <string name="config_bg_light_lavender_steel">Lavanda Aço Claro (Sono)</string>
+    <string name="config_bg_light_aurora_day">Aurora Clara (Ciano &amp; Âmbar)</string>
+</resources>

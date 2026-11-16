@@ -17,3 +17,4 @@ rootProject.name = "ChronoWearCalendarSync"
 include(":mobile")
 include(":wear")
 include(":watchface")
+include(":watchface_v130")

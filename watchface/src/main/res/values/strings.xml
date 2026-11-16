@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="watch_face_name">ChronoWear Agenda</string>
-    <string name="slot_event_1_text_label">Evento Principal #1 (Hora + Nome)</string>
+    <string name="slot_event_1_text_label">Canvas</string>
     <string name="slot_event_1_timer_label">Timer &amp; Barra do Evento #1</string>
     <string name="slot_event_2_label">Próximo Evento #2</string>
     <string name="slot_event_3_label">Próximo Evento #3</string>

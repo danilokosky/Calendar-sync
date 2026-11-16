@@ -81,7 +81,7 @@
             android:name=".complication.NextEventComplicationService"
             android:exported="true"
             android:icon="@drawable/ic_launcher_chronowear"
-            android:label="ChronoWear • Janela de Contexto (Canvas)"
+            android:label="ChronoWear Canvas"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
                 <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
@@ -92,6 +92,24 @@
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="60" />
+        </service>
+
+        <!-- SEGUNDO CANVAS (CARTUCHO INFERIOR 302x116): Clima/Contexto com atualização por Assinatura de Estado -->
+        <service
+            android:name=".complication.ContextPillComplicationService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_chronowear"
+            android:label="ChronoWear Clima"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="SMALL_IMAGE,PHOTO_IMAGE" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="1800" />
         </service>
 
         <!-- Wear OS Tile para os Próximos 3 Eventos -->
@@ -113,6 +131,7 @@
             <intent-filter>
                 <action android:name="com.chronowear.wear.ACTION_AUTONOMOUS_EVENT_TRANSITION" />
                 <action android:name="com.chronowear.wear.ACTION_TAP_CYCLE_CONTEXT" />
+                <action android:name="com.chronowear.wear.ACTION_TAP_CYCLE_PILL_CONTEXT" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>

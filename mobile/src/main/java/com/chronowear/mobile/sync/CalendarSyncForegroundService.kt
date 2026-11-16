@@ -59,7 +59,7 @@ class CalendarSyncForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForegroundWithNotification("Serviço em 2º plano iniciado pelo usuário")
+        startForegroundWithNotification("Ativo")
         lastSyncedTasksSignature = SyncPreferences(this).getTasksJson()
         registerSystemEventsReceiverIfNeeded()
         refreshCalendarAndTasksObservers()
@@ -68,7 +68,7 @@ class CalendarSyncForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundWithNotification("Sincronização ativa")
+        startForegroundWithNotification("Ativo")
         val prefs = SyncPreferences(this)
         if (intent?.action == ACTION_STOP_SERVICE || !prefs.isBackgroundServiceEnabled()) {
             unregisterCalendarObserver()
@@ -113,24 +113,11 @@ class CalendarSyncForegroundService : Service() {
             if (!isSyncRunning.compareAndSet(false, true)) return@launch
             try {
                 val prefs = SyncPreferences(applicationContext)
-                val count = CalendarSyncEngine.performFullSyncToWatch(applicationContext, reason)
+                CalendarSyncEngine.performFullSyncToWatch(applicationContext, reason)
                 lastSyncedTasksSignature = prefs.getTasksJson()
                 scheduleNextPeriodicAlarm()
-                val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                val intervalMin = prefs.getSyncIntervalMinutes()
-                val intervalLabel = when (intervalMin) {
-                    60L -> "1h"
-                    120L -> "2h"
-                    else -> "${intervalMin}m"
-                }
-                val autoChangeLabel = if (prefs.isAutoSyncOnCalendarChangeEnabled()) {
-                    "Tempo real + Periódico ($intervalLabel)"
-                } else {
-                    "Periódico ($intervalLabel)"
-                }
-                updateNotification(
-                    "$autoChangeLabel • $count eventos enviados às $timeStr"
-                )
+                val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                updateNotification("Ativo • Atualizado às $timeStr")
             } finally {
                 isSyncRunning.set(false)
             }
@@ -342,12 +329,12 @@ class CalendarSyncForegroundService : Service() {
         val actionIcon = Icon.createWithResource(this, android.R.drawable.ic_popup_sync)
         val syncAction = Notification.Action.Builder(
             actionIcon,
-            "Ler Agenda Agora",
+            "Atualizar agora",
             pendingSyncNow
         ).build()
 
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("ChronoWear • Sincronização em 2º Plano")
+            .setContentTitle("ChronoWear")
             .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_menu_my_calendar)
             .setContentIntent(pendingOpen)
@@ -360,10 +347,10 @@ class CalendarSyncForegroundService : Service() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Serviço em Segundo Plano ChronoWear",
+            "ChronoWear em 2º Plano",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Monitora alterações na agenda e sincroniza eventos com o relógio Wear OS"
+            description = "Mantém dados atualizados com o relógio"
         }
         nm.createNotificationChannel(channel)
     }

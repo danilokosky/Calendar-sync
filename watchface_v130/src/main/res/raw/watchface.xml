@@ -1,0 +1,1302 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WatchFace width="450" height="450">
+    <Metadata key="CLOCK_TYPE" value="DIGITAL" />
+    <Metadata key="PREVIEW_TIME" value="14:04:06" />
+    <Metadata key="STEP_GOAL" value="10000" />
+
+    <!-- ================================================================= -->
+    <!-- PERSONALIZAÇÃO NATIVA NO RELÓGIO / GALAXY WEARABLE                -->
+    <!-- 1. Fonte do Relógio Digital (6 estilos refinados)                 -->
+    <!-- 2. Fundo Degradê Horizontal Escuro (8 paletas p/ nossos Canvas)   -->
+    <!-- ================================================================= -->
+    <UserConfigurations>
+        <ListConfiguration
+            id="clock_font"
+            displayName="config_clock_font_label"
+            defaultValue="0">
+            <ListOption id="0" displayName="config_font_modern_light" />
+            <ListOption id="1" displayName="config_font_barlow_light" />
+            <ListOption id="2" displayName="config_font_barlow_medium" />
+            <ListOption id="3" displayName="config_font_jetbrains_mono" />
+            <ListOption id="4" displayName="config_font_chakra_tech" />
+            <ListOption id="5" displayName="config_font_classic_normal" />
+        </ListConfiguration>
+
+        <ListConfiguration
+            id="bg_gradient"
+            displayName="config_bg_gradient_label"
+            defaultValue="0">
+            <ListOption id="0" displayName="config_bg_midnight_slate" />
+            <ListOption id="1" displayName="config_bg_oled_black" />
+            <ListOption id="2" displayName="config_bg_abyssal_cyan" />
+            <ListOption id="3" displayName="config_bg_obsidian_gold" />
+            <ListOption id="4" displayName="config_bg_emerald_night" />
+            <ListOption id="5" displayName="config_bg_aurora_dual" />
+            <ListOption id="6" displayName="config_bg_indigo_night" />
+            <ListOption id="7" displayName="config_bg_brushed_titanium" />
+            <ListOption id="8" displayName="config_bg_light_steel_horizon" />
+            <ListOption id="9" displayName="config_bg_light_glacial_cyan" />
+            <ListOption id="10" displayName="config_bg_light_silver_slate" />
+            <ListOption id="11" displayName="config_bg_light_mint_teal" />
+            <ListOption id="12" displayName="config_bg_light_lavender_steel" />
+            <ListOption id="13" displayName="config_bg_light_aurora_day" />
+        </ListConfiguration>
+    </UserConfigurations>
+
+    <Scene backgroundColor="#FF000000">
+
+        <!-- ================================================================= -->
+        <!-- 0. FUNDO DEGRADÊ HORIZONTAL ESCURO (PERSONALIZÁVEL)               -->
+        <!--    - Oculto em AMBIENT (alpha=0) para manter preto OLED puro      -->
+        <!-- ================================================================= -->
+        <ListConfiguration id="bg_gradient">
+            <!-- 0: Ardósia Meia-Noite (combina 100% com o Canvas #080A0E / #161D26) -->
+            <ListOption id="0">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF080A0E">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF04060A #FF121C29 #FF05080D"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 1: Preto Puro (OLED) -->
+            <ListOption id="1">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF000000" />
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 2: Oceano Abissal (Ciano Escuro -> Ardósia) -->
+            <ListOption id="2">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF061318">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF051820 #FF0B1F27 #FF04070B"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 3: Ouro & Obsidiana (Âmbar Escuro -> Grafite) -->
+            <ListOption id="3">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF100D05">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF1D1605 #FF14110A #FF05070A"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 4: Esmeralda Noturna (Verde Escuro -> Ardósia) -->
+            <ListOption id="4">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF05120D">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF051910 #FF0B1E17 #FF04070B"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 5: Aurora Ciano & Ouro (Espelha o degradê da barra de bateria) -->
+            <ListOption id="5">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF0B1117">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF061B22 #FF0B1118 #FF1D1606"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 6: Índigo Noturno (Roxo Escuro -> Ardósia) -->
+            <ListOption id="6">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF0D0B18">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF130B24 #FF121327 #FF05070C"
+                                positions="0.0 0.45 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 7: Titânio Escovado (Grafite Simétrico Neutro) -->
+            <ListOption id="7">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF11161D">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF06080B #FF1B232F #FF06080B"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 8: Azul Aço Claro (Horizonte Solar do Canvas) -->
+            <ListOption id="8">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF2C486A">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF1E324A #FF3E638E #FF1A2A3E"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 9: Ciano Glacial Claro (Paleta Clima / Agenda) -->
+            <ListOption id="9">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF20586A">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF164354 #FF2E7A92 #FF133341"
+                                positions="0.0 0.48 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 10: Ardósia Prata Clara (Extensão Clara de #080A0E / #161D26) -->
+            <ListOption id="10">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF354355">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF25303F #FF47586E #FF202A37"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 11: Verde-Água Luminoso (Paleta Passos / Tarefas) -->
+            <ListOption id="11">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF1D584D">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF143E39 #FF267465 #FF12322D"
+                                positions="0.0 0.48 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 12: Lavanda Aço Claro (Paleta Sono) -->
+            <ListOption id="12">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF363668">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF27274E #FF49498A #FF1E203E"
+                                positions="0.0 0.48 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+            <!-- 13: Aurora Clara Ciano & Âmbar (Combina com Clima + Agenda Dourada) -->
+            <ListOption id="13">
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Rectangle x="0" y="0" width="450" height="450">
+                        <Fill color="#FF334B5E">
+                            <LinearGradient
+                                startX="0"
+                                startY="225"
+                                endX="450"
+                                endY="225"
+                                colors="#FF1E4C5E #FF334B5E #FF5E4A1E"
+                                positions="0.0 0.5 1.0" />
+                        </Fill>
+                    </Rectangle>
+                </PartDraw>
+            </ListOption>
+        </ListConfiguration>
+
+        <!-- ================================================================= -->
+        <!-- 1. TOPO SAMSUNG (SEX. 06 + 14:04:06) + QUADRO CENTRAL +           -->
+        <!--    BARRA INFERIOR DE BATERIA NATIVA SEGMENTADA ([BATTERY_PERCENT])-->
+        <!-- ================================================================= -->
+        <Group x="0" y="0" width="450" height="450" name="samsung_core_frame_and_battery">
+
+            <!-- Dia da Semana sempre em CAIXA ALTA com 1 ponto (25sp BOLD Dourado Samsung #F5C438) -->
+            <Condition>
+                <Expressions>
+                    <Expression name="is_sun">[DAY_OF_WEEK] == 1</Expression>
+                    <Expression name="is_mon">[DAY_OF_WEEK] == 2</Expression>
+                    <Expression name="is_tue">[DAY_OF_WEEK] == 3</Expression>
+                    <Expression name="is_wed">[DAY_OF_WEEK] == 4</Expression>
+                    <Expression name="is_thu">[DAY_OF_WEEK] == 5</Expression>
+                    <Expression name="is_fri">[DAY_OF_WEEK] == 6</Expression>
+                </Expressions>
+                <Compare expression="is_sun">
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">DOM.</Font></Text>
+                    </PartText>
+                </Compare>
+                <Compare expression="is_mon">
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">SEG.</Font></Text>
+                    </PartText>
+                </Compare>
+                <Compare expression="is_tue">
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">TER.</Font></Text>
+                    </PartText>
+                </Compare>
+                <Compare expression="is_wed">
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">QUA.</Font></Text>
+                    </PartText>
+                </Compare>
+                <Compare expression="is_thu">
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">QUI.</Font></Text>
+                    </PartText>
+                </Compare>
+                <Compare expression="is_fri">
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">SEX.</Font></Text>
+                    </PartText>
+                </Compare>
+                <Default>
+                    <PartText x="110" y="12" width="112" height="32">
+                        <Text align="END"><Font family="SYNC_TO_DEVICE" size="25.0" weight="BOLD" color="#FFF5C438">SÁB.</Font></Text>
+                    </PartText>
+                </Default>
+            </Condition>
+
+            <!-- Dia do Mês em Branco (25sp BOLD, ex: 06) -->
+            <PartText x="232" y="12" width="96" height="32">
+                <Variant mode="AMBIENT" target="alpha" value="180" />
+                <Text align="START" ellipsis="TRUE">
+                    <Font
+                        family="SYNC_TO_DEVICE"
+                        size="25.0"
+                        weight="BOLD"
+                        color="#FFFFFFFF">
+                        <Template><![CDATA[%s]]>
+                            <Parameter expression="[DAY_Z]" />
+                        </Template>
+                    </Font>
+                </Text>
+            </PartText>
+
+            <!-- MOLDURA BASE DA JANELA DE CONTEXTO CENTRAL (x=74, y=120, w=302, h=136) -->
+            <!-- O cabeçalho (Hoje / Clima / Passos) e os gráficos são renderizados 100% pelo Canvas Bitmap! -->
+            <PartDraw x="74" y="120" width="302" height="136">
+                <Variant mode="AMBIENT" target="alpha" value="110" />
+                <RoundRectangle
+                    x="0"
+                    y="0"
+                    width="302"
+                    height="136"
+                    cornerRadiusX="20"
+                    cornerRadiusY="20">
+                    <Fill color="#80080A0E" />
+                </RoundRectangle>
+                <RoundRectangle
+                    x="1"
+                    y="1"
+                    width="300"
+                    height="134"
+                    cornerRadiusX="20"
+                    cornerRadiusY="20">
+                    <Stroke color="#FF161D26" thickness="1.2" />
+                </RoundRectangle>
+            </PartDraw>
+
+            <!-- ============================================================= -->
+            <!-- MOLDURA DO CARTUCHO INFERIOR (302x116, r=58, 16px abaixo)     -->
+            <!-- Oculto totalmente em modo AMBIENT/AOD (alpha=0)               -->
+            <!-- ============================================================= -->
+            <PartDraw x="74" y="272" width="302" height="116">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <RoundRectangle
+                    x="0"
+                    y="0"
+                    width="302"
+                    height="116"
+                    cornerRadiusX="58"
+                    cornerRadiusY="58">
+                    <Fill color="#80080A0E" />
+                </RoundRectangle>
+                <RoundRectangle
+                    x="1"
+                    y="1"
+                    width="300"
+                    height="114"
+                    cornerRadiusX="57"
+                    cornerRadiusY="57">
+                    <Stroke color="#FF161D26" thickness="1.2" />
+                </RoundRectangle>
+            </PartDraw>
+
+            <!-- ============================================================= -->
+            <!-- BARRA INFERIOR DE BATERIA EM 3 CAMADAS ([BATTERY_PERCENT])    -->
+            <!-- 1. Fundo: Cartucho escuro arredondado que delimita a barra    -->
+            <!-- 2. Meio: 14 pontos verticais arredondados com degradê inativo -->
+            <!-- 3. Topo (Máscara): Barra dinâmica com degradê ciano->ouro     -->
+            <!--    aplicada exclusivamente dentro dos pontos (renderMode=MASK)-->
+            <!-- ============================================================= -->
+
+            <!-- Ícone de Bateria Dourado Inclinado na Curva Esquerda (206°, angle=26°) -->
+            <Group x="119" y="393" width="28" height="32" pivotX="0.5" pivotY="0.5" angle="26">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <PartDraw x="0" y="0" width="28" height="32">
+                    <RoundRectangle
+                        x="11"
+                        y="2"
+                        width="6"
+                        height="4"
+                        cornerRadiusX="1.5"
+                        cornerRadiusY="1.5">
+                        <Fill color="#FFF5C438" />
+                    </RoundRectangle>
+                    <RoundRectangle
+                        x="7"
+                        y="6"
+                        width="14"
+                        height="21"
+                        cornerRadiusX="3.5"
+                        cornerRadiusY="3.5">
+                        <Fill color="#FFF5C438" />
+                    </RoundRectangle>
+                </PartDraw>
+            </Group>
+
+            <!-- Camada 1: Cartucho externo de fundo (delimita a cápsula arredondada) -->
+            <PartDraw x="0" y="0" width="450" height="450">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <Arc
+                    centerX="225"
+                    centerY="225"
+                    width="414"
+                    height="414"
+                    startAngle="163.5"
+                    endAngle="196.5">
+                    <Stroke color="#FF1B201A" thickness="22" cap="ROUND">
+                        <LinearGradient
+                            startX="158"
+                            startY="424"
+                            endX="292"
+                            endY="424"
+                            colors="#FF162122 #FF1E221B #FF262014"
+                            positions="0.0 0.5 1.0" />
+                    </Stroke>
+                </Arc>
+            </PartDraw>
+
+            <!-- Camada 2: 14 pontos inativos com mesmo diâmetro radial (22px) do cartucho -->
+            <Group x="0" y="0" width="450" height="450">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Arc
+                        centerX="225"
+                        centerY="225"
+                        width="414"
+                        height="414"
+                        startAngle="163.0"
+                        endAngle="197.0">
+                        <Stroke color="#FF3B3D2C" thickness="24" cap="BUTT">
+                            <LinearGradient
+                                startX="167"
+                                startY="425"
+                                endX="283"
+                                endY="425"
+                                colors="#FF2A3E42 #FF3A412F #FF4B3D1C"
+                                positions="0.0 0.5 1.0" />
+                        </Stroke>
+                    </Arc>
+                </PartDraw>
+                <Group x="0" y="0" width="450" height="450" renderMode="MASK">
+                    <PartDraw x="162" y="410" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="15.6"><RoundRectangle x="5.13" y="3.37" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="171" y="413" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="13.2"><RoundRectangle x="4.53" y="2.53" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="179" y="414" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="10.8"><RoundRectangle x="5.01" y="3.33" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="188" y="416" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="8.4"><RoundRectangle x="4.56" y="2.78" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="196" y="417" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="6.0"><RoundRectangle x="5.16" y="2.87" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="205" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="3.6"><RoundRectangle x="4.80" y="2.59" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="214" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="1.2"><RoundRectangle x="4.46" y="2.95" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="222" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-1.2"><RoundRectangle x="5.14" y="2.95" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="231" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-3.6"><RoundRectangle x="4.80" y="2.59" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="240" y="417" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-6.0"><RoundRectangle x="4.44" y="2.87" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="248" y="416" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-8.4"><RoundRectangle x="5.04" y="2.78" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="257" y="414" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-10.8"><RoundRectangle x="4.59" y="3.33" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="265" y="413" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-13.2"><RoundRectangle x="5.07" y="2.53" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="274" y="410" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-15.6"><RoundRectangle x="4.47" y="3.37" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                </Group>
+            </Group>
+
+            <!-- Camada 3: Barra ativa em máscara dinâmica (mesmo diâmetro radial 22px dentro dos pontos) -->
+            <Group x="0" y="0" width="450" height="450">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <PartDraw x="0" y="0" width="450" height="450">
+                    <Arc
+                        centerX="225"
+                        centerY="225"
+                        width="414"
+                        height="414"
+                        startAngle="163.6"
+                        endAngle="196.4">
+                        <Transform
+                            target="startAngle"
+                            value="196.4 - (32.8 * clamp([BATTERY_PERCENT], 0, 100) / 100)" />
+                        <Stroke color="#FF88D4DC" thickness="24" cap="BUTT">
+                            <LinearGradient
+                                startX="167"
+                                startY="425"
+                                endX="283"
+                                endY="425"
+                                colors="#FF6EC4DB #FF9DE0B7 #FFD4E67A #FFF5C438"
+                                positions="0.0 0.35 0.70 1.0" />
+                        </Stroke>
+                    </Arc>
+                </PartDraw>
+                <Group x="0" y="0" width="450" height="450" renderMode="MASK">
+                    <PartDraw x="162" y="410" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="15.6"><RoundRectangle x="5.13" y="3.37" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="171" y="413" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="13.2"><RoundRectangle x="4.53" y="2.53" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="179" y="414" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="10.8"><RoundRectangle x="5.01" y="3.33" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="188" y="416" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="8.4"><RoundRectangle x="4.56" y="2.78" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="196" y="417" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="6.0"><RoundRectangle x="5.16" y="2.87" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="205" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="3.6"><RoundRectangle x="4.80" y="2.59" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="214" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="1.2"><RoundRectangle x="4.46" y="2.95" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="222" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-1.2"><RoundRectangle x="5.14" y="2.95" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="231" y="418" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-3.6"><RoundRectangle x="4.80" y="2.59" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="240" y="417" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-6.0"><RoundRectangle x="4.44" y="2.87" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="248" y="416" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-8.4"><RoundRectangle x="5.04" y="2.78" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="257" y="414" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-10.8"><RoundRectangle x="4.59" y="3.33" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="265" y="413" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-13.2"><RoundRectangle x="5.07" y="2.53" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                    <PartDraw x="274" y="410" width="14" height="28" pivotX="0.5" pivotY="0.5" angle="-15.6"><RoundRectangle x="4.47" y="3.37" width="4.4" height="22.0" cornerRadiusX="2.2" cornerRadiusY="2.2"><Fill color="#FFFFFFFF" /></RoundRectangle></PartDraw>
+                </Group>
+            </Group>
+
+            <!-- Percentual da Bateria Curvado ao Longo do Bisel Direito (157° -> 136°) -->
+            <PartText x="0" y="0" width="450" height="450">
+                <Variant mode="AMBIENT" target="alpha" value="180" />
+                <TextCircular
+                    centerX="225"
+                    centerY="225"
+                    width="420"
+                    height="420"
+                    startAngle="157.0"
+                    endAngle="130.0"
+                    align="START"
+                    direction="COUNTER_CLOCKWISE"
+                    ellipsis="TRUE">
+                    <Font
+                        family="SYNC_TO_DEVICE"
+                        size="22.0"
+                        weight="MEDIUM"
+                        color="#FF84D3D2">
+                        <Template><![CDATA[%s%%]]>
+                            <Parameter expression="[BATTERY_PERCENT]" />
+                        </Template>
+                    </Font>
+                </TextCircular>
+            </PartText>
+
+        </Group>
+
+        <!-- Relógio Digital Principal Refinado + 6 Opções de Fonte Personalizáveis -->
+        <ListConfiguration id="clock_font">
+            <!-- 0: Moderna Fina (Padrão — SYNC_TO_DEVICE LIGHT 72sp no estilo One UI) -->
+            <ListOption id="0">
+                <DigitalClock x="35" y="40" width="380" height="72">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="72"
+                            weight="LIGHT"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="72"
+                            weight="THIN"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 1: Barlow Condensada Fina (Alta, esguia e refinada) -->
+            <ListOption id="1">
+                <DigitalClock x="35" y="38" width="380" height="76">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="barlow_condensed_light"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="barlow_condensed_light"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 2: Barlow Condensada Média (Geométrica nítida com maior contraste) -->
+            <ListOption id="2">
+                <DigitalClock x="35" y="38" width="380" height="76">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="barlow_condensed_medium"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="76"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="barlow_condensed_medium"
+                            size="76"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 3: JetBrains Mono Tabular (Dígitos fixos sem oscilação horizontal) -->
+            <ListOption id="3">
+                <DigitalClock x="35" y="42" width="380" height="70">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="70"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="jetbrains_mono_light"
+                            size="58"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="70"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="jetbrains_mono_light"
+                            size="58"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 4: Chakra Tech Cronógrafo (Geométrica moderna esportiva) -->
+            <ListOption id="4">
+                <DigitalClock x="35" y="40" width="380" height="72">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="chakra_petch_medium"
+                            size="66"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="chakra_petch_medium"
+                            size="66"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+
+            <!-- 5: Clássica do Sistema (SYNC_TO_DEVICE NORMAL 70sp) -->
+            <ListOption id="5">
+                <DigitalClock x="35" y="40" width="380" height="72">
+                    <TimeText
+                        format="hh:mm:ss"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="255">
+                        <Variant mode="AMBIENT" target="alpha" value="0" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="70"
+                            weight="NORMAL"
+                            slant="NORMAL"
+                            color="#FFFFFFFF" />
+                    </TimeText>
+                    <TimeText
+                        format="hh:mm"
+                        hourFormat="SYNC_TO_DEVICE"
+                        align="CENTER"
+                        x="0"
+                        y="0"
+                        width="380"
+                        height="72"
+                        alpha="0">
+                        <Variant mode="AMBIENT" target="alpha" value="255" />
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="70"
+                            weight="THIN"
+                            slant="NORMAL"
+                            color="#FF94A3B8" />
+                    </TimeText>
+                </DigitalClock>
+            </ListOption>
+        </ListConfiguration>
+
+        <!-- ================================================================= -->
+        <!-- 2. JANELA DE CONTEXTO INTELIGENTE (CANVAS BITMAP 604x272 @2x)     -->
+        <!--    - 1 única Complication (SMALL_IMAGE / PHOTO_IMAGE) de 302x136px-->
+        <!--    - Sem complications baseadas em texto!                         -->
+        <!--    - O conteúdo exibido (Próximos Eventos, Curva de Clima nas     -->
+        <!--      Próximas Horas, Passos Semanais ou Dinâmico por Notificação) -->
+        <!--      é escolhido pelo usuário diretamente no App!                 -->
+        <!-- ================================================================= -->
+
+        <ComplicationSlot
+            x="74"
+            y="120"
+            width="302"
+            height="136"
+            slotId="1"
+            displayName="slot_event_1_text_label"
+            supportedTypes="SMALL_IMAGE PHOTO_IMAGE EMPTY">
+
+            <DefaultProviderPolicy
+                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.NextEventComplicationService"
+                primaryProviderType="SMALL_IMAGE"
+                defaultSystemProvider="EMPTY"
+                defaultSystemProviderType="EMPTY" />
+
+            <BoundingRoundBox
+                x="0"
+                y="0"
+                width="302"
+                height="136"
+                outlinePadding="0.0"
+                cornerRadius="20" />
+
+            <!-- MODO EXCLUSIVO CANVAS BITMAP: Imagem Transparente 302x136 (@2x 604x272) -->
+            <Complication type="SMALL_IMAGE">
+                <PartImage x="0" y="0" width="302" height="136">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                </PartImage>
+            </Complication>
+
+            <Complication type="PHOTO_IMAGE">
+                <PartImage x="0" y="0" width="302" height="136">
+                    <Image resource="[COMPLICATION.PHOTO_IMAGE]" />
+                </PartImage>
+            </Complication>
+        </ComplicationSlot>
+
+        <!-- ================================================================= -->
+        <!-- 3. CARTUCHO CONTEXTUAL EM CANVAS ÚNICO (604x232 @2x -> 302x116)   -->
+        <!--    - Substitui as 2 complications antigas por 1 Canvas em pílula  -->
+        <!--    - Ocultado 100% em modo AMBIENT / AOD (alpha="0")             -->
+        <!-- ================================================================= -->
+
+        <ComplicationSlot
+            x="74"
+            y="272"
+            width="302"
+            height="116"
+            slotId="4"
+            displayName="slot_pill_context_label"
+            supportedTypes="SMALL_IMAGE PHOTO_IMAGE EMPTY">
+
+            <DefaultProviderPolicy
+                primaryProvider="com.chronowear.sync/com.chronowear.wear.complication.ContextPillComplicationService"
+                primaryProviderType="SMALL_IMAGE"
+                defaultSystemProvider="EMPTY"
+                defaultSystemProviderType="EMPTY" />
+
+            <BoundingRoundBox
+                x="0"
+                y="0"
+                width="302"
+                height="116"
+                outlinePadding="0.0"
+                cornerRadius="58" />
+
+            <Complication type="SMALL_IMAGE">
+                <PartImage x="0" y="0" width="302" height="116">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                </PartImage>
+            </Complication>
+
+            <Complication type="PHOTO_IMAGE">
+                <PartImage x="0" y="0" width="302" height="116">
+                    <Variant mode="AMBIENT" target="alpha" value="0" />
+                    <Image resource="[COMPLICATION.PHOTO_IMAGE]" />
+                </PartImage>
+            </Complication>
+        </ComplicationSlot>
+
+        <!-- ================================================================= -->
+        <!-- 4. COMPLICATIONS LATERAIS (SLOTS 7 E 8)                           -->
+        <!--    - Prioridade total a LONG_TEXT e SHORT_TEXT centralizados na   -->
+        <!--      curvatura lateral com suporte completo a ícone mono + texto  -->
+        <!--    - RANGED_VALUE mantido para provedores exclusivos de intervalo -->
+        <!-- ================================================================= -->
+
+        <!-- SLOT 7: Lateral Esquerda (x=0, y=88, w=74, h=264) -->
+        <ComplicationSlot
+            x="0"
+            y="88"
+            width="74"
+            height="264"
+            slotId="7"
+            displayName="slot_side_left_label"
+            supportedTypes="LONG_TEXT SHORT_TEXT RANGED_VALUE MONOCHROMATIC_IMAGE SMALL_IMAGE EMPTY">
+
+            <DefaultProviderPolicy
+                defaultSystemProvider="UNREAD_NOTIFICATION_COUNT"
+                defaultSystemProviderType="SHORT_TEXT" />
+
+            <BoundingRoundBox
+                x="0"
+                y="0"
+                width="74"
+                height="264"
+                outlinePadding="0.0"
+                cornerRadius="8" />
+
+            <Complication type="SHORT_TEXT">
+                <Condition>
+                    <Expressions>
+                        <Expression name="left_st_small">[COMPLICATION.SMALL_IMAGE] != null</Expression>
+                        <Expression name="left_st_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="left_st_small">
+                        <PartImage x="31" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="28">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="left_st_mono">
+                        <PartImage x="31" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                </Condition>
+                <Condition>
+                    <Expressions>
+                        <Expression name="left_st_icon_title"><![CDATA[([COMPLICATION.SMALL_IMAGE] != null || [COMPLICATION.MONOCHROMATIC_IMAGE] != null) && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="left_st_icon_only"><![CDATA[[COMPLICATION.SMALL_IMAGE] != null || [COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="left_st_title_only">[COMPLICATION.TITLE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="left_st_icon_title">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="225" centerY="137" width="416" height="416" startAngle="240" endAngle="290" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s %s]]><Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="left_st_icon_only">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="225" centerY="137" width="416" height="416" startAngle="240" endAngle="290" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="left_st_title_only">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="225" centerY="137" width="416" height="416" startAngle="238" endAngle="302" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s %s]]><Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="225" centerY="137" width="416" height="416" startAngle="238" endAngle="302" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+
+            <Complication type="LONG_TEXT">
+                <Condition>
+                    <Expressions>
+                        <Expression name="left_lt_small">[COMPLICATION.SMALL_IMAGE] != null</Expression>
+                        <Expression name="left_lt_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="left_lt_small">
+                        <PartImage x="31" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="28">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="left_lt_mono">
+                        <PartImage x="31" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                </Condition>
+                <Condition>
+                    <Expressions>
+                        <Expression name="left_lt_has_icon"><![CDATA[[COMPLICATION.SMALL_IMAGE] != null || [COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="left_lt_has_icon">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="225" centerY="137" width="416" height="416" startAngle="240" endAngle="290" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="225" centerY="137" width="416" height="416" startAngle="238" endAngle="302" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+
+            <Complication type="RANGED_VALUE">
+                <PartDraw x="0" y="0" width="74" height="264">
+                    <Arc
+                        centerX="225"
+                        centerY="137"
+                        width="424"
+                        height="424"
+                        startAngle="250"
+                        endAngle="290">
+                        <Stroke color="#FF3B361F" thickness="18" cap="ROUND" />
+                    </Arc>
+                    <Arc
+                        centerX="225"
+                        centerY="137"
+                        width="424"
+                        height="424"
+                        startAngle="250"
+                        endAngle="290">
+                        <Transform
+                            target="endAngle"
+                            value="252 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
+                        <Stroke color="#FFF5C438" thickness="18" cap="ROUND" />
+                    </Arc>
+                </PartDraw>
+
+                <Condition>
+                    <Expressions>
+                        <Expression name="left_rv_small">[COMPLICATION.SMALL_IMAGE] != null</Expression>
+                        <Expression name="left_rv_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="left_rv_small">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="left_rv_mono">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="28" tintColor="#FFF5C438">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                </Condition>
+
+                <PartText x="11" y="218" width="54" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                    <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="16.0"
+                            weight="BOLD"
+                            color="#FF88D4DC">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+
+            <Complication type="MONOCHROMATIC_IMAGE">
+                <PartImage x="14" y="118" width="28" height="28" tintColor="#FFF5C438">
+                    <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                </PartImage>
+            </Complication>
+
+            <Complication type="SMALL_IMAGE">
+                <PartImage x="14" y="118" width="28" height="28">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                </PartImage>
+            </Complication>
+        </ComplicationSlot>
+
+        <!-- SLOT 8: Lateral Direita (x=376, y=88, w=74, h=264) -->
+        <ComplicationSlot
+            x="376"
+            y="88"
+            width="74"
+            height="264"
+            slotId="8"
+            displayName="slot_side_right_label"
+            supportedTypes="LONG_TEXT SHORT_TEXT RANGED_VALUE MONOCHROMATIC_IMAGE SMALL_IMAGE EMPTY">
+
+            <DefaultProviderPolicy
+                defaultSystemProvider="UNREAD_NOTIFICATION_COUNT"
+                defaultSystemProviderType="SHORT_TEXT" />
+
+            <BoundingRoundBox
+                x="0"
+                y="0"
+                width="74"
+                height="264"
+                outlinePadding="0.0"
+                cornerRadius="8" />
+
+            <Complication type="SHORT_TEXT">
+                <Condition>
+                    <Expressions>
+                        <Expression name="right_st_small">[COMPLICATION.SMALL_IMAGE] != null</Expression>
+                        <Expression name="right_st_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="right_st_small">
+                        <PartImage x="19" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="-28">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="right_st_mono">
+                        <PartImage x="19" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                </Condition>
+                <Condition>
+                    <Expressions>
+                        <Expression name="right_st_icon_title"><![CDATA[([COMPLICATION.SMALL_IMAGE] != null || [COMPLICATION.MONOCHROMATIC_IMAGE] != null) && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="right_st_icon_only"><![CDATA[[COMPLICATION.SMALL_IMAGE] != null || [COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="right_st_title_only">[COMPLICATION.TITLE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="right_st_icon_title">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="-151" centerY="137" width="416" height="416" startAngle="70" endAngle="120" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s %s]]><Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="right_st_icon_only">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="-151" centerY="137" width="416" height="416" startAngle="70" endAngle="120" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="right_st_title_only">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="-151" centerY="137" width="416" height="416" startAngle="58" endAngle="122" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="16.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s %s]]><Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="-151" centerY="137" width="416" height="416" startAngle="58" endAngle="122" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="17.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+
+            <Complication type="LONG_TEXT">
+                <Condition>
+                    <Expressions>
+                        <Expression name="right_lt_small">[COMPLICATION.SMALL_IMAGE] != null</Expression>
+                        <Expression name="right_lt_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="right_lt_small">
+                        <PartImage x="19" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="-28">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="right_lt_mono">
+                        <PartImage x="19" y="20" width="24" height="24" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                </Condition>
+                <Condition>
+                    <Expressions>
+                        <Expression name="right_lt_has_icon"><![CDATA[[COMPLICATION.SMALL_IMAGE] != null || [COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="right_lt_has_icon">
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="-151" centerY="137" width="416" height="416" startAngle="70" endAngle="120" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="0" y="0" width="74" height="264">
+                            <TextCircular centerX="-151" centerY="137" width="416" height="416" startAngle="58" endAngle="122" align="CENTER" direction="CLOCKWISE" ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="15.0" weight="BOLD" color="#FFCBD5B0">
+                                    <Template><![CDATA[%s]]><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                                </Font>
+                            </TextCircular>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+
+            <Complication type="RANGED_VALUE">
+                <PartDraw x="0" y="0" width="74" height="264">
+                    <Arc
+                        centerX="-151"
+                        centerY="137"
+                        width="424"
+                        height="424"
+                        startAngle="70"
+                        endAngle="110">
+                        <Stroke color="#FF25302B" thickness="18" cap="ROUND" />
+                    </Arc>
+                    <Arc
+                        centerX="-151"
+                        centerY="137"
+                        width="424"
+                        height="424"
+                        startAngle="70"
+                        endAngle="110">
+                        <Transform
+                            target="endAngle"
+                            value="72 + 38 * (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))))" />
+                        <Stroke color="#FF86EFAC" thickness="18" cap="ROUND" />
+                    </Arc>
+                </PartDraw>
+
+                <Condition>
+                    <Expressions>
+                        <Expression name="right_rv_small">[COMPLICATION.SMALL_IMAGE] != null</Expression>
+                        <Expression name="right_rv_mono">[COMPLICATION.MONOCHROMATIC_IMAGE] != null</Expression>
+                    </Expressions>
+                    <Compare expression="right_rv_small">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="right_rv_mono">
+                        <PartImage x="24" y="18" width="26" height="26" pivotX="0.5" pivotY="0.5" angle="-28" tintColor="#FFF5C438">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                        </PartImage>
+                    </Compare>
+                </Condition>
+
+                <PartText x="9" y="218" width="54" height="26" pivotX="0.5" pivotY="0.5" angle="28">
+                    <Text align="CENTER" maxLines="1" ellipsis="TRUE">
+                        <Font
+                            family="SYNC_TO_DEVICE"
+                            size="16.0"
+                            weight="BOLD"
+                            color="#FFE2E8F0">
+                            <Template><![CDATA[%s]]>
+                                <Parameter expression="[COMPLICATION.TEXT]" />
+                            </Template>
+                        </Font>
+                    </Text>
+                </PartText>
+            </Complication>
+
+            <Complication type="MONOCHROMATIC_IMAGE">
+                <PartImage x="32" y="118" width="28" height="28" tintColor="#FFF5C438">
+                    <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                </PartImage>
+            </Complication>
+
+            <Complication type="SMALL_IMAGE">
+                <PartImage x="32" y="118" width="28" height="28">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]" />
+                </PartImage>
+            </Complication>
+        </ComplicationSlot>
+
+    </Scene>
+</WatchFace>
