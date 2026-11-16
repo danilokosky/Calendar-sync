@@ -485,7 +485,7 @@ class WearMainActivity : Activity() {
             }
             try {
                 val nodes = Wearable.getNodeClient(this@WearMainActivity).connectedNodes.await()
-                val pongBytes = "installed:1.2.1-wear|${Build.MODEL}".toByteArray(Charsets.UTF_8)
+                val pongBytes = "installed:1.3.0-wear|${Build.MODEL}".toByteArray(Charsets.UTF_8)
                 for (node in nodes) {
                     Wearable.getMessageClient(this@WearMainActivity).sendMessage(
                         node.id,

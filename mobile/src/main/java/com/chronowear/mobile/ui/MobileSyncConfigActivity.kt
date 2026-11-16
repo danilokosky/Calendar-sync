@@ -777,7 +777,7 @@ class MobileSyncConfigActivity : Activity() {
         )
         titleCol.addView(
             TextView(this).apply {
-                text = "v1.2.1 • Wear OS Sync"
+                text = "v1.3.0 • Wear OS Sync"
                 setTextColor(Color.parseColor("#94A3B8"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
             }
@@ -1823,7 +1823,7 @@ class MobileSyncConfigActivity : Activity() {
         }
 
         val aboutCard = createSectionCard(
-            "SOBRE O CHRONOWEAR v1.2.1",
+            "SOBRE O CHRONOWEAR v1.3.0",
             "Modelo Representativo e Arquitetura Híbrida Smartphone + Wear OS"
         )
 

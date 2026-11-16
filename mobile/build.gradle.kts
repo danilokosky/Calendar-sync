@@ -11,8 +11,8 @@ android {
         applicationId = "com.chronowear.sync"
         minSdk = 26
         targetSdk = 34
-        versionCode = 21
-        versionName = "1.2.1"
+        versionCode = 30
+        versionName = "1.3.0"
     }
 
     compileOptions {

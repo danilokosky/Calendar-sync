@@ -84,7 +84,7 @@ class PhoneDataListenerService : WearableListenerService() {
                         } catch (_: Exception) {
                         }
                         try {
-                            val pongPayload = "installed:1.2.1-wear|${Build.MODEL}".toByteArray(Charsets.UTF_8)
+                            val pongPayload = "installed:1.3.0-wear|${Build.MODEL}".toByteArray(Charsets.UTF_8)
                             Wearable.getMessageClient(applicationContext).sendMessage(
                                 messageEvent.sourceNodeId,
                                 "/chronowear/pong_watch_app",
