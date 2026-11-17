@@ -775,18 +775,22 @@ class AutonomousTransitionReceiver : BroadcastReceiver() {
         }
 
         if (action == AutonomousCountdownScheduler.ACTION_TAP_CYCLE_PILL_CONTEXT) {
-            // Toque direto no Cartucho Inferior (2º Canvas): avança para o próximo contexto do cartucho
-            // quando houver múltiplos modos configurados, ou verifica atualização climática devida.
+            // Toque direto no Cartucho Inferior (2º Canvas): alterna entre Clima e Tarefas (Google Tasks)
             val repo = WatchAutonomousRepository.getInstance(context)
             val nowMs = System.currentTimeMillis()
-            repo.cycleNextPillCanvasOnTap(nowMs)
+            val nextPillMode = repo.cycleNextPillCanvasOnTap(nowMs)
             if (repo.isUpdateOnCanvasTapEnabled()) {
-                AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+                if (nextPillMode == WatchAutonomousRepository.MODE_WEATHER) {
+                    AutonomousCountdownScheduler.runStandaloneWatchWeatherCheckIfDue(context, forceRefresh = false)
+                }
                 AutonomousCountdownScheduler.requestPhoneSyncForActiveCanvasIfDue(context)
             }
-            val forceRedraw = repo.getPillSupportedModes().size > 1
-            ChronoWearComplicationUpdater.requestUpdatePillSlotIfChanged(context, force = forceRedraw)
+            ChronoWearComplicationUpdater.requestUpdatePillSlotIfChanged(context, force = true)
             AutonomousCountdownScheduler.scheduleNextTransition(context)
+            context.sendBroadcast(
+                Intent(PhoneDataListenerService.ACTION_WEAR_CACHE_UPDATED)
+                    .setPackage(context.packageName)
+            )
             return
         }
 

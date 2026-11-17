@@ -46,6 +46,7 @@ class WearMainActivity : Activity() {
     private lateinit var nextEventCountdownText: TextView
     private lateinit var complicationStatusText: TextView
     private lateinit var contextModeButton: Button
+    private lateinit var pillContextModeButton: Button
     private lateinit var notifyCanvasChangeButton: Button
     private lateinit var notifyAgenda15MinButton: Button
     private lateinit var turboRuleButton: Button
@@ -143,6 +144,19 @@ class WearMainActivity : Activity() {
         forceUpdateComplicationsAndTile()
     }
 
+    private fun formatPillContextModeLabel(mode: String): String {
+        return when (mode) {
+            WatchAutonomousRepository.MODE_TASKS -> "2º Canvas: Tarefas"
+            else -> "2º Canvas: Clima"
+        }
+    }
+
+    private fun cyclePillContextWindowMode() {
+        val next = repo.cycleNextPillCanvasOnTap(System.currentTimeMillis())
+        pillContextModeButton.text = formatPillContextModeLabel(next)
+        forceUpdateComplicationsAndTile()
+    }
+
     private fun buildEssentialWatchUi() {
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor("#000000"))
@@ -230,6 +244,23 @@ class WearMainActivity : Activity() {
             }
         }
         container.addView(contextModeButton)
+
+        pillContextModeButton = Button(this).apply {
+            text = formatPillContextModeLabel(repo.getPillContextMode())
+            isAllCaps = false
+            textSize = 11f
+            setTextColor(Color.parseColor("#67E8F9"))
+            setTypeface(typeface, Typeface.BOLD)
+            background = pillBg("#162326", "#2B464C", 18)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(34)
+            ).apply { bottomMargin = dp(6) }
+            setOnClickListener {
+                cyclePillContextWindowMode()
+            }
+        }
+        container.addView(pillContextModeButton)
 
         notifyCanvasChangeButton = Button(this).apply {
             val enabled = repo.isNotifyOnCanvasChangeEnabled()
@@ -361,6 +392,7 @@ class WearMainActivity : Activity() {
         val nowMs = System.currentTimeMillis()
         upcomingThree = repo.getNextThreeUpcomingEvents(nowMs)
         contextModeButton.text = formatContextModeLabel(repo.getContextWindowMode())
+        pillContextModeButton.text = formatPillContextModeLabel(repo.getPillContextMode(nowMs))
         val notifCanvasOn = repo.isNotifyOnCanvasChangeEnabled()
         notifyCanvasChangeButton.text = if (notifCanvasOn) {
             "Notif. Atualiz. Canvas: ON"

@@ -37,8 +37,11 @@ import java.util.Locale
  * Renderizador 2D de Alto DPI para o Cartucho Inferior em Pílula (604x232px @2x Retina para 302x116px).
  * - Compartilha 100% do mesmo provedor de dados (WatchAutonomousRepository), sem chamadas extras de rede.
  * - Usa Assinatura de Estado + Cache em Memória para evitar redesenhos quando os dados não mudarem.
- * - Etapa 1: exibe o contexto de Clima/Temperatura no estilo One UI Watch (com fundos e ícones por condição e dia/noite).
- * - Arquitetura pronta para expandir novos contextos e alternância por toque no Cartucho.
+ * - Suporta:
+ *   1. Clima/Temperatura (MODE_WEATHER) no estilo One UI Watch.
+ *   2. Tarefas do Google Tasks (MODE_TASKS): exibe apenas a 1ª tarefa pendente da lista,
+ *      justificada à esquerda com anel circular, sem horário e com tag de data ("Hoje" / "Amanhã"),
+ *      respeitando rigorosamente o limite da circunferência completa da direita (x < 372px).
  */
 object ContextPillBitmapRenderer {
 
@@ -117,6 +120,38 @@ object ContextPillBitmapRenderer {
         floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
     )
 
+    private val mediumTypeface: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    private val wordSplitRegex = Regex("\\s+")
+
+    private val taskCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val taskTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 34f
+        typeface = mediumTypeface
+        textAlign = Paint.Align.LEFT
+    }
+    private val taskTagPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#94A3B8")
+        textSize = 28f
+        typeface = normalTypeface
+        textAlign = Paint.Align.LEFT
+    }
+
+    private val shaderTasks = LinearGradient(
+        0f, 0f, PILL_WIDTH.toFloat(), PILL_HEIGHT.toFloat(),
+        intArrayOf(
+            Color.parseColor("#4016525E"),
+            Color.parseColor("#4013424E"),
+            Color.parseColor("#400E303A")
+        ),
+        floatArrayOf(0f, 0.55f, 1f),
+        Shader.TileMode.CLAMP
+    )
+
     enum class WeatherVisualKind {
         STORM,
         HEAVY_RAIN,
@@ -136,6 +171,14 @@ object ContextPillBitmapRenderer {
         val cityShort: String,
         val isNight: Boolean,
         val visualKind: WeatherVisualKind,
+        val signature: String
+    )
+
+    data class TaskPillState(
+        val hasTask: Boolean,
+        val title: String,
+        val tagLabel: String,
+        val isOverdue: Boolean,
         val signature: String
     )
 
@@ -192,9 +235,48 @@ object ContextPillBitmapRenderer {
         )
     }
 
+    fun resolveTaskPillState(
+        repo: WatchAutonomousRepository,
+        nowMs: Long
+    ): TaskPillState {
+        val tasksSnap = repo.getTasksSnapshot(nowMs)
+        val firstTask = tasksSnap.tasks.firstOrNull { !it.completed }
+        if (firstTask == null) {
+            return TaskPillState(
+                hasTask = false,
+                title = "Sem tarefas",
+                tagLabel = "Hoje e amanhã",
+                isOverdue = false,
+                signature = "TASKS|EMPTY"
+            )
+        }
+
+        val isOverdue = firstTask.isOverdue ||
+            firstTask.scheduleCategory.equals("OVERDUE", ignoreCase = true)
+
+        // Google Tasks tem apenas marcação de data (sem hora).
+        // Usa "Hoje" para o mesmo dia, "Amanhã" para o dia seguinte (e "Em atraso" / "Sem data" no fallback).
+        val tagLabel = when (firstTask.scheduleCategory.uppercase(Locale.ROOT)) {
+            "TODAY" -> "Hoje"
+            "TOMORROW" -> "Amanhã"
+            "OVERDUE" -> "Em atraso"
+            "UNDATED" -> "Sem data"
+            else -> if (tasksSnap.bucket == "TOMORROW") "Amanhã" else "Hoje"
+        }
+
+        val sig = "TASKS|${firstTask.id}|${firstTask.title}|$tagLabel|$isOverdue"
+        return TaskPillState(
+            hasTask = true,
+            title = firstTask.title,
+            tagLabel = tagLabel,
+            isOverdue = isOverdue,
+            signature = sig
+        )
+    }
+
     fun computeStateSignature(repo: WatchAutonomousRepository, nowMs: Long): String {
         return when (repo.getPillContextMode(nowMs)) {
-            WatchAutonomousRepository.MODE_WEATHER -> resolveWeatherPillState(repo, nowMs).signature
+            WatchAutonomousRepository.MODE_TASKS -> resolveTaskPillState(repo, nowMs).signature
             else -> resolveWeatherPillState(repo, nowMs).signature
         }
     }
@@ -205,21 +287,33 @@ object ContextPillBitmapRenderer {
         repo: WatchAutonomousRepository,
         nowMs: Long
     ): Bitmap {
-        val state = resolveWeatherPillState(repo, nowMs)
-        synchronized(cacheLock) {
-            val existing = cachedBitmap
-            if (cachedSignature == state.signature && existing != null && !existing.isRecycled) {
-                return existing
+        val pillMode = repo.getPillContextMode(nowMs)
+        return if (pillMode == WatchAutonomousRepository.MODE_TASKS) {
+            val taskState = resolveTaskPillState(repo, nowMs)
+            synchronized(cacheLock) {
+                val existing = cachedBitmap
+                if (cachedSignature == taskState.signature && existing != null && !existing.isRecycled) {
+                    return existing
+                }
+                val rendered = renderTaskPillCanvas(taskState)
+                cachedSignature = taskState.signature
+                cachedBitmap = rendered
+                repo.savePillLastSignature(taskState.signature)
+                rendered
             }
-            val rendered = when (state.mode) {
-                WatchAutonomousRepository.MODE_WEATHER -> renderWeatherPillCanvas(state)
-                // Expansão futura de outros contextos no Cartucho:
-                else -> renderWeatherPillCanvas(state)
+        } else {
+            val weatherState = resolveWeatherPillState(repo, nowMs)
+            synchronized(cacheLock) {
+                val existing = cachedBitmap
+                if (cachedSignature == weatherState.signature && existing != null && !existing.isRecycled) {
+                    return existing
+                }
+                val rendered = renderWeatherPillCanvas(weatherState)
+                cachedSignature = weatherState.signature
+                cachedBitmap = rendered
+                repo.savePillLastSignature(weatherState.signature)
+                rendered
             }
-            cachedSignature = state.signature
-            cachedBitmap = rendered
-            repo.savePillLastSignature(state.signature)
-            return rendered
         }
     }
 
@@ -298,6 +392,145 @@ object ContextPillBitmapRenderer {
             TextUtils.TruncateAt.END
         ).toString()
         canvas.drawText(ellipsizedCity, cityStartX, 162f, cityPaint)
+
+        return bmp
+    }
+
+    /**
+     * Quebra o título da tarefa em até 2 linhas justificadas à esquerda, respeitando rigorosamente
+     * `maxWidth` para jamais invadir a circunferência completa da direita (`x >= 372`).
+     */
+    private fun wrapTitleIntoTwoLines(
+        rawTitle: String,
+        paint: TextPaint,
+        maxWidth: Float
+    ): Pair<String, String?> {
+        val cleaned = rawTitle.trim().replace(wordSplitRegex, " ").ifBlank { "Sem tarefas" }
+        if (paint.measureText(cleaned) <= maxWidth) {
+            return cleaned to null
+        }
+
+        val words = cleaned.split(" ")
+        if (words.size == 1) {
+            var splitIdx = cleaned.length
+            while (splitIdx > 1 && paint.measureText(cleaned, 0, splitIdx) > maxWidth) {
+                splitIdx--
+            }
+            val line1 = cleaned.substring(0, splitIdx)
+            val rest = cleaned.substring(splitIdx).trim()
+            val line2 = if (rest.isNotEmpty()) {
+                TextUtils.ellipsize(rest, paint, maxWidth, TextUtils.TruncateAt.END).toString()
+            } else {
+                null
+            }
+            return line1 to line2
+        }
+
+        val line1Builder = StringBuilder()
+        var wordIdx = 0
+        while (wordIdx < words.size) {
+            val w = words[wordIdx]
+            val candidate = if (line1Builder.isEmpty()) w else "$line1Builder $w"
+            if (paint.measureText(candidate) <= maxWidth) {
+                line1Builder.clear()
+                line1Builder.append(candidate)
+                wordIdx++
+            } else {
+                break
+            }
+        }
+
+        if (line1Builder.isEmpty()) {
+            // Caso a primeira palavra isolada ultrapasse maxWidth
+            val firstWord = words[0]
+            var splitIdx = firstWord.length
+            while (splitIdx > 1 && paint.measureText(firstWord, 0, splitIdx) > maxWidth) {
+                splitIdx--
+            }
+            val line1 = firstWord.substring(0, splitIdx)
+            val restWords = (listOf(firstWord.substring(splitIdx)) + words.drop(1))
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+            val line2 = if (restWords.isNotEmpty()) {
+                TextUtils.ellipsize(restWords, paint, maxWidth, TextUtils.TruncateAt.END).toString()
+            } else {
+                null
+            }
+            return line1 to line2
+        }
+
+        val remaining = words.drop(wordIdx).joinToString(" ").trim()
+        val line2 = if (remaining.isNotEmpty()) {
+            TextUtils.ellipsize(remaining, paint, maxWidth, TextUtils.TruncateAt.END).toString()
+        } else {
+            null
+        }
+        return line1Builder.toString() to line2
+    }
+
+    /**
+     * Renderiza o Cartucho de Tarefas (Google Tasks) inspirado no card One UI Watch:
+     * - Fundo degradê petróleo escuro com 25% de opacidade (`shaderTasks`).
+     * - Anel circular de check à esquerda (`cx = 72f`).
+     * - Texto 100% justificado à esquerda (`x = 112f..364f`), deixando livre toda a
+     *   circunferência completa da direita (`x = 372f..604f`, dedicada à complication circular SHORT_TEXT).
+     * - Exibe apenas a 1ª tarefa pendente + tag de data ("Hoje" / "Amanhã"), sem horário.
+     */
+    private fun renderTaskPillCanvas(state: TaskPillState): Bitmap {
+        val bmp = Bitmap.createBitmap(PILL_WIDTH, PILL_HEIGHT, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.TRANSPARENT)
+
+        val radius = PILL_HEIGHT / 2f
+        bgPaint.shader = shaderTasks
+        canvas.drawRoundRect(pillRect, radius, radius, bgPaint)
+        canvas.drawRoundRect(rimRect, radius - 1f, radius - 1f, rimPaint)
+
+        // Limite estrito antes da circunferência completa da direita (604 - 232 = 372px).
+        // Com maxContentRightX = 364f e textStartX = 112f, temos 252px livres sem jamais invadir a direita.
+        val textStartX = 112f
+        val maxContentRightX = 364f
+        val maxTextWidth = maxContentRightX - textStartX
+
+        taskTitlePaint.textSize = 34f
+        taskTitlePaint.color = when {
+            !state.hasTask -> Color.parseColor("#CBD5E1")
+            state.isOverdue -> Color.parseColor("#FCA5A5")
+            else -> Color.WHITE
+        }
+
+        taskTagPaint.textSize = 28f
+        taskTagPaint.color = when {
+            state.isOverdue -> Color.parseColor("#F87171")
+            else -> Color.parseColor("#94A3B8")
+        }
+
+        taskCirclePaint.color = when {
+            !state.hasTask -> Color.parseColor("#64748B")
+            state.isOverdue -> Color.parseColor("#EF4444")
+            else -> Color.parseColor("#F5C438")
+        }
+
+        val (line1, line2) = wrapTitleIntoTwoLines(state.title, taskTitlePaint, maxTextWidth)
+        val ellipsizedTag = TextUtils.ellipsize(
+            state.tagLabel,
+            taskTagPaint,
+            maxTextWidth,
+            TextUtils.TruncateAt.END
+        ).toString()
+
+        if (line2 != null) {
+            // Layout de 2 linhas de título + 1 linha de tag ("Hoje" / "Amanhã")
+            canvas.drawCircle(72f, 96f, 18.5f, taskCirclePaint)
+            canvas.drawText(line1, textStartX, 82f, taskTitlePaint)
+            canvas.drawText(line2, textStartX, 122f, taskTitlePaint)
+            canvas.drawText(ellipsizedTag, textStartX, 164f, taskTagPaint)
+        } else {
+            // Layout de 1 linha de título + 1 linha de tag ("Hoje" / "Amanhã")
+            canvas.drawCircle(72f, 92f, 18.5f, taskCirclePaint)
+            canvas.drawText(line1, textStartX, 102f, taskTitlePaint)
+            canvas.drawText(ellipsizedTag, textStartX, 148f, taskTagPaint)
+        }
 
         return bmp
     }
@@ -547,13 +780,19 @@ class ContextPillComplicationService : SuspendingComplicationDataSourceService()
             val repo = WatchAutonomousRepository.getInstance(appCtx)
             repo.markComplicationSlotActivated(WatchAutonomousRepository.SLOT_PILL, request.complicationInstanceId)
             val nowMs = System.currentTimeMillis()
+            val pillMode = repo.getPillContextMode(nowMs)
             val pillBitmap = ContextPillBitmapRenderer.getOrRenderPillBitmap(repo, nowMs)
             ChronoWearComplicationUpdater.markPillSignatureDelivered(
                 ContextPillBitmapRenderer.getCachedSignature()
             )
             val icon = Icon.createWithBitmap(pillBitmap)
             val tapPendingIntent = buildTapCyclePillPendingIntent()
-            val contentDesc = PlainComplicationText.Builder("Clima ChronoWear").build()
+            val labelText = if (pillMode == WatchAutonomousRepository.MODE_TASKS) {
+                "Tarefas ChronoWear"
+            } else {
+                "Clima ChronoWear"
+            }
+            val contentDesc = PlainComplicationText.Builder(labelText).build()
 
             when (request.complicationType) {
                 ComplicationType.SMALL_IMAGE -> {

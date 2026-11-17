@@ -1579,13 +1579,13 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     /**
      * Fundação para o 2º Canvas (Cartucho inferior em pílula):
-     * - Etapa 1: exibe apenas Clima/Temperatura (baixa frequência de atualização p/ economia).
-     * - Expansão futura: basta acrescentar novos modos em PILL_SUPPORTED_MODES para o toque
-     *   alternar entre contextos leves no cartucho, com retorno automático após o Tempo Unificado.
+     * - Suporta Clima/Temperatura (MODE_WEATHER) e Tarefas do Google Tasks (MODE_TASKS).
+     * - Atualiza estritamente por Assinatura de Estado (baixa frequência p/ economia de bateria).
+     * - O toque no Cartucho alterna diretamente entre Clima e Tarefas.
      */
     fun getPillSupportedModes(): List<String> = PILL_SUPPORTED_MODES
 
-    fun getPillContextMode(nowMs: Long): String {
+    fun getPillContextMode(nowMs: Long = System.currentTimeMillis()): String {
         val supported = getPillSupportedModes()
         if (supported.size <= 1) return supported.firstOrNull() ?: MODE_WEATHER
 
@@ -1600,22 +1600,30 @@ class WatchAutonomousRepository private constructor(context: Context) :
             ?: MODE_WEATHER
     }
 
+    fun setPillContextMode(mode: String) {
+        val supported = getPillSupportedModes()
+        val validMode = if (mode in supported) mode else MODE_WEATHER
+        prefs.edit()
+            .putString("pill_primary_context_mode", validMode)
+            .putString("pill_tap_override_context_mode", validMode)
+            .putLong("pill_tap_override_timestamp_ms", 0L)
+            .commit()
+    }
+
     fun cycleNextPillCanvasOnTap(nowMs: Long): String {
         val supported = getPillSupportedModes()
         if (supported.size <= 1) {
             val single = supported.firstOrNull() ?: MODE_WEATHER
-            prefs.edit()
-                .putString("pill_tap_override_context_mode", single)
-                .putLong("pill_tap_override_timestamp_ms", nowMs)
-                .commit()
+            setPillContextMode(single)
             return single
         }
         val current = getPillContextMode(nowMs)
         val currentIdx = supported.indexOf(current).takeIf { it >= 0 } ?: 0
         val nextMode = supported[(currentIdx + 1) % supported.size]
         prefs.edit()
+            .putString("pill_primary_context_mode", nextMode)
             .putString("pill_tap_override_context_mode", nextMode)
-            .putLong("pill_tap_override_timestamp_ms", nowMs)
+            .putLong("pill_tap_override_timestamp_ms", 0L)
             .commit()
         return nextMode
     }
@@ -2066,9 +2074,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         const val SLOT_MAIN = "MAIN"
         const val SLOT_PILL = "PILL"
 
-        // Etapa inicial do Cartucho (2º Canvas): apenas Clima/Temperatura.
-        // Expansão futura: adicionar novos contextos aqui sem alterar o XML da Watch Face 1.3.0.
-        val PILL_SUPPORTED_MODES = listOf(MODE_WEATHER)
+        // Modos suportados no Cartucho (2º Canvas): Clima/Temperatura e Tarefas (Google Tasks).
+        val PILL_SUPPORTED_MODES = listOf(MODE_WEATHER, MODE_TASKS)
 
         const val DEFAULT_WEATHER_TRIGGER_PACKAGES_CSV =
             "com.google.android.googlequicksearchbox,com.google.android.apps.weather,com.sec.android.daemonapp,com.samsung.android.watch.weather,br.com.climatempo.meteorologia,com.accuweather.android,com.weather.Weather"
