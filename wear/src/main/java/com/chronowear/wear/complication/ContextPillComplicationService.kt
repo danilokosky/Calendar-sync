@@ -77,9 +77,9 @@ object ContextPillBitmapRenderer {
         textAlign = Paint.Align.LEFT
     }
     private val cityPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#DDE6F3")
-        textSize = 30f
-        typeface = normalTypeface
+        color = Color.parseColor("#E2E8F0")
+        textSize = 35f
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         textAlign = Paint.Align.LEFT
     }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -130,19 +130,19 @@ object ContextPillBitmapRenderer {
 
     private val taskCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 6f
+        strokeWidth = 6.5f
         strokeCap = Paint.Cap.ROUND
     }
     private val taskTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 34f
+        textSize = 38f
         typeface = mediumTypeface
         textAlign = Paint.Align.LEFT
     }
     private val taskTagPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#94A3B8")
-        textSize = 28f
-        typeface = normalTypeface
+        color = Color.parseColor("#CBD5E1")
+        textSize = 35f
+        typeface = mediumTypeface
         textAlign = Paint.Align.LEFT
     }
 
@@ -387,19 +387,19 @@ object ContextPillBitmapRenderer {
             WeatherVisualKind.SNOW -> drawSnowIcon(canvas, iconCx, iconCy)
         }
 
-        // Informações justificadas à esquerda logo após o círculo esquerdo (x=216..376),
+        // Informações justificadas à esquerda logo após o círculo esquerdo (x=212..374),
         // mantendo livre toda a circunferência direita (complication circular em x=388..588).
-        val textStartX = 216f
-        val maxContentRightX = 376f
+        val textStartX = 212f
+        val maxContentRightX = 374f
 
-        canvas.drawText("${state.tempC}°", textStartX, 115f, tempPaint)
+        canvas.drawText("${state.tempC}°", textStartX, 114f, tempPaint)
 
-        drawLocationPinIcon(canvas, textStartX + 10f, 152f, scale = 0.92f)
+        drawLocationPinIcon(canvas, textStartX + 9f, 154f, scale = 0.96f)
 
-        val cityStartX = textStartX + 28f
-        val availableCityWidth = (maxContentRightX - cityStartX).coerceAtLeast(80f)
-        cityPaint.textSize = 30f
-        while (cityPaint.textSize > 24f && cityPaint.measureText(state.cityShort) > availableCityWidth) {
+        val cityStartX = textStartX + 24f
+        val availableCityWidth = (maxContentRightX - cityStartX).coerceAtLeast(90f)
+        cityPaint.textSize = 35f
+        while (cityPaint.textSize > 30f && cityPaint.measureText(state.cityShort) > availableCityWidth) {
             cityPaint.textSize -= 1f
         }
         val ellipsizedCity = TextUtils.ellipsize(
@@ -408,7 +408,7 @@ object ContextPillBitmapRenderer {
             availableCityWidth,
             TextUtils.TruncateAt.END
         ).toString()
-        canvas.drawText(ellipsizedCity, cityStartX, 162f, cityPaint)
+        canvas.drawText(ellipsizedCity, cityStartX, 165f, cityPaint)
 
         return bmp
     }
@@ -488,10 +488,10 @@ object ContextPillBitmapRenderer {
     /**
      * Renderiza o Cartucho de Tarefas (Google Tasks) inspirado no card One UI Watch:
      * - Fundo degradê petróleo escuro com 25% de opacidade (`shaderTasks`).
-     * - Anel circular de check à esquerda (`cx = 72f`).
+     * - Anel circular vazado de check à esquerda (`cx = 72f`, centralizado verticalmente no meio do cartucho em `cy = PILL_HEIGHT / 2f = 116f`).
      * - Texto 100% justificado à esquerda (`x = 112f..364f`), deixando livre toda a
      *   circunferência completa da direita (`x = 372f..604f`, dedicada à complication circular SHORT_TEXT).
-     * - Exibe apenas a 1ª tarefa pendente + tag de data ("Hoje" / "Amanhã"), sem horário.
+     * - Exibe apenas a 1ª tarefa pendente (com quebra automática em até 2 linhas) + tag de data ("Hoje" / "Amanhã" / "Hoje e amanhã") em fonte ampliada.
      */
     private fun renderTaskPillCanvas(state: TaskPillState): Bitmap {
         val (bmp, canvas) = acquireReusablePillBitmap()
@@ -507,26 +507,36 @@ object ContextPillBitmapRenderer {
         val maxContentRightX = 364f
         val maxTextWidth = maxContentRightX - textStartX
 
-        taskTitlePaint.textSize = 34f
+        val cleanedTitle = state.title.trim().replace(wordSplitRegex, " ").ifBlank { "Sem tarefas" }
+        taskTitlePaint.textSize = 38f
+        val (line1, line2) = if (taskTitlePaint.measureText(cleanedTitle) <= maxTextWidth) {
+            cleanedTitle to null
+        } else {
+            taskTitlePaint.textSize = 35f
+            wrapTitleIntoTwoLines(cleanedTitle, taskTitlePaint, maxTextWidth)
+        }
+
         taskTitlePaint.color = when {
-            !state.hasTask -> Color.parseColor("#CBD5E1")
+            !state.hasTask -> Color.parseColor("#E2E8F0")
             state.isOverdue -> Color.parseColor("#FCA5A5")
             else -> Color.WHITE
         }
 
-        taskTagPaint.textSize = 28f
+        taskTagPaint.textSize = if (line2 != null) 34f else 35f
+        while (taskTagPaint.textSize > 31f && taskTagPaint.measureText(state.tagLabel) > maxTextWidth) {
+            taskTagPaint.textSize -= 1f
+        }
         taskTagPaint.color = when {
             state.isOverdue -> Color.parseColor("#F87171")
-            else -> Color.parseColor("#94A3B8")
+            else -> Color.parseColor("#CBD5E1")
         }
 
         taskCirclePaint.color = when {
-            !state.hasTask -> Color.parseColor("#64748B")
+            !state.hasTask -> Color.parseColor("#94A3B8")
             state.isOverdue -> Color.parseColor("#EF4444")
             else -> Color.parseColor("#F5C438")
         }
 
-        val (line1, line2) = wrapTitleIntoTwoLines(state.title, taskTitlePaint, maxTextWidth)
         val ellipsizedTag = TextUtils.ellipsize(
             state.tagLabel,
             taskTagPaint,
@@ -534,17 +544,20 @@ object ContextPillBitmapRenderer {
             TextUtils.TruncateAt.END
         ).toString()
 
+        // Ícone de tarefa (círculo vazado) centralizado verticalmente com o meio exato do cartucho (116f)
+        // e mantendo a posição horizontal em cx = 72f.
+        val circleCenterY = PILL_HEIGHT / 2f
+        canvas.drawCircle(72f, circleCenterY, 19.5f, taskCirclePaint)
+
         if (line2 != null) {
-            // Layout de 2 linhas de título + 1 linha de tag ("Hoje" / "Amanhã")
-            canvas.drawCircle(72f, 96f, 18.5f, taskCirclePaint)
-            canvas.drawText(line1, textStartX, 82f, taskTitlePaint)
-            canvas.drawText(line2, textStartX, 122f, taskTitlePaint)
-            canvas.drawText(ellipsizedTag, textStartX, 164f, taskTagPaint)
+            // Layout de 2 linhas de título + 1 linha de tag ("Hoje" / "Amanhã") centralizado em torno de y=116
+            canvas.drawText(line1, textStartX, 84f, taskTitlePaint)
+            canvas.drawText(line2, textStartX, 124f, taskTitlePaint)
+            canvas.drawText(ellipsizedTag, textStartX, 166f, taskTagPaint)
         } else {
-            // Layout de 1 linha de título + 1 linha de tag ("Hoje" / "Amanhã")
-            canvas.drawCircle(72f, 92f, 18.5f, taskCirclePaint)
-            canvas.drawText(line1, textStartX, 102f, taskTitlePaint)
-            canvas.drawText(ellipsizedTag, textStartX, 148f, taskTagPaint)
+            // Layout de 1 linha de título + 1 linha de tag ("Hoje" / "Amanhã" / "Hoje e amanhã") centralizado em torno de y=116
+            canvas.drawText(line1, textStartX, 104f, taskTitlePaint)
+            canvas.drawText(ellipsizedTag, textStartX, 150f, taskTagPaint)
         }
 
         return bmp

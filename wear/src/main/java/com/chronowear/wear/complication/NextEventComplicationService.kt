@@ -356,7 +356,7 @@ object AgendaCardBitmapRenderer {
     }
     private val weatherSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#E2E8F0")
-        textSize = 28f
+        textSize = 31f
         typeface = boldTypeface
     }
     private val weatherCurvePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -373,7 +373,7 @@ object AgendaCardBitmapRenderer {
     }
     private val weatherHourLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#CBD5E1")
-        textSize = 29f
+        textSize = 31f
         textAlign = Paint.Align.CENTER
         typeface = boldTypeface
     }
@@ -387,7 +387,7 @@ object AgendaCardBitmapRenderer {
     }
     private val stepsDayLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#E2E8F0")
-        textSize = 26f
+        textSize = 29f
         textAlign = Paint.Align.CENTER
         typeface = boldTypeface
     }
@@ -499,7 +499,7 @@ object AgendaCardBitmapRenderer {
     }
     private val sleepNoDataSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#94A3B8")
-        textSize = 26f
+        textSize = 29f
         typeface = boldTypeface
     }
     private val sleepRightScorePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -510,7 +510,7 @@ object AgendaCardBitmapRenderer {
     }
     private val sleepSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#CBD5E1")
-        textSize = 28f
+        textSize = 31f
         typeface = boldTypeface
     }
     private val sleepStageSegPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -518,7 +518,7 @@ object AgendaCardBitmapRenderer {
     }
     private val sleepStageTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#94A3B8")
-        textSize = 26f
+        textSize = 29f
         textAlign = Paint.Align.CENTER
         typeface = boldTypeface
     }
@@ -539,7 +539,7 @@ object AgendaCardBitmapRenderer {
     // Tasks paints
     private val tasksRightCounterPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#67E8F9")
-        textSize = 29f
+        textSize = 31f
         textAlign = Paint.Align.RIGHT
         typeface = boldTypeface
     }
@@ -580,7 +580,7 @@ object AgendaCardBitmapRenderer {
     }
     private val tasksSourceBadgePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#F5C438")
-        textSize = 27f
+        textSize = 30f
         textAlign = Paint.Align.RIGHT
         typeface = boldTypeface
     }
@@ -599,7 +599,7 @@ object AgendaCardBitmapRenderer {
     }
     private val batRightSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#CBD5E1")
-        textSize = 27f
+        textSize = 30f
         textAlign = Paint.Align.RIGHT
         typeface = boldTypeface
     }
@@ -625,13 +625,13 @@ object AgendaCardBitmapRenderer {
     }
     private val batValuePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 28f
+        textSize = 30f
         textAlign = Paint.Align.CENTER
         typeface = boldTypeface
     }
     private val batTimeLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#CBD5E1")
-        textSize = 27f
+        textSize = 30f
         textAlign = Paint.Align.CENTER
         typeface = boldTypeface
     }
