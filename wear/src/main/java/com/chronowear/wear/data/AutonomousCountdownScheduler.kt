@@ -51,6 +51,8 @@ object AutonomousCountdownScheduler {
     private var lastPhoneSyncRequestMs = 0L
     @Volatile
     private var weatherFetchInFlight = false
+    @Volatile
+    private var lastScheduledAlarmWakeMs = -1L
 
     /**
      * Solicita imediatamente ao smartphone conectado uma sincronização completa
@@ -316,7 +318,12 @@ object AutonomousCountdownScheduler {
         }
     }
 
+    fun clearLastScheduledWakeTimestamp() {
+        lastScheduledAlarmWakeMs = -1L
+    }
+
     fun cancelPendingTransitionAlarm(context: Context) {
+        lastScheduledAlarmWakeMs = -1L
         try {
             val appCtx = context.applicationContext
             val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
@@ -717,6 +724,12 @@ object AutonomousCountdownScheduler {
         )
         if (nextWakeUpMs == Long.MAX_VALUE) return
 
+        val prevWake = lastScheduledAlarmWakeMs
+        if (prevWake > nowMs && kotlin.math.abs(nextWakeUpMs - prevWake) < 400L) {
+            return
+        }
+        lastScheduledAlarmWakeMs = nextWakeUpMs
+
         val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(appCtx, AutonomousTransitionReceiver::class.java).apply {
             action = ACTION_TRANSITION
@@ -747,6 +760,9 @@ object AutonomousCountdownScheduler {
 class AutonomousTransitionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
+        if (action == AutonomousCountdownScheduler.ACTION_TRANSITION) {
+            AutonomousCountdownScheduler.clearLastScheduledWakeTimestamp()
+        }
         if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             AutonomousCountdownScheduler.ensureScreenWakeListenerRegistered(context)
             AutonomousCountdownScheduler.scheduleNextTransition(context)

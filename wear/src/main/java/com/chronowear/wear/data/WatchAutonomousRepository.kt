@@ -151,6 +151,21 @@ class WatchAutonomousRepository private constructor(context: Context) :
 
     private val tasksCacheLock = Any()
 
+    @Volatile
+    private var lastAppliedEventsJson: String? = null
+
+    @Volatile
+    private var cachedBatteryLookupKey: String? = null
+
+    @Volatile
+    private var cachedBatterySnapshot: WatchBatterySnapshot? = null
+
+    @Volatile
+    private var cachedStepsLookupKey: String? = null
+
+    @Volatile
+    private var cachedStepsSnapshot: WeeklyStepsSnapshot? = null
+
     private val lifecycleLock = Any()
     private var lifecycleCacheInitialized = false
     private val activeMainInstanceIds = mutableSetOf<Int>()
@@ -162,6 +177,8 @@ class WatchAutonomousRepository private constructor(context: Context) :
         eventsGeneration++
         cachedFutureEventsGen = -1L
         cachedTasksLookupKey = null
+        cachedBatteryLookupKey = null
+        cachedStepsLookupKey = null
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -523,26 +540,31 @@ class WatchAutonomousRepository private constructor(context: Context) :
         // Aproveita o ciclo unificado de sincronização para registrar amostra de bateria do relógio sem serviço extra
         recordWatchBatterySampleOnPeriodicUpdate(syncTimestampMs)
 
-        val arr = JSONArray(eventsJson)
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.delete("cached_events", null, null)
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val cv = ContentValues().apply {
-                    put("id", obj.optString("id"))
-                    put("calendar_id", obj.optString("calendarId"))
-                    put("title", obj.optString("title", "Evento"))
-                    put("location", obj.optString("location", ""))
-                    put("start_epoch_ms", obj.optLong("startEpochMs"))
-                    put("end_epoch_ms", obj.optLong("endEpochMs"))
+        // Só regrava a tabela SQLite quando o payload de eventos realmente mudou em relação ao último aplicado
+        val eventsUnchangedInMemory = lastAppliedEventsJson != null && lastAppliedEventsJson == eventsJson
+        if (!eventsUnchangedInMemory) {
+            val arr = JSONArray(eventsJson)
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                db.delete("cached_events", null, null)
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val cv = ContentValues().apply {
+                        put("id", obj.optString("id"))
+                        put("calendar_id", obj.optString("calendarId"))
+                        put("title", obj.optString("title", "Evento"))
+                        put("location", obj.optString("location", ""))
+                        put("start_epoch_ms", obj.optLong("startEpochMs"))
+                        put("end_epoch_ms", obj.optLong("endEpochMs"))
+                    }
+                    db.insert("cached_events", null, cv)
                 }
-                db.insert("cached_events", null, cv)
+                db.setTransactionSuccessful()
+                lastAppliedEventsJson = eventsJson
+            } finally {
+                db.endTransaction()
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
         invalidateDataCaches()
     }
@@ -833,9 +855,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val currentPct = prefs.getInt("watch_battery_last_pct", 82).coerceIn(0, 100)
         val isCharging = prefs.getBoolean("watch_battery_is_charging", false)
         val windowHours = getBatteryGraphWindowHours()
-        val cutoffMs = nowMs - TimeUnit.HOURS.toMillis(windowHours.toLong())
-
         val rawCsv = prefs.getString("watch_battery_history_csv", "") ?: ""
+        val minuteBucket = nowMs / 60_000L
+        val batCacheKey = "$currentPct|$isCharging|$windowHours|$minuteBucket|${rawCsv.hashCode()}:${rawCsv.length}"
+        val existingBatSnap = cachedBatterySnapshot
+        if (cachedBatteryLookupKey == batCacheKey && existingBatSnap != null) {
+            return existingBatSnap
+        }
+
+        val cutoffMs = nowMs - TimeUnit.HOURS.toMillis(windowHours.toLong())
         val windowPoints = rawCsv.split(",")
             .mapNotNull { token ->
                 val parts = token.trim().split(":")
@@ -928,7 +956,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
             historyCsv = windowCsv,
             labels = labels,
             levelsPct = levels
-        )
+        ).also {
+            cachedBatterySnapshot = it
+            cachedBatteryLookupKey = batCacheKey
+        }
     }
 
     fun hasActiveSleepWakeExposure(nowMs: Long, exposureMinutes: Int = getUnifiedCanvasHoldMinutes()): Boolean {
@@ -937,8 +968,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
         if (!sleep.hasDataForToday) return false
 
         val sleepMode = getAutoTriggerSleepMode()
-        val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
-        val curMinsOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        val curMinsOfDay = minutesOfDay(nowMs)
 
         if (sleepMode == "WAKE" || sleepMode == "BOTH") {
             val wakeTs = prefs.getLong("sleep_wake_timestamp_ms", 0L)
@@ -1120,8 +1150,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
             return (h * 60 + m).coerceIn(0, 1439)
         }
 
-        val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
-        val curMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        val curMins = minutesOfDay(nowMs)
         return SolarSnapshot(
             sunriseHHMM = riseStr,
             sunsetHHMM = setStr,
@@ -1277,10 +1306,15 @@ class WatchAutonomousRepository private constructor(context: Context) :
         val goal = prefs.getInt("steps_goal_v2", 10000).coerceAtLeast(1000)
         val csv = prefs.getString("steps_week_csv_v2", "0,0,0,0,0,0,0")
             ?: "0,0,0,0,0,0,0"
-        val stepsList = csv.split(",").mapNotNull { it.trim().toIntOrNull() }
-            .let { if (it.size == 7) it else listOf(0, 0, 0, 0, 0, 0, today) }
         val labelsCsv = prefs.getString("steps_week_labels_csv_v2", "Seg,Ter,Qua,Qui,Sex,Sáb,Dom")
             ?: "Seg,Ter,Qua,Qui,Sex,Sáb,Dom"
+        val stepsKey = "$today|$goal|$csv|$labelsCsv"
+        val existingSteps = cachedStepsSnapshot
+        if (cachedStepsLookupKey == stepsKey && existingSteps != null) {
+            return existingSteps
+        }
+        val stepsList = csv.split(",").mapNotNull { it.trim().toIntOrNull() }
+            .let { if (it.size == 7) it else listOf(0, 0, 0, 0, 0, 0, today) }
         val labelsList = labelsCsv.split(",").map { it.trim().take(3) }.filter { it.isNotEmpty() }
             .let { if (it.size == 7) it else listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom") }
         return WeeklyStepsSnapshot(
@@ -1288,7 +1322,10 @@ class WatchAutonomousRepository private constructor(context: Context) :
             dailyGoal = goal,
             weekDaysLabels = labelsList,
             weekDaysSteps = stepsList
-        )
+        ).also {
+            cachedStepsSnapshot = it
+            cachedStepsLookupKey = stepsKey
+        }
     }
 
     fun isTasksSyncEnabled(): Boolean {
@@ -1776,8 +1813,7 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 val tasksSnap = getTasksSnapshot(nowMs)
                 if (tasksSnap.pendingCount > 0) {
                     // Verifica se alguma tarefa de HOJE com horário (HH:mm) está dentro da janela de antecedência (leadMin)
-                    val calNow = Calendar.getInstance().apply { timeInMillis = nowMs }
-                    val curMinsOfDay = calNow.get(Calendar.HOUR_OF_DAY) * 60 + calNow.get(Calendar.MINUTE)
+                    val curMinsOfDay = minutesOfDay(nowMs)
                     val imminentTask = tasksSnap.tasks.firstOrNull { t ->
                         if (t.scheduleCategory != "TODAY" || t.dueHHMM.length < 4) return@firstOrNull false
                         val parts = t.dueHHMM.split(":")
@@ -2022,22 +2058,27 @@ class WatchAutonomousRepository private constructor(context: Context) :
      */
     fun resolveDayHeaderAndEventsForWatch(nowMs: Long): Pair<String, List<CachedWearEvent>> {
         val allFuture = getAllUpcomingHorizonEvents(nowMs, 24)
-        val todayEvents = allFuture.filter { isSameCalendarDay(nowMs, it.startEpochMs) }
+        if (allFuture.isEmpty()) return "Hoje" to emptyList()
+
+        val todayStartMs = dayStartEpochMs(nowMs)
+        val tomorrowStartMs = nextDayStartEpochMs(todayStartMs)
+        val dayAfterTomorrowStartMs = nextDayStartEpochMs(tomorrowStartMs)
+
+        val todayEvents = allFuture.filter { it.startEpochMs in todayStartMs until tomorrowStartMs }
         if (todayEvents.isNotEmpty()) {
             return "Hoje" to todayEvents.take(3)
         }
-        val tomorrowEvents = allFuture.filter { calendarDaysDiff(nowMs, it.startEpochMs) == 1 }
+        val tomorrowEvents = allFuture.filter { it.startEpochMs in tomorrowStartMs until dayAfterTomorrowStartMs }
         if (tomorrowEvents.isNotEmpty()) {
             return "Amanhã" to tomorrowEvents.take(3)
         }
-        if (allFuture.isNotEmpty()) {
-            val firstNext = allFuture.first()
-            val header = formatWeekdayDayPt(firstNext.startEpochMs)
-                .replace(".", "")
-                .replaceFirstChar { if (it.isLowerCase()) it.titlecase(LOCALE_PT_BR) else it.toString() }
-            return header to allFuture.filter { isSameCalendarDay(firstNext.startEpochMs, it.startEpochMs) }.take(3)
-        }
-        return "Hoje" to emptyList()
+        val firstNext = allFuture.first()
+        val firstDayStartMs = dayStartEpochMs(firstNext.startEpochMs)
+        val firstDayEndMs = nextDayStartEpochMs(firstDayStartMs)
+        val header = formatWeekdayDayPt(firstNext.startEpochMs)
+            .replace(".", "")
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(LOCALE_PT_BR) else it.toString() }
+        return header to allFuture.filter { it.startEpochMs in firstDayStartMs until firstDayEndMs }.take(3)
     }
 
     fun getNextThreeUpcomingEvents(nowMs: Long): List<CachedWearEvent> {
@@ -2212,28 +2253,58 @@ class WatchAutonomousRepository private constructor(context: Context) :
                 .replace(COMBINING_MARKS_REGEX, "")
         }
 
+        private val TL_CAL_A = object : ThreadLocal<Calendar>() {
+            override fun initialValue(): Calendar = Calendar.getInstance()
+        }
+        private val TL_CAL_B = object : ThreadLocal<Calendar>() {
+            override fun initialValue(): Calendar = Calendar.getInstance()
+        }
+
+        fun minutesOfDay(epochMs: Long): Int {
+            val cal = TL_CAL_A.get()!!
+            cal.timeInMillis = epochMs
+            return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        }
+
+        fun dayStartEpochMs(epochMs: Long): Long {
+            val cal = TL_CAL_A.get()!!
+            cal.timeInMillis = epochMs
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            return cal.timeInMillis
+        }
+
+        fun nextDayStartEpochMs(dayStartMs: Long): Long {
+            val cal = TL_CAL_A.get()!!
+            cal.timeInMillis = dayStartMs
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            return cal.timeInMillis
+        }
+
         fun isSameCalendarDay(epochA: Long, epochB: Long): Boolean {
-            val calA = Calendar.getInstance().apply { timeInMillis = epochA }
-            val calB = Calendar.getInstance().apply { timeInMillis = epochB }
+            val calA = TL_CAL_A.get()!!
+            val calB = TL_CAL_B.get()!!
+            calA.timeInMillis = epochA
+            calB.timeInMillis = epochB
             return calA.get(Calendar.YEAR) == calB.get(Calendar.YEAR) &&
                 calA.get(Calendar.DAY_OF_YEAR) == calB.get(Calendar.DAY_OF_YEAR)
         }
 
         fun calendarDaysDiff(fromEpochMs: Long, toEpochMs: Long): Int {
-            val startFrom = Calendar.getInstance().apply {
-                timeInMillis = fromEpochMs
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            val startTo = Calendar.getInstance().apply {
-                timeInMillis = toEpochMs
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
+            val startFrom = dayStartEpochMs(fromEpochMs)
+            val calB = TL_CAL_B.get()!!
+            calB.timeInMillis = toEpochMs
+            calB.set(Calendar.HOUR_OF_DAY, 0)
+            calB.set(Calendar.MINUTE, 0)
+            calB.set(Calendar.SECOND, 0)
+            calB.set(Calendar.MILLISECOND, 0)
+            val startTo = calB.timeInMillis
             return Math.round((startTo - startFrom) / 86_400_000.0).toInt()
         }
 

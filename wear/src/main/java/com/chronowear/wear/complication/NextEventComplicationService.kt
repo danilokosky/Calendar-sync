@@ -224,6 +224,17 @@ object AgendaCardBitmapRenderer {
     @Volatile
     private var cachedBitmap: Bitmap? = null
 
+    @Volatile
+    private var lastPreparedBucketSec: Long = -1L
+
+    @Volatile
+    private var lastPreparedState: PreparedMainCardState? = null
+
+    private var cardBufferA: Bitmap? = null
+    private var cardBufferB: Bitmap? = null
+    private var useBufferA: Boolean = true
+    private val reusableCanvas = Canvas()
+
     private val cacheLock = Any()
 
     private val localePtBr = Locale("pt", "BR")
@@ -624,6 +635,24 @@ object AgendaCardBitmapRenderer {
         textAlign = Paint.Align.CENTER
         typeface = boldTypeface
     }
+    private val batAreaShaderEmerald = LinearGradient(
+        0f, 104f, 0f, 210f,
+        Color.argb(95, 52, 211, 153),
+        Color.argb(8, 52, 211, 153),
+        Shader.TileMode.CLAMP
+    )
+    private val batAreaShaderAmber = LinearGradient(
+        0f, 104f, 0f, 210f,
+        Color.argb(95, 251, 191, 36),
+        Color.argb(8, 251, 191, 36),
+        Shader.TileMode.CLAMP
+    )
+    private val batAreaShaderRed = LinearGradient(
+        0f, 104f, 0f, 210f,
+        Color.argb(95, 248, 113, 113),
+        Color.argb(8, 248, 113, 113),
+        Shader.TileMode.CLAMP
+    )
 
     private sealed class PreparedMainCardState(val signature: String) {
         class Tasks(signature: String, val snapshot: TasksSnapshot) : PreparedMainCardState(signature)
@@ -646,8 +675,16 @@ object AgendaCardBitmapRenderer {
         nowMs: Long,
         progressWindowMinutes: Int
     ): PreparedMainCardState {
+        val secBucket = nowMs / 1000L
         val effectiveMode = repo.resolveEffectiveContextMode(nowMs, upcomingThree)
-        return when (effectiveMode) {
+        val existingPrepared = lastPreparedState
+        if (lastPreparedBucketSec == secBucket &&
+            existingPrepared != null &&
+            existingPrepared.signature.startsWith("$effectiveMode|")
+        ) {
+            return existingPrepared
+        }
+        val computed: PreparedMainCardState = when (effectiveMode) {
             WatchAutonomousRepository.MODE_TASKS -> {
                 val snap = repo.getTasksSnapshot(nowMs)
                 val rowsSig = snap.tasks.asSequence()
@@ -751,6 +788,9 @@ object AgendaCardBitmapRenderer {
                 )
             }
         }
+        lastPreparedState = computed
+        lastPreparedBucketSec = secBucket
+        return computed
     }
 
     fun computeMainCardSignature(
@@ -811,11 +851,20 @@ object AgendaCardBitmapRenderer {
     }
 
     private fun createBaseCardBitmap(): Pair<Bitmap, Canvas> {
-        val bmp = Bitmap.createBitmap(CARD_WIDTH, CARD_HEIGHT, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawColor(Color.TRANSPARENT)
-        canvas.drawRoundRect(cardRect, 40f, 40f, bgCardPaint)
-        return bmp to canvas
+        val target = if (useBufferA) {
+            val b = cardBufferA?.takeIf { !it.isRecycled }
+                ?: Bitmap.createBitmap(CARD_WIDTH, CARD_HEIGHT, Bitmap.Config.ARGB_8888).also { cardBufferA = it }
+            b
+        } else {
+            val b = cardBufferB?.takeIf { !it.isRecycled }
+                ?: Bitmap.createBitmap(CARD_WIDTH, CARD_HEIGHT, Bitmap.Config.ARGB_8888).also { cardBufferB = it }
+            b
+        }
+        useBufferA = !useBufferA
+        target.eraseColor(Color.TRANSPARENT)
+        reusableCanvas.setBitmap(target)
+        reusableCanvas.drawRoundRect(cardRect, 40f, 40f, bgCardPaint)
+        return target to reusableCanvas
     }
 
     /**
@@ -1399,12 +1448,12 @@ object AgendaCardBitmapRenderer {
         scratchPath.lineTo(pointsX[count - 1], chartBottom)
         scratchPath.close()
 
-        batFillAreaPaint.shader = LinearGradient(
-            0f, chartTop, 0f, chartBottom,
-            Color.argb(95, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
-            Color.argb(8, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
-            Shader.TileMode.CLAMP
-        )
+        batFillAreaPaint.shader = when {
+            battery.isCharging -> batAreaShaderEmerald
+            pct <= 15 -> batAreaShaderRed
+            pct <= 25 -> batAreaShaderAmber
+            else -> batAreaShaderEmerald
+        }
         canvas.drawPath(scratchPath, batFillAreaPaint)
 
         // Linha contínua da curva de consumo

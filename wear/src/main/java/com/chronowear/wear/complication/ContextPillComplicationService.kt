@@ -54,6 +54,11 @@ object ContextPillBitmapRenderer {
     @Volatile
     private var cachedBitmap: Bitmap? = null
 
+    private var pillBufferA: Bitmap? = null
+    private var pillBufferB: Bitmap? = null
+    private var usePillBufferA: Boolean = true
+    private val reusablePillCanvas = Canvas()
+
     private val cacheLock = Any()
 
     private val boldTypeface: Typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -332,10 +337,22 @@ object ContextPillBitmapRenderer {
         }
     }
 
+    private fun acquireReusablePillBitmap(): Pair<Bitmap, Canvas> {
+        val target = if (usePillBufferA) {
+            pillBufferA?.takeIf { !it.isRecycled }
+                ?: Bitmap.createBitmap(PILL_WIDTH, PILL_HEIGHT, Bitmap.Config.ARGB_8888).also { pillBufferA = it }
+        } else {
+            pillBufferB?.takeIf { !it.isRecycled }
+                ?: Bitmap.createBitmap(PILL_WIDTH, PILL_HEIGHT, Bitmap.Config.ARGB_8888).also { pillBufferB = it }
+        }
+        usePillBufferA = !usePillBufferA
+        target.eraseColor(Color.TRANSPARENT)
+        reusablePillCanvas.setBitmap(target)
+        return target to reusablePillCanvas
+    }
+
     private fun renderWeatherPillCanvas(state: WeatherPillState): Bitmap {
-        val bmp = Bitmap.createBitmap(PILL_WIDTH, PILL_HEIGHT, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawColor(Color.TRANSPARENT)
+        val (bmp, canvas) = acquireReusablePillBitmap()
 
         val radius = PILL_HEIGHT / 2f
 
@@ -477,9 +494,7 @@ object ContextPillBitmapRenderer {
      * - Exibe apenas a 1ª tarefa pendente + tag de data ("Hoje" / "Amanhã"), sem horário.
      */
     private fun renderTaskPillCanvas(state: TaskPillState): Bitmap {
-        val bmp = Bitmap.createBitmap(PILL_WIDTH, PILL_HEIGHT, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawColor(Color.TRANSPARENT)
+        val (bmp, canvas) = acquireReusablePillBitmap()
 
         val radius = PILL_HEIGHT / 2f
         bgPaint.shader = shaderTasks
